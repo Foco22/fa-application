@@ -1,0 +1,123 @@
+import { describe, it, expect } from 'vitest'
+import { parseSummary, renderMarkdown } from '../../../renderer/summary-utils.js'
+
+// Simulates exactly what DeepSeek returns for "Attention Is All You Need"
+const DEEPSEEK_CLEAN_JSON = JSON.stringify({
+  "1": "El problema es que los modelos de traducción automática dependían de redes recurrentes (RNN/LSTM) o convolucionales (CNN) que procesan la información de forma secuencial. Las RNN procesan token por token, lo que impide la paralelización y las hace lentas con secuencias largas. Las CNN permiten paralelismo pero necesitan muchas capas para conectar palabras distantes. Esto limitaba la velocidad de entrenamiento y la capacidad de capturar dependencias de largo alcance, haciendo que los mejores modelos fueran muy costosos computacionalmente.",
+  "2": "Se puede prescindir por completo de las redes recurrentes y convolucionales usando únicamente mecanismos de atención (self-attention) para modelar relaciones entre todas las palabras a la vez. El truco fundamental es que la atención permite que cada palabra 'mire' directamente a cualquier otra en un solo paso paralelo, sin importar la distancia entre ellas.",
+  "3": "El Transformer tiene arquitectura codificador-decodificador. El codificador apila 6 capas idénticas con dos subcapas: self-attention (cada palabra mira a todas las demás) y una red feed-forward simple. El decodificador también tiene 6 capas pero añade una tercera subcapa de atención que mira la salida del codificador. Para preservar el orden de las palabras se añaden codificaciones posicionales. Todo se calcula en paralelo mediante multi-head attention que permite al modelo enfocarse en distintos aspectos simultáneamente.",
+  "4": "Superó el estado del arte en traducción inglés-alemán con 28.4 BLEU (más de 2 puntos sobre el mejor modelo previo) e inglés-francés con 41.8 BLEU. Se entrenó en 3.5 días con 8 GPUs, una fracción del coste de modelos anteriores. También funcionó en análisis sintáctico superando modelos previos con pocos datos de entrenamiento.",
+  "5": "La complejidad de la self-attention es O(n²·d) con la longitud de la secuencia, lo que lo hace costoso para secuencias muy largas. Asume que la atención captura todas las relaciones relevantes, lo que puede no ser óptimo para tareas con procesamiento estrictamente local o jerárquico. Queda abierto aplicarlo a otras modalidades (imágenes, audio, video) y reducir la generación autorregresiva del decodificador.",
+})
+
+// DeepSeek sometimes adds preamble before the JSON
+const DEEPSEEK_WITH_PREAMBLE = `Aquí está el análisis del paper en formato JSON:\n\n${DEEPSEEK_CLEAN_JSON}`
+
+// DeepSeek sometimes wraps in a markdown code fence
+const DEEPSEEK_WITH_FENCE = `\`\`\`json\n${DEEPSEEK_CLEAN_JSON}\n\`\`\``
+
+// DeepSeek-reasoner can add explanation after the JSON
+const DEEPSEEK_WITH_SUFFIX = `${DEEPSEEK_CLEAN_JSON}\n\nEspero que este análisis sea útil.`
+
+// Worst case: preamble + fence + suffix
+const DEEPSEEK_WORST_CASE = `Análisis del paper:\n\`\`\`json\n${DEEPSEEK_CLEAN_JSON}\n\`\`\`\nFin del análisis.`
+
+// ─── parseSummary ─────────────────────────────────────────────────────────────
+
+describe('parseSummary — JSON format (DeepSeek output)', () => {
+  it('parses clean JSON correctly', () => {
+    const sections = parseSummary(DEEPSEEK_CLEAN_JSON)
+    expect(sections).toHaveLength(5)
+    expect(sections[0]).toContain('RNN')
+    expect(sections[1]).toContain('self-attention')
+    expect(sections[2]).toContain('codificador')
+    expect(sections[3]).toContain('BLEU')
+    expect(sections[4]).toContain('O(n²')
+  })
+
+  it('extracts JSON even with preamble text before it', () => {
+    const sections = parseSummary(DEEPSEEK_WITH_PREAMBLE)
+    expect(sections[0]).toContain('RNN')
+    expect(sections[3]).toContain('BLEU')
+  })
+
+  it('extracts JSON even inside markdown code fence', () => {
+    const sections = parseSummary(DEEPSEEK_WITH_FENCE)
+    expect(sections[0]).toContain('RNN')
+    expect(sections[4]).toContain('O(n²')
+  })
+
+  it('extracts JSON even with suffix text after it', () => {
+    const sections = parseSummary(DEEPSEEK_WITH_SUFFIX)
+    expect(sections[1]).toContain('self-attention')
+    expect(sections[4]).toContain('O(n²')
+  })
+
+  it('extracts JSON in worst case (preamble + fence + suffix)', () => {
+    const sections = parseSummary(DEEPSEEK_WORST_CASE)
+    expect(sections[0]).toContain('RNN')
+    expect(sections[4]).toContain('O(n²')
+  })
+
+  it('no section is empty', () => {
+    const sections = parseSummary(DEEPSEEK_CLEAN_JSON)
+    sections.forEach((s, i) => {
+      expect(s.length, `section ${i + 1} is empty`).toBeGreaterThan(0)
+    })
+  })
+
+  it('each section contains its expected keywords', () => {
+    const [s1, s2, s3, s4, s5] = parseSummary(DEEPSEEK_CLEAN_JSON)
+    expect(s1).toContain('secuencial')
+    expect(s2).toContain('truco')
+    expect(s3).toContain('codificador-decodificador')
+    expect(s4).toContain('3.5 días')
+    expect(s5).toContain('costoso')
+  })
+
+  it('preserves full text length — no truncation', () => {
+    const sections = parseSummary(DEEPSEEK_CLEAN_JSON)
+    const totalChars = sections.reduce((acc, s) => acc + s.length, 0)
+    // Each section should be substantial — not truncated
+    sections.forEach((s, i) => {
+      expect(s.length, `section ${i + 1} seems truncated (${s.length} chars)`).toBeGreaterThan(100)
+    })
+    expect(totalChars).toBeGreaterThan(1000)
+  })
+})
+
+// ─── renderMarkdown ───────────────────────────────────────────────────────────
+
+describe('renderMarkdown — what the card actually shows', () => {
+  it('wraps plain text in a <p> tag', () => {
+    const html = renderMarkdown('Hello world')
+    expect(html).toBe('<p>Hello world</p>')
+  })
+
+  it('renders **bold** as <strong>', () => {
+    const html = renderMarkdown('**Transformer** es el modelo')
+    expect(html).toContain('<strong>Transformer</strong>')
+  })
+
+  it('renders - list items as <ul><li>', () => {
+    const html = renderMarkdown('- item uno\n- item dos')
+    expect(html).toContain('<ul>')
+    expect(html).toContain('<li>item uno</li>')
+    expect(html).toContain('<li>item dos</li>')
+  })
+
+  it('renders the full section 5 text without truncation', () => {
+    const [,,,, s5] = parseSummary(DEEPSEEK_CLEAN_JSON)
+    const html = renderMarkdown(s5)
+    expect(html).toContain('O(n²')
+    expect(html).toContain('costoso')
+    expect(html).toContain('modalidades')
+    expect(html.length).toBeGreaterThan(s5.length * 0.8)
+  })
+
+  it('escapes < and > in text to avoid breaking HTML', () => {
+    const html = renderMarkdown('complexity is O(n<sup>2</sup>)')
+    expect(html).toContain('&lt;sup&gt;')
+    expect(html).not.toContain('<sup>')
+  })
+})

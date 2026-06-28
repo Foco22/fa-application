@@ -1,0 +1,217 @@
+import { describe, it, expect, vi } from 'vitest'
+import { createAnthropicProvider } from '../../../src/llm/providers/anthropic.js'
+
+// ─── fixtures ─────────────────────────────────────────────────────────────────
+
+const PAPER = {
+  title: 'Attention Is All You Need',
+  authors: 'Vaswani et al.',
+  abstract: 'We propose the Transformer.',
+  pdf_text: 'Full paper text here...'
+}
+
+const VALID_QUIZ_JSON = JSON.stringify({
+  questions: Array.from({ length: 5 }, (_, i) => ({
+    question: `Q${i + 1}?`,
+    options: ['A', 'B', 'C', 'D'],
+    correct: 0,
+    explanation: 'Because A.'
+  }))
+})
+
+// ─── Anthropic client mock factories ─────────────────────────────────────────
+
+function textBlock(text) {
+  return { type: 'text', text }
+}
+
+function makeStreamClient(chunks) {
+  async function* textStream() {
+    for (const c of chunks) yield c
+  }
+  return {
+    messages: {
+      stream: vi.fn().mockReturnValue({ textStream: textStream() }),
+      create: vi.fn(),
+    }
+  }
+}
+
+function makeCreateClient(text) {
+  return {
+    messages: {
+      stream: vi.fn(),
+      create: vi.fn().mockResolvedValue({ content: [textBlock(text)] }),
+    }
+  }
+}
+
+// ─── streamSummary ────────────────────────────────────────────────────────────
+
+describe('Anthropic provider — streamSummary', () => {
+  it('calls messages.stream (not create)', async () => {
+    const mockClient = makeStreamClient(['hello'])
+    const provider = createAnthropicProvider('sk-test', null, mockClient)
+    await provider.streamSummary(PAPER, vi.fn())
+    expect(mockClient.messages.stream).toHaveBeenCalledOnce()
+  })
+
+  it('uses claude-opus-4-8 by default', async () => {
+    const mockClient = makeStreamClient(['hello'])
+    const provider = createAnthropicProvider('sk-test', null, mockClient)
+    await provider.streamSummary(PAPER, vi.fn())
+    const args = mockClient.messages.stream.mock.calls[0][0]
+    expect(args.model).toBe('claude-opus-4-8')
+  })
+
+  it('uses adaptive thinking', async () => {
+    const mockClient = makeStreamClient(['hello'])
+    await createAnthropicProvider('sk-test', null, mockClient).streamSummary(PAPER, vi.fn())
+    const args = mockClient.messages.stream.mock.calls[0][0]
+    expect(args.thinking).toEqual({ type: 'adaptive' })
+  })
+
+  it('forwards each chunk to the onChunk callback', async () => {
+    const mockClient = makeStreamClient(['chunk1', 'chunk2'])
+    const onChunk = vi.fn()
+    await createAnthropicProvider('sk-test', null, mockClient).streamSummary(PAPER, onChunk)
+    expect(onChunk).toHaveBeenCalledWith('chunk1')
+    expect(onChunk).toHaveBeenCalledWith('chunk2')
+  })
+
+  it('returns the full concatenated text', async () => {
+    const mockClient = makeStreamClient(['Hello ', 'world'])
+    const result = await createAnthropicProvider('sk-test', null, mockClient).streamSummary(PAPER, vi.fn())
+    expect(result).toBe('Hello world')
+  })
+
+  it('includes paper title in the prompt', async () => {
+    const mockClient = makeStreamClient(['x'])
+    await createAnthropicProvider('sk-test', null, mockClient).streamSummary(PAPER, vi.fn())
+    const args = mockClient.messages.stream.mock.calls[0][0]
+    const userMsg = args.messages.find(m => m.role === 'user')
+    expect(userMsg?.content).toContain(PAPER.title)
+  })
+})
+
+// ─── generateQuiz ─────────────────────────────────────────────────────────────
+
+describe('Anthropic provider — generateQuiz', () => {
+  it('calls messages.create', async () => {
+    const mockClient = makeCreateClient(VALID_QUIZ_JSON)
+    await createAnthropicProvider('sk-test', null, mockClient).generateQuiz(PAPER)
+    expect(mockClient.messages.create).toHaveBeenCalledOnce()
+  })
+
+  it('returns parsed quiz with 5 questions', async () => {
+    const mockClient = makeCreateClient(VALID_QUIZ_JSON)
+    const result = await createAnthropicProvider('sk-test', null, mockClient).generateQuiz(PAPER)
+    expect(result.questions).toHaveLength(5)
+  })
+
+  it('handles JSON wrapped in markdown fences', async () => {
+    const fenced = `\`\`\`json\n${VALID_QUIZ_JSON}\n\`\`\``
+    const mockClient = makeCreateClient(fenced)
+    const result = await createAnthropicProvider('sk-test', null, mockClient).generateQuiz(PAPER)
+    expect(result.questions).toHaveLength(5)
+  })
+})
+
+// ─── extractAffiliationsWithAI ────────────────────────────────────────────────
+
+describe('Anthropic provider — extractAffiliationsWithAI', () => {
+  it('returns an array of affiliation strings', async () => {
+    const mockClient = makeCreateClient(JSON.stringify(['MIT', 'Harvard']))
+    const result = await createAnthropicProvider('sk-test', null, mockClient).extractAffiliationsWithAI('page text')
+    expect(result).toEqual(['MIT', 'Harvard'])
+  })
+
+  it('returns null when response is not an array', async () => {
+    const mockClient = makeCreateClient(JSON.stringify({ name: 'MIT' }))
+    const result = await createAnthropicProvider('sk-test', null, mockClient).extractAffiliationsWithAI('text')
+    expect(result).toBeNull()
+  })
+
+  it('returns null when the API call throws', async () => {
+    const mockClient = {
+      messages: { create: vi.fn().mockRejectedValue(new Error('rate limit')), stream: vi.fn() }
+    }
+    const result = await createAnthropicProvider('sk-test', null, mockClient).extractAffiliationsWithAI('text')
+    expect(result).toBeNull()
+  })
+})
+
+// ─── extractPaperMetadata ─────────────────────────────────────────────────────
+
+describe('Anthropic provider — extractPaperMetadata', () => {
+  it('returns title, authors and abstract', async () => {
+    const meta = { title: 'My Paper', authors: 'Alice', abstract: 'We study...' }
+    const mockClient = makeCreateClient(JSON.stringify(meta))
+    const result = await createAnthropicProvider('sk-test', null, mockClient).extractPaperMetadata('text')
+    expect(result).toMatchObject(meta)
+  })
+
+  it('returns empty strings when the API throws', async () => {
+    const mockClient = {
+      messages: { create: vi.fn().mockRejectedValue(new Error('timeout')), stream: vi.fn() }
+    }
+    const result = await createAnthropicProvider('sk-test', null, mockClient).extractPaperMetadata('text')
+    expect(result).toEqual({ title: '', authors: '', abstract: '' })
+  })
+})
+
+// ─── chat ─────────────────────────────────────────────────────────────────────
+
+describe('Anthropic provider — chat', () => {
+  it('extracts system message into the system parameter', async () => {
+    const messages = [
+      { role: 'system', content: 'You are an expert' },
+      { role: 'user',   content: 'Hello' },
+    ]
+    const mockClient = makeCreateClient('Hi!')
+    await createAnthropicProvider('sk-test', null, mockClient).chat(messages)
+    const args = mockClient.messages.create.mock.calls[0][0]
+    expect(args.system).toBe('You are an expert')
+  })
+
+  it('excludes system role from the messages array', async () => {
+    const messages = [
+      { role: 'system', content: 'Context' },
+      { role: 'user',   content: 'Question' },
+    ]
+    const mockClient = makeCreateClient('Answer')
+    await createAnthropicProvider('sk-test', null, mockClient).chat(messages)
+    const args = mockClient.messages.create.mock.calls[0][0]
+    expect(args.messages.every(m => m.role !== 'system')).toBe(true)
+  })
+
+  it('works without a system message', async () => {
+    const messages = [{ role: 'user', content: 'Hi' }]
+    const mockClient = makeCreateClient('Hello!')
+    await expect(
+      createAnthropicProvider('sk-test', null, mockClient).chat(messages)
+    ).resolves.not.toThrow()
+  })
+
+  it('returns the assistant response text', async () => {
+    const mockClient = makeCreateClient('Respuesta final.')
+    const result = await createAnthropicProvider('sk-test', null, mockClient).chat([
+      { role: 'user', content: '¿Qué es esto?' }
+    ])
+    expect(result).toBe('Respuesta final.')
+  })
+
+  it('preserves conversation history in the messages array', async () => {
+    const messages = [
+      { role: 'system',    content: 'Context' },
+      { role: 'user',      content: 'First question' },
+      { role: 'assistant', content: 'First answer' },
+      { role: 'user',      content: 'Second question' },
+    ]
+    const mockClient = makeCreateClient('Second answer')
+    await createAnthropicProvider('sk-test', null, mockClient).chat(messages)
+    const args = mockClient.messages.create.mock.calls[0][0]
+    expect(args.messages).toHaveLength(3) // system removed, 3 non-system remain
+    expect(args.messages[2].content).toBe('Second question')
+  })
+})

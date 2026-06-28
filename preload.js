@@ -1,0 +1,57 @@
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('api', {
+  getPapers:       ()         => ipcRenderer.invoke('get-papers'),
+  getPaper:        (id)       => ipcRenderer.invoke('get-paper', id),
+  fetchPapers:     ()         => ipcRenderer.invoke('fetch-papers'),
+  generateQuiz:    (id)       => ipcRenderer.invoke('generate-quiz', id),
+  saveQuizResult:  (payload)  => ipcRenderer.invoke('save-quiz-result', payload),
+  getQuizResults:  (paperId)  => ipcRenderer.invoke('get-quiz-results', paperId),
+  getSettings:     ()         => ipcRenderer.invoke('get-settings'),
+  saveSettings:    (payload)  => ipcRenderer.invoke('save-settings', payload),
+  checkOnboarding: ()         => ipcRenderer.invoke('check-onboarding'),
+  completeOnboarding: (s)     => ipcRenderer.invoke('complete-onboarding', s),
+
+  startSummary:    (id)       => ipcRenderer.invoke('start-summary', id),
+
+  onSummaryChunk:  (cb) => ipcRenderer.on('summary-chunk', (_e, chunk) => cb(chunk)),
+  onSummaryDone:   (cb) => ipcRenderer.on('summary-done',  () => cb()),
+  onSummaryError:  (cb) => ipcRenderer.on('summary-error', (_e, msg) => cb(msg)),
+  onNewPapers:     (cb) => ipcRenderer.on('new-papers',    (_e, n) => cb(n)),
+
+  chatMessage:     (payload)  => ipcRenderer.invoke('chat-message', payload),
+  saveNotes:       (payload)  => ipcRenderer.invoke('save-notes', payload),
+  saveHighlights:  (payload)  => ipcRenderer.invoke('save-highlights', payload),
+  deletePaper:     (id)       => ipcRenderer.invoke('delete-paper', id),
+  getPdfUrl:       (id)       => ipcRenderer.invoke('get-pdf-url', id),
+  openVaultFolder:       ()   => ipcRenderer.invoke('open-vault-folder'),
+  openReferenceFolder:   ()   => ipcRenderer.invoke('open-reference-folder'),
+  selectFolder:          ()   => ipcRenderer.invoke('select-folder'),
+  indexReferenceFolder:  ()   => ipcRenderer.invoke('index-reference-folder'),
+  getReferenceStats:     ()   => ipcRenderer.invoke('get-reference-stats'),
+  getReferenceList:      ()   => ipcRenderer.invoke('get-reference-list'),
+  indexFiles:            (ps) => ipcRenderer.invoke('index-files', ps),
+  openFile:              (p)  => ipcRenderer.invoke('open-file', p),
+  deleteReference:       (p)  => ipcRenderer.invoke('delete-reference', p),
+  renameReference:       (p)  => ipcRenderer.invoke('rename-reference', p),
+
+  classCanHaveClass:    (paperId)   => ipcRenderer.invoke('class-can-have-class', paperId),
+  classUploadSlides:    (data)      => ipcRenderer.invoke('class-upload-slides', data),
+  classInterpretSlides: (data)      => ipcRenderer.invoke('class-interpret-slides', data),
+  classStartSession:    (data)      => ipcRenderer.invoke('class-start-session', data),
+  classGetSlides:       (sessionId) => ipcRenderer.invoke('class-get-slides', sessionId),
+  classSaveTranscript:  (data)      => ipcRenderer.invoke('class-save-transcript', data),
+  classStudentQuestion: (data)      => ipcRenderer.invoke('class-student-question', data),
+  classStudentEvaluate: (data)      => ipcRenderer.invoke('class-student-evaluate', data),
+  classEndSession:      (data)      => ipcRenderer.invoke('class-end-session', data),
+  classGetSessions:     (paperId)   => ipcRenderer.invoke('class-get-sessions', paperId),
+  classTranscribeAudio: (data)      => ipcRenderer.invoke('class-transcribe-audio', data),
+  classGetHint:         (data)      => ipcRenderer.invoke('class-get-hint', data),
+  classAssistantMessage:(data)      => ipcRenderer.invoke('class-assistant-message', data),
+
+  minimizeWindow:  ()         => ipcRenderer.send('window-minimize'),
+  maximizeWindow:  ()         => ipcRenderer.send('window-maximize'),
+  closeWindow:     ()         => ipcRenderer.send('window-close'),
+
+  removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
+})

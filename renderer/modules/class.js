@@ -1,0 +1,1426 @@
+import { toast } from './toast.js'
+
+// ── Module state ─────────────────────────────────────────────────────────────
+let _paper = null
+let _sessionId = null
+let _selectedDuration = 180
+let _slides = []          // prep slides: [{ imageData, mimeType, previewUrl }]
+let _dbSlides = []        // slides from DB after session creation
+let _currentSlideIndex = 0
+let _timer = null
+let _webcamStream = null
+let _transcript = ''
+let _professorBubble = null  // burbuja activa del profesor en el chat de la clase
+
+let _prepSlideIndex = 0
+
+let _mediaRecorder = null
+let _transcribeInterval = null
+let _vadPoll = null
+let _audioCtx = null
+let _speechRecognition = null
+let _recognitionActive = false
+let _classLanguage = 'es'
+let _classModel = 'gpt-4o-mini-transcribe'
+
+// Q&A state
+let _qaStudentIndex = 0
+let _qaHistory = []       // [{question, answer}] for current student's exchanges
+let _qaLog = []           // completed exchanges per student
+let _qaExchangeCount = 0
+let _qaActive = false
+
+// Progressive hint state
+let _hintLevel = 0         // 0=none, 1=bell shown, 2=guidance shown, 3=answer shown
+let _pendingMissing = null // 'missing' field from last failed evaluation
+let _cachedHintResult = null // cached LLM result — one call per student turn, reused on re-open
+
+// Assistant chat state
+let _assistantHistory  = []   // [{role, content}] for the assistant chat
+let _assistantExcerpts = []   // paper excerpts used as context
+let _assistantMissing  = null // what the professor is missing
+let _assistantCanReveal = false // true when Round 4 is reached
+
+// PDF hints viewer state
+let _pdfHintsDoc      = null  // loaded pdfjsLib document
+let _pdfHintsExcerpts = []    // current excerpts to highlight
+let _pdfHintsScale    = 1.2   // current zoom scale
+const PDF_ZOOM_STEP = 0.3
+const PDF_ZOOM_MIN  = 0.7
+const PDF_ZOOM_MAX  = 4.0
+
+const STUDENTS = [
+  { id: 1, name: 'María',  initials: 'MG', color: '#6366f1' },
+  { id: 2, name: 'Carlos', initials: 'CR', color: '#10b981' },
+  { id: 3, name: 'Sofía',  initials: 'SK', color: '#f59e0b' },
+]
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+export function enterClassMode(paper) {
+  _paper = paper
+  _slides = []
+  _dbSlides = []
+  _sessionId = null
+  _selectedDuration = 180
+  _transcript = ''
+  _professorBubble = null
+  _prepSlideIndex = 0
+  _qaStudentIndex = 0
+  _qaHistory = []
+  _qaLog = []
+  _qaExchangeCount = 0
+  _qaActive = false
+
+  document.getElementById('vault-panel').classList.add('hidden')
+  document.getElementById('content-panel').classList.add('hidden')
+  document.getElementById('chat-panel').classList.add('hidden')
+  document.getElementById('class-fullscreen').classList.remove('hidden')
+
+  document.getElementById('class-paper-title').textContent = paper.title || paper.id
+  renderSlidesGrid()
+  resetUI()
+  showView('prep')
+}
+
+export function exitClassMode() {
+  _timer?.stop()
+  stopSpeechRecognition()
+  stopWebcam()
+  document.getElementById('class-fullscreen').classList.add('hidden')
+  document.getElementById('vault-panel').classList.remove('hidden')
+  document.getElementById('content-panel').classList.remove('hidden')
+  document.getElementById('chat-panel').classList.remove('hidden')
+}
+
+async function toggleQaPdf() {
+  const pdfView    = document.getElementById('class-qa-pdf-view')
+  const spotlight  = document.getElementById('class-qa-spotlight')
+  const btn        = document.getElementById('class-btn-toggle-notes')
+  const isOpen     = !pdfView.classList.contains('hidden')
+
+  if (isOpen) {
+    pdfView.classList.add('hidden')
+    spotlight.classList.remove('hidden')
+    btn.classList.remove('active')
+  } else {
+    if (!pdfView.dataset.loaded && _paper) {
+      const url = await window.api.getPdfUrl(_paper.id)
+      if (url) { pdfView.data = url; pdfView.dataset.loaded = '1' }
+    }
+    pdfView.classList.remove('hidden')
+    spotlight.classList.add('hidden')
+    btn.classList.add('active')
+  }
+}
+
+export function showView(name) {
+  document.querySelectorAll('#class-main-area .class-view').forEach(v => v.classList.add('hidden'))
+  const el = document.getElementById(`class-view-${name}`)
+  if (el) el.classList.remove('hidden')
+
+  // Sidebars visible only during active class (not prep/loading/results)
+  const withSidebars = name === 'active' || name === 'qa'
+  document.getElementById('class-sidebar-participants').classList.toggle('hidden', !withSidebars)
+  document.getElementById('class-sidebar-chat').classList.toggle('hidden', !withSidebars)
+
+  // Chat input: only enabled during Q&A (managed by enableChatInput — default to disabled here)
+  if (name !== 'qa') {
+    const chatInput = document.getElementById('class-qa-input')
+    const chatSend  = document.getElementById('class-qa-send')
+    if (chatInput) chatInput.disabled = true
+    if (chatSend)  chatSend.disabled  = true
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+export function initClass() {
+  document.getElementById('class-btn-done')?.addEventListener('click', exitClassMode)
+
+  document.getElementById('class-btn-toggle-notes').addEventListener('click', toggleQaPdf)
+  document.getElementById('class-qa-pdf-hints-close').addEventListener('click', closePdfHints)
+  document.getElementById('class-qa-assistant-close').addEventListener('click', closeAssistantPanel)
+  document.getElementById('class-qa-assistant-send').addEventListener('click', sendAssistantMessage)
+  document.getElementById('class-qa-assistant-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAssistantMessage() }
+  })
+
+  // Drag-to-resize chat sidebar (left edge)
+  const chatResizeHandle = document.getElementById('class-sidebar-chat-resize')
+  const chatSidebar = document.getElementById('class-sidebar-chat')
+  chatResizeHandle?.addEventListener('mousedown', e => {
+    const startX = e.clientX
+    const startW = chatSidebar.offsetWidth
+    chatResizeHandle.classList.add('dragging')
+    const onMove = ev => {
+      const delta = startX - ev.clientX  // drag left = sidebar grows
+      const newW  = Math.max(240, Math.min(600, startW + delta))
+      chatSidebar.style.width = newW + 'px'
+    }
+    const onUp = () => {
+      chatResizeHandle.classList.remove('dragging')
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    e.preventDefault()
+  })
+
+  // Drag-to-resize assistant panel
+  const resizeHandle = document.getElementById('class-qa-assistant-resize')
+  const assistantPanel = document.getElementById('class-qa-assistant-panel')
+  resizeHandle?.addEventListener('mousedown', e => {
+    const startX = e.clientX
+    const startW = assistantPanel.offsetWidth
+    resizeHandle.classList.add('dragging')
+    const onMove = ev => {
+      const delta = startX - ev.clientX  // dragging left = panel grows
+      const newW  = Math.max(200, Math.min(600, startW + delta))
+      assistantPanel.style.width = newW + 'px'
+    }
+    const onUp = () => {
+      resizeHandle.classList.remove('dragging')
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    e.preventDefault()
+  })
+
+  document.getElementById('class-pdf-zoom-in').addEventListener('click', async () => {
+    if (_pdfHintsScale < PDF_ZOOM_MAX) {
+      _pdfHintsScale = Math.min(PDF_ZOOM_MAX, parseFloat((_pdfHintsScale + PDF_ZOOM_STEP).toFixed(2)))
+      await renderPdfHintsPages()
+    }
+  })
+
+  document.getElementById('class-pdf-zoom-out').addEventListener('click', async () => {
+    if (_pdfHintsScale > PDF_ZOOM_MIN) {
+      _pdfHintsScale = Math.max(PDF_ZOOM_MIN, parseFloat((_pdfHintsScale - PDF_ZOOM_STEP).toFixed(2)))
+      await renderPdfHintsPages()
+    }
+  })
+
+  document.getElementById('class-file-input').addEventListener('change', onFileChange)
+  const triggerFileInput = (e) => {
+    if (e) e.stopPropagation()
+    const fi = document.getElementById('class-file-input')
+    fi.value = ''
+    fi.click()
+  }
+  document.getElementById('class-btn-add-slide').addEventListener('click', triggerFileInput)
+  document.getElementById('class-btn-add-slide-more').addEventListener('click', triggerFileInput)
+  document.getElementById('class-btn-add-slide-overlay').addEventListener('click', triggerFileInput)
+  document.getElementById('class-slides-dropzone').addEventListener('click', (e) => {
+    if (_slides.length >= 3) return
+    if (e.target.closest('button') || e.target.closest('img')) return
+    triggerFileInput()
+  })
+
+  document.querySelectorAll('.duration-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.duration-btn').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+      _selectedDuration = parseInt(btn.dataset.duration, 10)
+    })
+  })
+
+  document.getElementById('class-btn-start').addEventListener('click', startClass)
+
+  // Prep slide viewer controls
+  document.getElementById('class-slide-viewer-prev').addEventListener('click', () => {
+    if (_prepSlideIndex > 0) { _prepSlideIndex--; renderSlidesGrid() }
+  })
+  document.getElementById('class-slide-viewer-next').addEventListener('click', () => {
+    if (_prepSlideIndex < _slides.length - 1) { _prepSlideIndex++; renderSlidesGrid() }
+  })
+  document.getElementById('class-slide-viewer-remove').addEventListener('click', () => {
+    URL.revokeObjectURL(_slides[_prepSlideIndex].previewUrl)
+    _slides.splice(_prepSlideIndex, 1)
+    _prepSlideIndex = Math.max(0, _prepSlideIndex - 1)
+    renderSlidesGrid()
+    resetUI()
+  })
+
+  // Teclado: flechas para navegar slides en prep y en active view
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+    const inPrep   = !document.getElementById('class-view-prep')?.classList.contains('hidden')
+    const inActive = !document.getElementById('class-view-active')?.classList.contains('hidden')
+    if (inPrep) {
+      if (e.key === 'ArrowLeft'  && _prepSlideIndex > 0)               { _prepSlideIndex--; renderSlidesGrid() }
+      if (e.key === 'ArrowRight' && _prepSlideIndex < _slides.length - 1) { _prepSlideIndex++; renderSlidesGrid() }
+    }
+    if (inActive) {
+      if (e.key === 'ArrowLeft')  prevSlide()
+      if (e.key === 'ArrowRight') nextSlide()
+    }
+  })
+
+  // Active view controls
+  document.getElementById('class-slide-prev').addEventListener('click', () => prevSlide())
+  document.getElementById('class-slide-next').addEventListener('click', () => nextSlide())
+  document.getElementById('class-btn-end-presentation').addEventListener('click', endPresentation)
+
+  // Q&A send
+  document.getElementById('class-qa-send').addEventListener('click', sendQAResponse)
+  document.getElementById('class-qa-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQAResponse() }
+  })
+
+}
+
+// ── Prep — file upload ────────────────────────────────────────────────────────
+
+function resizeImage(dataUrl, maxW = 1920, maxH = 1080) {
+  return new Promise(resolve => {
+    const img = new Image()
+    img.onload = () => {
+      const scale = Math.min(1, maxW / img.width, maxH / img.height)
+      const canvas = document.createElement('canvas')
+      canvas.width  = Math.round(img.width  * scale)
+      canvas.height = Math.round(img.height * scale)
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', 0.85))
+    }
+    img.onerror = () => resolve(dataUrl)  // fallback: usar original si falla el resize
+    img.src = dataUrl
+  })
+}
+
+function onFileChange(e) {
+  const files = Array.from(e.target.files)
+  if (!files.length) return
+  const remaining = 3 - _slides.length
+  const toProcess = files.slice(0, remaining)
+
+  // Array indexado: garantiza que los resultados se insertan en el orden de selección,
+  // sin importar cuál resizeImage termina primero
+  const results = new Array(toProcess.length).fill(null)
+  let done = 0
+
+  const finish = () => {
+    done++
+    if (done < toProcess.length) return
+    results.forEach(r => { if (r) _slides.push(r) })
+    _prepSlideIndex = _slides.length - 1
+    renderSlidesGrid()
+    resetUI()
+  }
+
+  toProcess.forEach((file, idx) => {
+    const previewUrl = URL.createObjectURL(file)
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      const resized = await resizeImage(ev.target.result)
+      results[idx] = { imageData: resized.split(',')[1], mimeType: 'image/jpeg', previewUrl }
+      finish()
+    }
+    reader.onerror = () => finish()
+    reader.readAsDataURL(file)
+  })
+  e.target.value = ''
+}
+
+function renderSlidesGrid() {
+  const placeholder = document.getElementById('class-slides-placeholder')
+  const viewer      = document.getElementById('class-slide-viewer')
+  const dropzone    = document.getElementById('class-slides-dropzone')
+  const hasSlides   = _slides.length > 0
+
+  if (placeholder) placeholder.style.display = hasSlides ? 'none' : ''
+  if (viewer)      viewer.style.display       = hasSlides ? ''     : 'none'
+  if (dropzone)    dropzone.classList.toggle('has-slides', hasSlides)
+
+  if (hasSlides) {
+    _prepSlideIndex = Math.min(_prepSlideIndex, _slides.length - 1)
+    const slide  = _slides[_prepSlideIndex]
+    const labels = ['Intro', 'Desarrollo', 'Conclusión']
+    document.getElementById('class-slide-viewer-img').src         = slide.previewUrl
+    document.getElementById('class-slide-viewer-label').textContent     = labels[_prepSlideIndex] || `Slide ${_prepSlideIndex + 1}`
+    document.getElementById('class-slide-viewer-indicator').textContent = `${_prepSlideIndex + 1} / ${_slides.length}`
+    document.getElementById('class-slide-viewer-prev').disabled   = _prepSlideIndex === 0
+    document.getElementById('class-slide-viewer-next').disabled   = _prepSlideIndex === _slides.length - 1
+  }
+
+  const count = document.getElementById('class-slides-count')
+  if (count) count.textContent = _slides.length > 0 ? `${_slides.length}/3` : ''
+  const canAdd = _slides.length < 3
+  const addBtn     = document.getElementById('class-btn-add-slide')
+  const addBtnMore = document.getElementById('class-btn-add-slide-more')
+  const addOverlay = document.getElementById('class-btn-add-slide-overlay')
+  if (addBtn)     addBtn.style.display     = canAdd ? '' : 'none'
+  if (addBtnMore) addBtnMore.style.display = (canAdd && hasSlides) ? '' : 'none'
+  if (addOverlay) addOverlay.style.display = (canAdd && hasSlides) ? '' : 'none'
+}
+
+function resetUI() {
+  document.getElementById('class-btn-start').disabled = _slides.length === 0
+}
+
+// ── Start flow ────────────────────────────────────────────────────────────────
+
+async function startClass() {
+  if (_slides.length === 0) return
+  showView('loading')
+  setLoading('Subiendo diapositivas…', '')
+  try {
+    const { sessionId } = await window.api.classUploadSlides({
+      paperId: _paper.id,
+      duration: _selectedDuration,
+      slides: _slides.map(s => ({ imageData: s.imageData, mimeType: s.mimeType }))
+    })
+    _sessionId = sessionId
+
+    setLoading('Interpretando diapositivas con IA…', 'Los agentes estudiantes verán tus slides')
+    await window.api.classInterpretSlides({ sessionId })
+
+    setLoading('¡Todo listo! Iniciando clase…', '')
+    const { slides } = await window.api.classStartSession({ sessionId })
+
+    _classLanguage = document.getElementById('class-lang-select')?.value ?? 'es'
+    _classModel = document.getElementById('class-model-select')?.value || 'gpt-4o-mini-transcribe'
+    await setupActiveView(slides)
+    showView('active')
+  } catch (err) {
+    toast('Error al iniciar la clase: ' + err.message, 'error')
+    showView('prep')
+  }
+}
+
+function setLoading(msg, sub) {
+  document.getElementById('class-loading-msg').textContent = msg
+  document.getElementById('class-loading-sub').textContent = sub || ''
+}
+
+// ── Active view ───────────────────────────────────────────────────────────────
+
+async function setupActiveView(slides) {
+  _dbSlides = slides || []
+  _currentSlideIndex = 0
+  _transcript = ''
+  _professorBubble = null
+
+  renderCurrentSlide()
+
+  // Timer
+  const timerEl = document.getElementById('class-timer-display')
+  _timer = new ClassTimer(_selectedDuration, (remaining) => {
+    timerEl.textContent = formatTime(remaining)
+    timerEl.className = 'class-timer-display' +
+      (remaining <= 30 ? ' timer-urgent' : remaining <= 60 ? ' timer-warning' : '')
+  }, () => {
+    endPresentation()
+  })
+  _timer.start()
+
+  // Webcam → persistent sidebar tile
+  try {
+    _webcamStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+    document.getElementById('class-webcam').srcObject = _webcamStream
+  } catch {
+    // Cámara no disponible: mostrar avatar placeholder en vez de ocultar el tile
+    const tile = document.getElementById('class-tile-self')
+    if (tile) {
+      const vid = tile.querySelector('video')
+      if (vid) vid.style.display = 'none'
+      const avatar = document.createElement('div')
+      avatar.className = 'class-tile-avatar'
+      avatar.textContent = 'YO'
+      avatar.style.background = '#64748b'
+      tile.insertBefore(avatar, tile.firstChild)
+    }
+  }
+
+  startSpeechRecognition()
+}
+
+function renderCurrentSlide() {
+  const display = document.getElementById('class-slide-display')
+  const indicator = document.getElementById('class-slide-indicator')
+
+  if (!_dbSlides.length) {
+    display.innerHTML = '<p class="class-no-slides">Sin slides</p>'
+    indicator.textContent = '—'
+    return
+  }
+
+  const slide = _dbSlides[_currentSlideIndex]
+  display.innerHTML = ''
+  const img = document.createElement('img')
+  img.src = `data:${slide.mime_type};base64,${slide.image_data}`
+  img.className = 'class-slide-img-full'
+  display.appendChild(img)
+
+  indicator.textContent = `${_currentSlideIndex + 1} / ${_dbSlides.length}`
+
+  document.getElementById('class-slide-prev').disabled = _currentSlideIndex === 0
+  document.getElementById('class-slide-next').disabled = _currentSlideIndex === _dbSlides.length - 1
+}
+
+function prevSlide() {
+  if (_currentSlideIndex > 0) { _currentSlideIndex--; renderCurrentSlide() }
+}
+
+function nextSlide() {
+  if (_currentSlideIndex < _dbSlides.length - 1) { _currentSlideIndex++; renderCurrentSlide() }
+}
+
+function stopWebcam() {
+  if (_webcamStream) {
+    _webcamStream.getTracks().forEach(t => t.stop())
+    _webcamStream = null
+    const vid = document.getElementById('class-webcam')
+    if (vid) vid.srcObject = null
+  }
+}
+
+async function endPresentation() {
+  _timer?.stop()
+  stopSpeechRecognition()
+
+  if (_sessionId && _transcript) {
+    await window.api.classSaveTranscript({ sessionId: _sessionId, transcript: _transcript }).catch(() => {})
+  }
+
+  // Reset Q&A state for this class
+  _qaStudentIndex = 0
+  _qaHistory = []
+  _qaLog = []
+  _qaExchangeCount = 0
+  _qaActive = false
+  _hintLevel = 0
+  _pendingMissing = null
+  _cachedHintResult = null
+  document.getElementById('class-hint-bell-overlay')?.remove()
+  document.getElementById('class-hint-assistant-overlay')?.remove()
+  document.getElementById('class-qa-assistant-panel').classList.add('hidden')
+  document.getElementById('class-qa-assistant-messages').innerHTML = ''
+  _assistantHistory = []
+  _assistantExcerpts = []
+  _assistantMissing = null
+  _assistantCanReveal = false
+  document.getElementById('class-qa-messages').innerHTML = ''
+
+  // Reset PDF toggle state
+  const pdfView = document.getElementById('class-qa-pdf-view')
+  pdfView.classList.add('hidden')
+  pdfView.removeAttribute('data-loaded')
+  document.getElementById('class-qa-pdf-hints').classList.add('hidden')
+  document.getElementById('class-qa-pdf-hints-pages').innerHTML = ''
+  document.getElementById('class-qa-spotlight').classList.remove('hidden')
+  document.getElementById('class-btn-toggle-notes').classList.remove('active')
+  _pdfHintsDoc = null
+  _pdfHintsExcerpts = []
+  _pdfHintsScale = 1.2
+
+  showView('qa')
+  startQA()
+}
+
+// ── ClassTimer ────────────────────────────────────────────────────────────────
+
+class ClassTimer {
+  constructor(durationSeconds, onTick, onEnd) {
+    this.remaining = durationSeconds
+    this.onTick = onTick
+    this.onEnd = onEnd
+    this._handle = null
+  }
+  start() {
+    this.onTick(this.remaining)
+    this._handle = setInterval(() => {
+      this.remaining = Math.max(0, this.remaining - 1)
+      this.onTick(this.remaining)
+      if (this.remaining === 0) { this.stop(); this.onEnd() }
+    }, 1000)
+  }
+  stop() {
+    if (this._handle) { clearInterval(this._handle); this._handle = null }
+  }
+}
+
+function formatTime(s) {
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+// ── Q&A helpers ───────────────────────────────────────────────────────────────
+
+function addChatBubble(type, sender, text) {
+  const msgs = document.getElementById('class-qa-messages')
+  const wrap = document.createElement('div')
+  wrap.className = `class-qa-group class-qa-group--${type}`
+
+  if (sender && type !== 'system') {
+    const senderEl = document.createElement('div')
+    senderEl.className = 'class-qa-bubble-sender'
+    senderEl.textContent = sender
+    wrap.appendChild(senderEl)
+  }
+
+  const bubble = document.createElement('div')
+  bubble.className = `class-qa-bubble ${type}`
+  bubble.textContent = text
+  wrap.appendChild(bubble)
+
+  msgs.appendChild(wrap)
+  msgs.scrollTop = msgs.scrollHeight
+  return bubble
+}
+
+function addTypingIndicator() {
+  const msgs = document.getElementById('class-qa-messages')
+  const wrap = document.createElement('div')
+  wrap.id = 'class-typing-wrap'
+  wrap.className = 'class-qa-group class-qa-group--student'
+  const bubble = document.createElement('div')
+  bubble.className = 'class-qa-bubble student class-typing-indicator'
+  bubble.innerHTML = '<span></span><span></span><span></span>'
+  wrap.appendChild(bubble)
+  msgs.appendChild(wrap)
+  msgs.scrollTop = msgs.scrollHeight
+}
+
+function removeTypingIndicator() {
+  document.getElementById('class-typing-wrap')?.remove()
+}
+
+function setSpotlight(student) {
+  const avatarEl = document.getElementById('class-spotlight-avatar')
+  if (student) {
+    avatarEl.textContent = student.initials
+    avatarEl.style.background = student.color
+  } else {
+    avatarEl.textContent = '…'
+    avatarEl.style.background = 'var(--surface-3)'
+  }
+  document.getElementById('class-spotlight-name').textContent = student ? student.name : 'Procesando…'
+}
+
+function highlightParticipant(studentId, active) {
+  document.querySelectorAll('[data-student]').forEach(tile => {
+    const match = parseInt(tile.dataset.student) === studentId
+    tile.classList.toggle('speaking', match && active)
+  })
+}
+
+function enableChatInput(enabled) {
+  const input = document.getElementById('class-qa-input')
+  const send  = document.getElementById('class-qa-send')
+  if (input) { input.disabled = !enabled; if (enabled) { input.value = ''; input.focus() } }
+  if (send)  send.disabled = !enabled
+}
+
+// ── Progressive hints ─────────────────────────────────────────────────────────
+
+const BELL_SVG = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"/>
+</svg>`
+
+const ASSISTANT_SVG = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3z"/>
+</svg>`
+
+function simpleMarkdown(text) {
+  // Escape HTML entities first
+  let html = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+  // Bold (**text** or __text__)
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>')
+  // Italic (*text* or _text_)
+  html = html.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>')
+  html = html.replace(/_([^_\n]+?)_/g, '<em>$1</em>')
+
+  // Convert line by line for lists and headers
+  const lines = html.split('\n')
+  const out = []
+  let inList = false
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (/^#{1,3} /.test(trimmed)) {
+      if (inList) { out.push('</ul>'); inList = false }
+      out.push(`<strong>${trimmed.replace(/^#{1,3} /, '')}</strong>`)
+    } else if (/^[-•] /.test(trimmed) || /^\d+[.)]\s/.test(trimmed)) {
+      if (!inList) { out.push('<ul>'); inList = true }
+      out.push(`<li>${trimmed.replace(/^[-•] /, '').replace(/^\d+[.)]\s/, '')}</li>`)
+    } else {
+      if (inList) { out.push('</ul>'); inList = false }
+      out.push(trimmed === '' ? '<br>' : trimmed)
+    }
+  }
+  if (inList) out.push('</ul>')
+
+  // Join and wrap non-list, non-br consecutive text in paragraphs
+  return out.join('\n')
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/^/, '<p>')
+    .replace(/$/, '</p>')
+    .replace(/<p><br><\/p>/g, '<br>')
+    .replace(/<p><\/p>/g, '')
+    .replace(/<p>(<ul>)/g, '$1')
+    .replace(/<\/ul><\/p>/g, '</ul>')
+    .replace(/<p>(<strong>[^<]+<\/strong>)<\/p>/g, '<p>$1</p>')
+}
+
+function openAssistantPanel() {
+  document.getElementById('class-qa-assistant-panel').classList.remove('hidden')
+  document.getElementById('class-hint-assistant-overlay')?.classList.add('active')
+}
+
+function closeAssistantPanel() {
+  document.getElementById('class-qa-assistant-panel').classList.add('hidden')
+  document.getElementById('class-hint-assistant-overlay')?.classList.remove('active')
+}
+
+function addAssistantTyping() {
+  const msgs = document.getElementById('class-qa-assistant-messages')
+  if (!msgs || document.getElementById('class-assistant-typing')) return
+  const div = document.createElement('div')
+  div.id = 'class-assistant-typing'
+  div.className = 'class-assistant-msg assistant class-assistant-typing-indicator'
+  div.innerHTML = '<span></span><span></span><span></span>'
+  msgs.appendChild(div)
+  msgs.scrollTop = msgs.scrollHeight
+}
+
+function removeAssistantTyping() {
+  document.getElementById('class-assistant-typing')?.remove()
+}
+
+function addAssistantMessage(text, role, isAnswer = false) {
+  const msgs = document.getElementById('class-qa-assistant-messages')
+  if (!msgs) return
+  const div = document.createElement('div')
+  div.className = `class-assistant-msg ${role}${isAnswer ? ' answer-msg' : ''}`
+  if (role === 'assistant') {
+    div.innerHTML = simpleMarkdown(text)
+  } else {
+    div.textContent = text
+  }
+  msgs.appendChild(div)
+  msgs.scrollTop = msgs.scrollHeight
+  if (role === 'assistant') {
+    _assistantHistory.push({ role: 'assistant', content: text })
+  }
+}
+
+function showAssistantButton() {
+  if (document.getElementById('class-hint-assistant-overlay')) return
+  const spotlight = document.getElementById('class-qa-spotlight')
+  if (!spotlight) return
+  const btn = document.createElement('button')
+  btn.className = 'class-hint-assistant-overlay'
+  btn.id = 'class-hint-assistant-overlay'
+  btn.title = 'Abrir asistente'
+  btn.innerHTML = ASSISTANT_SVG
+  spotlight.appendChild(btn)
+  btn.addEventListener('click', () => {
+    const panel = document.getElementById('class-qa-assistant-panel')
+    if (panel.classList.contains('hidden')) openAssistantPanel()
+    else closeAssistantPanel()
+  })
+}
+
+async function sendAssistantMessage() {
+  const input = document.getElementById('class-qa-assistant-input')
+  const text = input?.value?.trim()
+  if (!text) return
+
+  input.value = ''
+  addAssistantMessage(text, 'user')
+  _assistantHistory.push({ role: 'user', content: text })
+
+  const sendBtn = document.getElementById('class-qa-assistant-send')
+  if (sendBtn) sendBtn.disabled = true
+  addAssistantTyping()
+
+  try {
+    const question = _qaHistory?.[0]?.question || ''
+    const { reply } = await window.api.classAssistantMessage({
+      paperId: _paper.id,
+      message: text,
+      question,
+      missing: _assistantMissing,
+      excerpts: _assistantExcerpts,
+      history: _assistantHistory,
+      canRevealAnswer: _assistantCanReveal
+    })
+    removeAssistantTyping()
+    if (reply) addAssistantMessage(reply, 'assistant')
+  } catch { removeAssistantTyping() } finally {
+    if (sendBtn) sendBtn.disabled = false
+  }
+}
+
+function showBellHint(missing) {
+  if (_hintLevel < 1) _hintLevel = 1  // don't downgrade if already at level 2 or 3
+  _pendingMissing = missing
+
+  // Remove any existing bell first
+  document.getElementById('class-hint-bell-overlay')?.remove()
+
+  const spotlight = document.getElementById('class-qa-spotlight')
+  if (!spotlight) return
+
+  const btn = document.createElement('button')
+  btn.className = 'class-hint-bell-overlay'
+  btn.id = 'class-hint-bell-overlay'
+  btn.title = '¿Necesitas ayuda? Ver fragmentos del paper'
+
+  const icon = document.createElement('span')
+  icon.className = 'class-hint-bell-icon'
+  icon.innerHTML = BELL_SVG
+
+  btn.appendChild(icon)
+  spotlight.appendChild(btn)
+
+  btn.addEventListener('click', () => {
+    btn.disabled = true
+    fetchAndShowExcerpts(_pendingMissing)
+    // Do NOT remove — restored when PDF hints are closed
+  }, { once: true })
+}
+
+function showSpotlightLoading(text = 'Buscando fragmentos…') {
+  const spotlight = document.getElementById('class-qa-spotlight')
+  if (!spotlight || document.getElementById('class-spotlight-loading')) return
+  const el = document.createElement('div')
+  el.id = 'class-spotlight-loading'
+  el.className = 'class-spotlight-loading'
+  el.innerHTML = `<span class="class-spotlight-loading-spinner"></span><span>${text}</span>`
+  spotlight.appendChild(el)
+}
+
+function hideSpotlightLoading() {
+  document.getElementById('class-spotlight-loading')?.remove()
+}
+
+async function fetchAndShowExcerpts(missing) {
+  _hintLevel = 1
+  const student = STUDENTS[_qaStudentIndex]
+
+  try {
+    // Call LLM only once per student turn — reuse cached result on re-open
+    if (!_cachedHintResult) {
+      showSpotlightLoading()
+      _cachedHintResult = await window.api.classGetHint({
+        studentId: student.id,
+        paperId: _paper.id,
+        history: _qaHistory,
+        exchangeCount: 1,
+        missing
+      })
+      hideSpotlightLoading()
+    }
+    await openPdfWithHighlights(_cachedHintResult?.excerpts || [])
+  } catch { hideSpotlightLoading() }
+}
+
+async function renderPdfHintsPages() {
+  if (!_pdfHintsDoc) return
+  const pagesEl = document.getElementById('class-qa-pdf-hints-pages')
+
+  // Preserve proportional scroll position across re-renders
+  const prevScrollRatio = pagesEl.scrollHeight > 0
+    ? pagesEl.scrollTop / pagesEl.scrollHeight : 0
+
+  pagesEl.innerHTML = ''
+  let refsReached = false
+
+  for (let i = 1; i <= _pdfHintsDoc.numPages; i++) {
+    const page     = await _pdfHintsDoc.getPage(i)
+    const viewport = page.getViewport({ scale: _pdfHintsScale })
+
+    const pageDiv = document.createElement('div')
+    pageDiv.className = 'pdf-page'
+    pageDiv.style.width    = viewport.width  + 'px'
+    pageDiv.style.height   = viewport.height + 'px'
+    pageDiv.style.position = 'relative'
+
+    const canvas  = document.createElement('canvas')
+    canvas.width  = viewport.width
+    canvas.height = viewport.height
+    pageDiv.appendChild(canvas)
+
+    const textDiv = document.createElement('div')
+    textDiv.className = 'textLayer'
+    pageDiv.appendChild(textDiv)
+
+    pagesEl.appendChild(pageDiv)
+
+    const textContent = await page.getTextContent()
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
+    const renderTask = pdfjsLib.renderTextLayer({
+      textContentSource: textContent, container: textDiv, viewport, textDivs: []
+    })
+    await renderTask.promise
+
+    const pageText = textContent.items.map(item => item.str).join(' ')
+    if (!refsReached && isReferencesSection(pageText)) refsReached = true
+    if (!refsReached) highlightExcerptsOnPage(textDiv, _pdfHintsExcerpts)
+  }
+
+  // Update zoom label
+  const zoomEl = document.getElementById('class-pdf-zoom-level')
+  if (zoomEl) zoomEl.textContent = Math.round(_pdfHintsScale * 100) + '%'
+
+  // Restore scroll position
+  pagesEl.scrollTop = prevScrollRatio * pagesEl.scrollHeight
+}
+
+async function openPdfWithHighlights(excerpts) {
+  const url = await window.api.getPdfUrl(_paper?.id)
+  if (!url) return
+
+  _pdfHintsExcerpts = excerpts
+
+  // Hide spotlight and native PDF, show PDF.js hints view
+  document.getElementById('class-qa-spotlight').classList.add('hidden')
+  document.getElementById('class-qa-pdf-view').classList.add('hidden')
+
+  const hintsView = document.getElementById('class-qa-pdf-hints')
+  const pagesEl   = document.getElementById('class-qa-pdf-hints-pages')
+  hintsView.classList.remove('hidden')
+  pagesEl.innerHTML = '<div class="class-hint-loading">Cargando PDF…</div>'
+
+  try {
+    _pdfHintsDoc = await pdfjsLib.getDocument(url).promise
+    await renderPdfHintsPages()
+
+    const firstHit = pagesEl.querySelector('.hint-highlight')
+    if (firstHit) firstHit.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  } catch {
+    pagesEl.innerHTML = '<div class="class-hint-loading">No se pudo cargar el PDF.</div>'
+  }
+}
+
+function isReferencesSection(pageText) {
+  // Matches "References", "Bibliography", "Referencias", "Bibliografía" as a standalone heading
+  // at the very start of the page text or as an isolated line
+  return /^\s*(references|bibliography|referencias|bibliograf[íi]a|works cited)\s*$/im.test(
+    pageText.slice(0, 300)
+  )
+}
+
+function highlightExcerptsOnPage(textLayerDiv, excerpts) {
+  const spans = Array.from(textLayerDiv.querySelectorAll('span'))
+  if (!spans.length) return
+
+  // Build character-position index across spans (with single space separator)
+  let pos = 0
+  const parts = spans.map(span => {
+    const text  = span.textContent
+    const entry = { span, start: pos, end: pos + text.length }
+    pos += text.length + 1
+    return entry
+  })
+  const fullText = spans.map(s => s.textContent).join(' ').toLowerCase()
+
+  for (const excerpt of excerpts) {
+    const norm  = excerpt.toLowerCase().replace(/\s+/g, ' ').trim()
+    if (norm.length < 15) continue
+
+    const words = norm.split(' ')
+    // Minimum window: 5 consecutive words (never single words)
+    const minWindow = Math.min(5, Math.ceil(words.length / 2))
+    let matched = false
+
+    // Try the longest window first and shrink until minWindow
+    outer: for (let wSize = words.length; wSize >= minWindow; wSize--) {
+      for (let i = 0; i <= words.length - wSize; i++) {
+        const phrase = words.slice(i, i + wSize).join(' ')
+        const idx = fullText.indexOf(phrase)
+        if (idx === -1) continue
+
+        for (const { span, start, end } of parts) {
+          if (end > idx && start < idx + phrase.length) {
+            span.classList.add('hint-highlight')
+          }
+        }
+        matched = true
+        break outer  // Only highlight the first (longest) match per excerpt
+      }
+    }
+
+    // No window of minWindow+ words found on this page — skip this excerpt
+    void matched
+  }
+}
+
+function closePdfHints() {
+  document.getElementById('class-qa-pdf-hints').classList.add('hidden')
+  document.getElementById('class-qa-spotlight').classList.remove('hidden')
+
+  // Restore the bell at any hint level — it's always available once shown
+  if (_hintLevel >= 1 && _pendingMissing !== null) {
+    showBellHint(_pendingMissing)
+  }
+}
+
+async function fetchAndShowGuidance(missing) {
+  _hintLevel = 2
+  _assistantMissing = missing
+  showAssistantButton()
+  openAssistantPanel()
+  addAssistantTyping()
+  const student = STUDENTS[_qaStudentIndex]
+  try {
+    const result = await window.api.classGetHint({
+      studentId: student.id,
+      paperId: _paper.id,
+      history: _qaHistory,
+      exchangeCount: 2,
+      missing
+    })
+    removeAssistantTyping()
+    if (result?.excerpts?.length) _assistantExcerpts = result.excerpts
+    if (result?.guidance) addAssistantMessage(result.guidance, 'assistant')
+  } catch { removeAssistantTyping() }
+}
+
+async function fetchAndShowAnswer(missing) {
+  _hintLevel = 3
+  _assistantCanReveal = true
+  _assistantMissing = missing
+  showAssistantButton()
+  openAssistantPanel()
+  addAssistantTyping()
+  const student = STUDENTS[_qaStudentIndex]
+  try {
+    const result = await window.api.classGetHint({
+      studentId: student.id,
+      paperId: _paper.id,
+      history: _qaHistory,
+      exchangeCount: 3,
+      missing
+    })
+    removeAssistantTyping()
+    if (result?.excerpts?.length) _assistantExcerpts = result.excerpts
+    if (result?.answer) addAssistantMessage(result.answer, 'assistant', true)
+  } catch { removeAssistantTyping() }
+}
+
+// ── Q&A orchestration ─────────────────────────────────────────────────────────
+
+async function startQA() {
+  _qaActive = true
+  addChatBubble('system', null, 'La presentación ha terminado. Los estudiantes tienen preguntas.')
+  await processStudent(0)
+}
+
+async function processStudent(index) {
+  if (index >= STUDENTS.length) {
+    await finishQA()
+    return
+  }
+
+  const student = STUDENTS[index]
+  _qaStudentIndex = index
+  _qaHistory = []
+  _qaExchangeCount = 0
+  _hintLevel = 0
+  _pendingMissing = null
+  _cachedHintResult = null
+  document.getElementById('class-hint-bell-overlay')?.remove()
+  document.getElementById('class-hint-assistant-overlay')?.remove()
+  document.getElementById('class-qa-assistant-panel').classList.add('hidden')
+  document.getElementById('class-qa-assistant-messages').innerHTML = ''
+  _assistantHistory = []
+  _assistantExcerpts = []
+  _assistantMissing = null
+  _assistantCanReveal = false
+  document.getElementById('class-qa-pdf-hints').classList.add('hidden')
+  document.getElementById('class-qa-pdf-hints-pages').innerHTML = ''
+  document.getElementById('class-qa-spotlight').classList.remove('hidden')
+  _pdfHintsDoc = null
+  _pdfHintsExcerpts = []
+  _pdfHintsScale = 1.2
+
+  setSpotlight(student)
+  highlightParticipant(student.id, true)
+  document.getElementById('class-qa-progress').textContent = `Estudiante ${index + 1} / ${STUDENTS.length}`
+
+  addTypingIndicator()
+  try {
+    const { question } = await window.api.classStudentQuestion({
+      studentId: student.id,
+      paperId: _paper.id,
+      sessionId: _sessionId,
+      history: [],
+      previousQA: _qaLog.map(q => ({ studentName: q.studentName, question: q.question }))
+    })
+    removeTypingIndicator()
+    addChatBubble('student', student.name, question)
+    _qaHistory.push({ question, answer: null })
+    enableChatInput(true)
+  } catch {
+    removeTypingIndicator()
+    addChatBubble('system', null, `No se pudo obtener pregunta de ${student.name}. Continuando…`)
+    _qaLog.push({ studentId: student.id, studentName: student.name, question: '', professorAnswer: '' })
+    highlightParticipant(student.id, false)
+    setTimeout(() => processStudent(index + 1), 1000)
+  }
+}
+
+async function sendQAResponse() {
+  const input = document.getElementById('class-qa-input')
+  const text  = input?.value?.trim()
+  if (!text || !_qaActive) return
+
+  enableChatInput(false)
+
+  const student = STUDENTS[_qaStudentIndex]
+  addChatBubble('professor', 'Tú', text)
+
+  if (_qaHistory.length > 0) _qaHistory[_qaHistory.length - 1].answer = text
+  _qaExchangeCount++
+
+  addTypingIndicator()
+  try {
+    const result = await window.api.classStudentEvaluate({
+      studentId: student.id,
+      paperId: _paper.id,
+      sessionId: _sessionId,
+      professorAnswer: text,
+      history: _qaHistory,
+      exchangeCount: _qaExchangeCount
+    })
+    removeTypingIndicator()
+
+    const satisfiedOrMaxed = result.satisfied || _qaExchangeCount >= 4
+
+    // Always activate the hint for this round before deciding whether to continue
+    if (_qaExchangeCount === 1 && _hintLevel === 0 && !result.satisfied) {
+      showBellHint(result.missing)
+    } else if (_qaExchangeCount === 2 && _hintLevel <= 1 && !result.satisfied) {
+      await fetchAndShowGuidance(result.missing)
+    } else if (_qaExchangeCount === 3 && _hintLevel <= 2 && !result.satisfied) {
+      await fetchAndShowAnswer(result.missing)
+    }
+
+    if (satisfiedOrMaxed) {
+      addChatBubble('student', student.name, result.reaction)
+      _qaLog.push({
+        studentId: student.id,
+        studentName: student.name,
+        question: _qaHistory[0]?.question || '',
+        professorAnswer: text
+      })
+      highlightParticipant(student.id, false)
+      setTimeout(() => processStudent(_qaStudentIndex + 1), 1400)
+    } else {
+
+      addTypingIndicator()
+      try {
+        const { question } = await window.api.classStudentQuestion({
+          studentId: student.id,
+          paperId: _paper.id,
+          sessionId: _sessionId,
+          history: _qaHistory,
+          previousQA: _qaLog.map(q => ({ studentName: q.studentName, question: q.question })),
+          reaction: result.reaction
+        })
+        removeTypingIndicator()
+        addChatBubble('student', student.name, question)
+        _qaHistory.push({ question, answer: null })
+        enableChatInput(true)
+      } catch {
+        removeTypingIndicator()
+        _qaLog.push({ studentId: student.id, studentName: student.name, question: _qaHistory[0]?.question || '', professorAnswer: text })
+        highlightParticipant(student.id, false)
+        setTimeout(() => processStudent(_qaStudentIndex + 1), 800)
+      }
+    }
+  } catch {
+    removeTypingIndicator()
+    addChatBubble('system', null, 'Error al evaluar respuesta. Puedes continuar.')
+    enableChatInput(true)
+  }
+}
+
+async function finishQA() {
+  _qaActive = false
+  highlightParticipant(-1, false)
+  setSpotlight(null)
+  document.getElementById('class-qa-progress').textContent = 'Calculando resultados…'
+  enableChatInput(false)
+
+  let clarityScore = 70
+  let feedback = { feedback: 'Clase completada.', strengths: '', improvements: '' }
+
+  try {
+    const result = await window.api.classEndSession({
+      sessionId: _sessionId,
+      transcript: _transcript,
+      qaLog: _qaLog
+    })
+    clarityScore = result.clarityScore ?? 70
+    feedback = result.feedback || feedback
+  } catch {}
+
+  renderResults(clarityScore, feedback)
+  showView('results')
+}
+
+function renderResults(score, feedback) {
+  document.getElementById('class-score-num').textContent = score ?? '—'
+  document.getElementById('class-feedback-text').textContent = feedback?.feedback || ''
+  document.getElementById('class-strengths').textContent    = feedback?.strengths  || ''
+  document.getElementById('class-improvements').textContent = feedback?.improvements || ''
+
+  const summary = document.getElementById('class-qa-summary')
+  summary.innerHTML = ''
+  if (_qaLog.length > 0) {
+    const title = document.createElement('h4')
+    title.className = 'class-summary-title'
+    title.textContent = 'Preguntas y respuestas'
+    summary.appendChild(title)
+    _qaLog.forEach(qa => {
+      const item = document.createElement('div')
+      item.className = 'class-summary-item'
+      item.innerHTML = `
+        <div class="class-summary-student">${qa.studentName}</div>
+        <div class="class-summary-q">${qa.question}</div>
+        <div class="class-summary-a">Tu respuesta: ${qa.professorAnswer}</div>`
+      summary.appendChild(item)
+    })
+  }
+}
+
+// ── Transcripción: Web Speech API (default, rápida) + Whisper (fallback) ─────
+
+const CHUNK_INTERVAL_MS = 2000  // Whisper chunk every 2 seconds
+
+// Frases que Whisper alucina cuando hay silencio o ruido de fondo
+const WHISPER_HALLUCINATIONS = [
+  // YouTube / streaming (español)
+  'gracias por ver el vídeo', 'gracias por ver el video', 'gracias por ver',
+  'suscríbete', 'suscribete', 'like y suscríbete', 'dale like',
+  'nos vemos en el próximo', 'nos vemos en el siguiente', 'hasta el próximo',
+  'y eso es todo', 'eso es todo amigos', 'y nos vemos',
+  'hasta la próxima', 'hasta pronto amigos', 'chao amigos', 'chau amigos',
+  'subtítulos realizados', 'amara.org',
+  // YouTube / streaming (inglés)
+  'thanks for watching', 'thank you for watching',
+  'please subscribe', 'don\'t forget to subscribe', 'hit the like button',
+  'see you in the next', 'see you next time', 'that\'s all for today',
+  'subtitles by', 'captions by',
+  // Artefactos de ruido / silencio
+  'se viva', '♪', '...',
+]
+
+// Detecta artefactos de ruido: palabra única repetida 4+ veces (ej. "no, no, no, no")
+const REPEATED_WORD_RE = /\b(\w{1,6})[,.]?\s+(?:\1[,.]?\s+){3,}\1\b/i
+
+function isHallucination(text) {
+  const t = text.toLowerCase().trim()
+  if (WHISPER_HALLUCINATIONS.some(p => t.includes(p))) return true
+  if (REPEATED_WORD_RE.test(t)) return true
+  return false
+}
+
+async function startSpeechRecognition() {
+  const settings = await window.api.getSettings()
+  const provider = settings.transcriptionProvider || 'whisper'
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+  console.log('[speech] provider:', provider, '| SpeechRecognition available:', !!SpeechRecognition)
+  if (provider === 'webspeech' && SpeechRecognition) {
+    startWebSpeechRecognition(SpeechRecognition)
+  } else {
+    await startWhisperRecognition()
+  }
+}
+
+// Errores que indican que Web Speech API no funciona en este entorno → fallback a Whisper
+const FATAL_SPEECH_ERRORS = new Set(['network', 'service-not-allowed', 'not-allowed', 'audio-capture'])
+
+function startWebSpeechRecognition(SpeechRecognition) {
+  const liveEl = document.getElementById('class-transcript-live')
+  const recognition = new SpeechRecognition()
+  recognition.continuous = true
+  recognition.interimResults = true
+
+  recognition.onstart = () => {
+    console.log('[speech] Web Speech API started')
+    if (liveEl) liveEl.textContent = '🎙 Escuchando…'
+  }
+
+  recognition.onresult = (event) => {
+    let interim = ''
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const t = event.results[i][0].transcript
+      if (event.results[i].isFinal) {
+        appendTranscript(t)
+      } else {
+        interim += t
+      }
+    }
+    if (liveEl && interim) liveEl.textContent = '🎙 ' + interim
+  }
+
+  recognition.onerror = (event) => {
+    console.warn('[speech] Web Speech error:', event.error)
+    if (event.error === 'no-speech') return
+
+    if (FATAL_SPEECH_ERRORS.has(event.error)) {
+      console.warn('[speech] Fatal error — falling back to Whisper')
+      _recognitionActive = false
+      _speechRecognition = null
+      if (liveEl) liveEl.textContent = '🎙 Cambiando a Whisper…'
+      startWhisperRecognition()
+      return
+    }
+
+    if (liveEl) liveEl.textContent = `⚠ ${event.error}`
+  }
+
+  recognition.onend = () => {
+    console.log('[speech] Web Speech ended — active:', _recognitionActive)
+    if (_recognitionActive) recognition.start()
+  }
+
+  _recognitionActive = true
+  _speechRecognition = recognition
+  recognition.start()
+}
+
+async function startWhisperRecognition() {
+  const liveEl = document.getElementById('class-transcript-live')
+  if (liveEl) liveEl.textContent = '🎙 Iniciando micrófono…'
+
+  let stream
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+  } catch {
+    if (liveEl) liveEl.textContent = '⚠ Sin acceso al micrófono'
+    return
+  }
+
+  const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : 'audio/webm'
+
+  let pendingChunks = []
+  let inFlight = 0          // llamadas API en curso
+  const MAX_PARALLEL = 2    // máximo 2 llamadas simultáneas
+
+  // VAD: threshold bajo para no descartar habla rápida o suave
+  const audioCtx = new AudioContext()
+  const analyser = audioCtx.createAnalyser()
+  audioCtx.createMediaStreamSource(stream).connect(analyser)
+  const vadBuffer = new Uint8Array(analyser.frequencyBinCount)
+  let segmentHadVoice = false
+  const VAD_RMS_THRESHOLD = 8
+  const vadPoll = setInterval(() => {
+    analyser.getByteTimeDomainData(vadBuffer)
+    const rms = Math.sqrt(vadBuffer.reduce((s, v) => s + (v - 128) ** 2, 0) / vadBuffer.length)
+    if (rms > VAD_RMS_THRESHOLD) segmentHadVoice = true
+  }, 100)
+
+  async function sendChunk(blob) {
+    if (inFlight >= MAX_PARALLEL) return  // descarta en vez de acumular lag
+    inFlight++
+    try {
+      const arrayBuffer = await blob.arrayBuffer()
+      const audio = Array.from(new Uint8Array(arrayBuffer))
+      const result = await window.api.classTranscribeAudio({ audio, mimeType, language: _classLanguage || undefined, model: _classModel || undefined })
+      if (result?.text?.trim() && !isHallucination(result.text)) {
+        appendTranscript(result.text)
+      } else if (result?.error) {
+        if (liveEl) liveEl.textContent = `⚠ ${result.error}`
+        return
+      }
+    } catch { /* silencioso — siguiente chunk lo intentará */ }
+    finally {
+      inFlight--
+      if (liveEl && inFlight === 0) liveEl.textContent = '🎙 Escuchando…'
+    }
+  }
+
+  function buildRecorder() {
+    const rec = new MediaRecorder(stream, { mimeType })
+    rec.ondataavailable = (e) => { if (e.data.size > 0) pendingChunks.push(e.data) }
+    rec.onstop = () => {
+      const hadVoice = segmentHadVoice
+      segmentHadVoice = false
+      const chunks = pendingChunks.splice(0)
+      if (chunks.length === 0 || !hadVoice) return
+      const blob = new Blob(chunks, { type: mimeType })
+      if (blob.size < 500) return
+      if (liveEl) liveEl.textContent = '🎙 Procesando…'
+      sendChunk(blob)  // fire-and-forget, hasta MAX_PARALLEL concurrentes
+    }
+    return rec
+  }
+
+  _mediaRecorder = buildRecorder()
+  _mediaRecorder.start()
+  if (liveEl) liveEl.textContent = '🎙 Escuchando…'
+
+  _transcribeInterval = setInterval(() => {
+    if (_mediaRecorder?.state === 'recording') {
+      _mediaRecorder.stop()
+      _mediaRecorder = buildRecorder()
+      _mediaRecorder.start()
+    }
+  }, CHUNK_INTERVAL_MS)
+
+  _vadPoll = vadPoll
+  _audioCtx = audioCtx
+}
+
+function stopSpeechRecognition() {
+  // Web Speech API
+  _recognitionActive = false
+  if (_speechRecognition) {
+    _speechRecognition.stop()
+    _speechRecognition = null
+  }
+  // Whisper / MediaRecorder — stop recorder before tracks so onstop fires with last chunk
+  clearInterval(_transcribeInterval)
+  _transcribeInterval = null
+  clearInterval(_vadPoll)
+  _vadPoll = null
+  if (_mediaRecorder) {
+    const rec = _mediaRecorder
+    _mediaRecorder = null
+    try { rec.stop() } catch {}
+    rec.stream.getTracks().forEach(t => t.stop())
+  }
+  if (_audioCtx) { _audioCtx.close(); _audioCtx = null }
+}
+
+// ── Transcript ────────────────────────────────────────────────────────────────
+
+export function appendTranscript(text) {
+  if (!text) return
+  _transcript += ' ' + text
+
+  // Crear burbuja del profesor la primera vez; después solo actualizar su texto
+  if (!_professorBubble) {
+    _professorBubble = addChatBubble('professor', 'Profesor', text.trim())
+  } else {
+    _professorBubble.textContent = _transcript.trim()
+  }
+
+  // Scroll al último mensaje
+  const msgs = document.getElementById('class-qa-messages')
+  if (msgs) msgs.scrollTop = msgs.scrollHeight
+
+  // La barra live solo muestra estado
+  const liveEl = document.getElementById('class-transcript-live')
+  if (liveEl) liveEl.textContent = '🎙 Escuchando…'
+}
+
+// Export state for later phases
+export function getSessionState() {
+  return { paper: _paper, sessionId: _sessionId, dbSlides: _dbSlides, duration: _selectedDuration, transcript: _transcript }
+}

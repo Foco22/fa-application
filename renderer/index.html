@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: file:; object-src 'self' file:; worker-src 'self' blob:; connect-src 'self' https://www.google.com wss://www.google.com https://*.googleapis.com wss://*.googleapis.com">
+  <title>Paper Learning</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ── Onboarding wizard ─────────────────────────────────────────────── -->
+  <div id="onboarding" class="fullscreen hidden">
+    <div class="wizard">
+      <div class="wizard-progress">
+        <span class="step-dot active" data-step="1">1</span>
+        <span class="step-line"></span>
+        <span class="step-dot" data-step="2">2</span>
+        <span class="step-line"></span>
+        <span class="step-dot" data-step="3">3</span>
+        <span class="step-line"></span>
+        <span class="step-dot" data-step="4">4</span>
+      </div>
+
+      <div id="step-1" class="wizard-step active">
+        <h2>¿Qué temas te interesan?</h2>
+        <p class="hint">Elige al menos una categoría</p>
+        <div id="categories-grid" class="categories-grid"></div>
+        <p id="step1-error" class="field-error hidden">Selecciona al menos una categoría.</p>
+        <div class="wizard-nav"><span></span><button id="step1-next" class="btn-primary">Siguiente →</button></div>
+      </div>
+
+      <div id="step-2" class="wizard-step hidden">
+        <h2>¿De qué universidades?</h2>
+        <p class="hint">Todas activas por defecto</p>
+        <div id="universities-grid" class="universities-grid"></div>
+        <div class="wizard-nav">
+          <button id="step2-back" class="btn-ghost">← Atrás</button>
+          <button id="step2-next" class="btn-primary">Siguiente →</button>
+        </div>
+      </div>
+
+      <div id="step-3" class="wizard-step hidden">
+        <h2>¿Autores a seguir?</h2>
+        <p class="hint">Opcional — un apellido por línea</p>
+        <textarea id="author-input" rows="7" placeholder="LeCun&#10;Bengio&#10;Hinton"></textarea>
+        <div class="wizard-nav">
+          <button id="step3-back" class="btn-ghost">← Atrás</button>
+          <button id="step3-next" class="btn-primary">Siguiente →</button>
+        </div>
+      </div>
+
+      <div id="step-4" class="wizard-step hidden">
+        <h2>Configuración</h2>
+        <div class="form-group">
+          <label for="wiz-api-key">OpenAI API Key</label>
+          <input type="password" id="wiz-api-key" placeholder="sk-...">
+          <p id="step4-error" class="field-error hidden">La API key es obligatoria.</p>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="wiz-fetch-day">Día</label>
+            <select id="wiz-fetch-day">
+              <option value="monday">Lunes</option>
+              <option value="tuesday">Martes</option>
+              <option value="wednesday">Miércoles</option>
+              <option value="thursday">Jueves</option>
+              <option value="friday">Viernes</option>
+              <option value="saturday">Sábado</option>
+              <option value="sunday">Domingo</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="wiz-fetch-hour">Hora</label>
+            <input type="time" id="wiz-fetch-hour" value="09:00">
+          </div>
+          <div class="form-group">
+            <label for="wiz-max-papers">Máx.</label>
+            <select id="wiz-max-papers">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3" selected>3</option>
+              <option value="5">5</option>
+            </select>
+          </div>
+        </div>
+        <div class="wizard-nav">
+          <button id="step4-back" class="btn-ghost">← Atrás</button>
+          <button id="step4-finish" class="btn-primary">✓ Comenzar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Main app — 3-panel Obsidian layout ────────────────────────────── -->
+  <div id="app" class="fullscreen hidden">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="app-name">Paper Learning</span>
+      </div>
+      <div class="topbar-center">
+        <span id="fetch-status" class="fetch-status"></span>
+      </div>
+      <div class="topbar-right">
+        <div class="zoom-controls">
+          <button id="btn-zoom-out" class="icon-btn-sm" title="Reducir (Ctrl −)">A−</button>
+          <span id="zoom-level" class="zoom-level">100%</span>
+          <button id="btn-zoom-in"  class="icon-btn-sm" title="Ampliar (Ctrl +)">A+</button>
+        </div>
+        <div class="win-controls">
+          <button class="win-btn win-min"   id="btn-win-min"   title="Minimizar">−</button>
+          <button class="win-btn win-max"   id="btn-win-max"   title="Maximizar">□</button>
+          <button class="win-btn win-close" id="btn-win-close" title="Cerrar">✕</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Body: activity bar + 3 panels -->
+    <div class="panels">
+
+      <!-- Activity bar -->
+      <nav class="activity-bar">
+        <div class="activity-top">
+          <button class="activity-btn" id="act-papers" title="Papers">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"/>
+            </svg>
+          </button>
+          <button class="activity-btn act-fetch-btn" id="act-fetch" title="Fetch papers">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
+            </svg>
+          </button>
+          <button class="activity-btn" id="act-chat" title="Chat">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="activity-bottom">
+          <button class="activity-btn" id="act-settings" title="Configuración">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"/>
+              <path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+            </svg>
+          </button>
+        </div>
+      </nav>
+
+      <!-- Left: Vault -->
+      <aside id="vault-panel" class="vault-panel">
+        <div class="vault-header">
+          <span class="vault-title">VAULT</span>
+          <div class="vault-header-right">
+            <button id="btn-open-vault" class="icon-btn-sm" title="Abrir en explorador de archivos">↗</button>
+            <span id="vault-count" class="vault-count">0</span>
+          </div>
+        </div>
+        <div id="vault-list" class="vault-list"></div>
+      </aside>
+
+      <!-- Center: Content -->
+      <main id="content-panel" class="content-panel">
+       <div id="content-scroll" class="content-scroll">
+        <div id="empty-state" class="empty-state">
+          <div class="empty-glyph">∅</div>
+          <p>Selecciona un paper del vault<br>o haz <strong>Fetch</strong> para importar</p>
+        </div>
+
+        <article id="paper-view" class="paper-view hidden">
+
+          <!-- Paper hero — siempre visible -->
+          <div class="paper-hero">
+            <div class="paper-badges">
+              <span id="pv-status" class="status-badge"></span>
+            </div>
+            <h1 id="pv-title"></h1>
+            <div class="paper-meta-row">
+              <span id="pv-authors" class="meta-chip"></span>
+              <span id="pv-date"    class="meta-chip"></span>
+            </div>
+            <div class="paper-meta-row paper-meta-affil">
+              <span id="pv-affil" class="meta-chip"></span>
+            </div>
+          </div>
+
+          <!-- Barra de tabs -->
+          <div class="tab-bar">
+            <button class="tab-btn" data-tab="pdf">PDF</button>
+            <button class="tab-btn" data-tab="abstract">Abstract</button>
+            <button class="tab-btn active" data-tab="resumen">Resumen</button>
+            <button class="tab-btn" data-tab="notas">Notas</button>
+            <button class="tab-btn" data-tab="quiz">Quiz</button>
+            <button class="tab-btn" data-tab="clase">Clase</button>
+          </div>
+
+          <!-- Tab: PDF -->
+          <div id="tab-pdf" class="tab-panel tab-panel-pdf hidden">
+            <div class="pdf-toolbar">
+              <section id="pv-pdf-error" class="pv-section error-block hidden">
+                <p id="pv-pdf-error-msg" class="error-text"></p>
+              </section>
+              <div class="pdf-selection-hint">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"/></svg>
+                Selecciona texto para añadirlo a notas
+              </div>
+            <div class="pdf-toolbar-btns">
+                <button id="btn-highlights-toggle" class="action-btn" title="Ver destacados">Destacados</button>
+                <button id="btn-pdf-expand" class="action-btn" title="Ampliar PDF">⤢ Ampliar</button>
+              </div>
+            </div>
+            <div class="pdf-body">
+              <div class="pdf-container">
+                <div id="pdf-placeholder" class="pdf-placeholder">
+                  <div class="pdf-placeholder-icon">📄</div>
+                  <p>PDF no disponible para este paper</p>
+                </div>
+                <div id="pdf-viewer" class="pdf-viewer hidden"></div>
+              </div>
+              <!-- Panel de destacados (visible en modo ampliado) -->
+              <div id="pdf-highlights-panel" class="pdf-highlights-panel hidden">
+                <div class="phl-header">
+                  <span class="section-label">Destacados</span>
+                </div>
+                <div id="phl-list" class="phl-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab: Abstract -->
+          <div id="tab-abstract" class="tab-panel hidden">
+            <section class="pv-section">
+              <p id="pv-abstract" class="abstract-text"></p>
+            </section>
+          </div>
+
+          <!-- Tab: Resumen -->
+          <div id="tab-resumen" class="tab-panel">
+            <section class="pv-section">
+              <div class="section-header">
+                <div class="section-label">Análisis IA</div>
+                <button id="btn-summary" class="action-btn">Generar</button>
+              </div>
+              <div id="pv-summary-stream" class="summary-body hidden"></div>
+              <div id="pv-summary-cards" class="summary-cards hidden">
+                <div class="summary-card">
+                  <div class="summary-card-header">
+                    <span class="summary-num">1</span>
+                    <span class="summary-q">¿Cuál es el problema y por qué importa?</span>
+                  </div>
+                  <div class="summary-card-body" id="sc-0"></div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-card-header">
+                    <span class="summary-num">2</span>
+                    <span class="summary-q">¿Cuál es la idea clave?</span>
+                  </div>
+                  <div class="summary-card-body" id="sc-1"></div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-card-header">
+                    <span class="summary-num">3</span>
+                    <span class="summary-q">¿Cómo funciona, en términos generales?</span>
+                  </div>
+                  <div class="summary-card-body" id="sc-2"></div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-card-header">
+                    <span class="summary-num">4</span>
+                    <span class="summary-q">¿Qué tan bien funciona y qué evidencia hay?</span>
+                  </div>
+                  <div class="summary-card-body" id="sc-3"></div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-card-header">
+                    <span class="summary-num">5</span>
+                    <span class="summary-q">¿Cuáles son sus límites y qué queda abierto?</span>
+                  </div>
+                  <div class="summary-card-body" id="sc-4"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- Tab: Notas -->
+          <div id="tab-notas" class="tab-panel notes-tab hidden">
+            <div class="notes-bar">
+              <span class="section-label">Notas</span>
+              <span id="notes-save-indicator" class="save-indicator"></span>
+              <button id="btn-rebuild-notes" class="ref-action-btn" title="Reconstruir notas desde highlights (elimina texto duplicado)">↺ Reconstruir</button>
+            </div>
+            <div id="pv-notes" class="notes-editor" contenteditable="true" spellcheck="false"></div>
+          </div>
+
+          <!-- Tab: Quiz -->
+          <div id="tab-quiz" class="tab-panel hidden">
+            <section class="pv-section">
+              <div class="section-header">
+                <div class="section-label">Quiz de comprensión</div>
+                <button id="btn-quiz" class="action-btn">Generar</button>
+              </div>
+              <div id="pv-quiz"></div>
+            </section>
+          </div>
+
+        </article>
+       </div><!-- /content-scroll -->
+      </main>
+
+      <!-- Right: Chat -->
+      <aside id="chat-panel" class="chat-panel">
+        <div id="chat-resize-handle" class="chat-resize-handle"></div>
+        <div class="chat-header">
+          <span class="chat-title">ASSISTANT</span>
+          <button id="btn-clear-chat" class="icon-btn-sm" title="Limpiar chat">⊘</button>
+        </div>
+        <div id="chat-context" class="chat-context hidden">
+          <span class="context-icon">📎</span>
+          <span id="chat-context-label"></span>
+        </div>
+        <div id="chat-messages" class="chat-messages">
+          <div class="chat-welcome">
+            <p>Pregúntame sobre el paper activo, o sobre investigación en general.</p>
+          </div>
+        </div>
+        <div class="chat-input-area">
+          <textarea id="chat-input" rows="3" placeholder="Escribe tu pregunta..."></textarea>
+          <button id="btn-chat-send" class="btn-primary-sm">Enviar</button>
+        </div>
+      </aside>
+
+    </div><!-- /panels -->
+  </div><!-- /app -->
+
+  <!-- ── Clase Simulada fullscreen ───────────────────────────────────────── -->
+  <div id="class-fullscreen" class="fullscreen hidden">
+
+    <!-- file input: lives outside all views so it's never destroyed -->
+    <input type="file" id="class-file-input" accept="image/*" multiple hidden>
+
+    <!-- ── Main area (switches between views) ── -->
+    <div id="class-main-area">
+
+      <!-- View: Prep -->
+      <div id="class-view-prep" class="class-view hidden">
+        <header class="class-header">
+          <h2 class="class-header-title">Preparación de la clase</h2>
+        </header>
+        <p id="class-paper-title" class="class-paper-title"></p>
+        <div class="class-prep-body">
+
+          <!-- Col izquierda: slides -->
+          <div class="class-prep-slides-col">
+            <div class="class-prep-col-header">
+              <span class="class-section-title">Diapositivas</span>
+              <span id="class-slides-count" class="class-slides-count"></span>
+              <button id="class-btn-add-slide-more" class="class-add-slide-more-btn" style="display:none" title="Agregar foto">+</button>
+            </div>
+            <div id="class-slides-dropzone" class="class-slides-dropzone">
+              <!-- Estado vacío -->
+              <div id="class-slides-placeholder" class="class-slides-placeholder">
+                <span class="class-slides-placeholder-icon">🖼</span>
+                <span class="class-slides-placeholder-text">Sube fotos de tus slides</span>
+                <span class="class-slides-placeholder-sub">intro · desarrollo · conclusión · máx. 3</span>
+                <button id="class-btn-add-slide" class="class-add-slide-btn">+ Agregar foto</button>
+              </div>
+              <!-- Visor de slide única -->
+              <div id="class-slide-viewer" class="class-slide-viewer" style="display:none">
+                <img id="class-slide-viewer-img" class="class-slide-viewer-img" src="" alt="">
+                <button id="class-slide-viewer-prev" class="class-slide-viewer-nav class-slide-viewer-prev">‹</button>
+                <button id="class-slide-viewer-next" class="class-slide-viewer-nav class-slide-viewer-next">›</button>
+                <button id="class-btn-add-slide-overlay" class="class-add-slide-overlay" title="Agregar foto">+ Agregar foto</button>
+                <div class="class-slide-viewer-info">
+                  <span id="class-slide-viewer-label" class="class-slide-viewer-label"></span>
+                  <span id="class-slide-viewer-indicator" class="class-slide-viewer-indicator"></span>
+                </div>
+                <button id="class-slide-viewer-remove" class="class-slide-viewer-remove" title="Eliminar slide">✕</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Col derecha: duración + idioma + iniciar -->
+          <div class="class-prep-settings-col">
+            <span class="class-section-title">Duración</span>
+            <div class="duration-options">
+              <button class="duration-btn active" data-duration="180">3 min</button>
+              <button class="duration-btn" data-duration="240">4 min</button>
+              <button class="duration-btn" data-duration="300">5 min</button>
+            </div>
+            <span class="class-section-title" style="margin-top:16px">Idioma de la clase</span>
+            <select id="class-lang-select" class="class-lang-select">
+              <option value="es">Español</option>
+              <option value="en">English</option>
+              <option value="fr">Français</option>
+              <option value="de">Deutsch</option>
+              <option value="pt">Português</option>
+              <option value="">Auto-detectar</option>
+            </select>
+            <span class="class-section-title" style="margin-top:16px">Modelo de transcripción</span>
+            <select id="class-model-select" class="class-lang-select">
+              <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</option>
+              <option value="gpt-4o-transcribe">gpt-4o-transcribe</option>
+              <option value="whisper-1">whisper-1</option>
+            </select>
+            <button id="class-btn-start" class="btn-primary class-start-btn" disabled>
+              Iniciar Clase →
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- View: Loading -->
+      <div id="class-view-loading" class="class-view hidden">
+        <div class="class-loading-inner">
+          <div class="class-spinner"></div>
+          <p id="class-loading-msg" class="class-loading-msg">Preparando la clase…</p>
+          <p id="class-loading-sub" class="class-loading-sub"></p>
+        </div>
+      </div>
+
+      <!-- View: Presentation (slides) -->
+      <div id="class-view-active" class="class-view hidden">
+        <div class="class-topbar">
+          <div class="class-topbar-left">
+            <div class="class-timer-display" id="class-timer-display">3:00</div>
+          </div>
+          <div class="class-topbar-center">
+            <span class="class-topbar-title">Presentación</span>
+          </div>
+          <div class="class-topbar-right">
+            <button id="class-btn-end-presentation" class="class-end-btn">
+              Terminar presentación →
+            </button>
+          </div>
+        </div>
+        <div class="class-slides-panel">
+          <div id="class-slide-display" class="class-slide-display"></div>
+          <div class="class-slide-nav">
+            <button id="class-slide-prev" class="class-nav-btn" title="Anterior (←)">‹</button>
+            <span id="class-slide-indicator" class="class-slide-indicator">1 / 1</span>
+            <button id="class-slide-next" class="class-nav-btn" title="Siguiente (→)">›</button>
+          </div>
+        </div>
+        <div class="class-transcript-bar">
+          <span class="class-transcript-icon">🎙</span>
+          <span id="class-transcript-live" class="class-transcript-live">Habla — tu voz se transcribirá aquí…</span>
+        </div>
+      </div>
+
+      <!-- View: Q&A (spotlight of active student) -->
+      <div id="class-view-qa" class="class-view hidden">
+        <div class="class-topbar">
+          <div class="class-topbar-left">
+            <span id="class-qa-progress" class="class-qa-progress-label"></span>
+          </div>
+          <div class="class-topbar-center">
+            <span class="class-topbar-title">Preguntas y respuestas</span>
+          </div>
+          <div class="class-topbar-right">
+            <button id="class-btn-toggle-notes" class="class-notes-toggle-btn" title="Ver paper y notas">Paper</button>
+          </div>
+        </div>
+        <!-- Spotlight: the active student -->
+        <div class="class-qa-spotlight" id="class-qa-spotlight">
+          <div class="class-spotlight-avatar" id="class-spotlight-avatar"></div>
+          <div class="class-spotlight-name" id="class-spotlight-name">Esperando…</div>
+        </div>
+        <!-- PDF view (replaces spotlight when toggled) -->
+        <object id="class-qa-pdf-view" class="class-qa-pdf-view hidden" type="application/pdf" data=""></object>
+        <!-- PDF.js view with hint highlights -->
+        <div id="class-qa-pdf-hints" class="class-qa-pdf-hints hidden">
+          <div class="class-qa-pdf-hints-bar">
+            <span class="class-qa-pdf-hints-label">Fragmentos destacados</span>
+            <div class="class-qa-pdf-hints-zoom">
+              <button id="class-pdf-zoom-out" class="class-notes-toggle-btn class-pdf-zoom-btn" title="Alejar">−</button>
+              <span id="class-pdf-zoom-level" class="class-pdf-zoom-level">120%</span>
+              <button id="class-pdf-zoom-in"  class="class-notes-toggle-btn class-pdf-zoom-btn" title="Acercar">+</button>
+            </div>
+            <button id="class-qa-pdf-hints-close" class="class-notes-toggle-btn">✕ Cerrar</button>
+          </div>
+          <div id="class-qa-pdf-hints-pages" class="class-qa-pdf-hints-pages"></div>
+        </div>
+      </div>
+
+      <!-- View: Results -->
+      <div id="class-view-results" class="class-view hidden">
+        <header class="class-header">
+          <span class="class-header-title">Resultados de la Clase</span>
+          <button id="class-btn-done" class="btn-primary">Volver al paper</button>
+        </header>
+        <div class="class-results-body">
+          <div class="class-score-ring">
+            <span id="class-score-num" class="class-score-num">—</span>
+            <span class="class-score-label">/ 100</span>
+          </div>
+          <p id="class-feedback-text" class="class-feedback-text"></p>
+          <div class="class-results-detail">
+            <div class="class-results-col">
+              <h4>Fortalezas</h4>
+              <p id="class-strengths"></p>
+            </div>
+            <div class="class-results-col">
+              <h4>Mejoras</h4>
+              <p id="class-improvements"></p>
+            </div>
+          </div>
+          <div class="class-qa-summary" id="class-qa-summary"></div>
+        </div>
+      </div>
+
+    </div><!-- /class-main-area -->
+
+    <!-- ── Sidebar: Participantes (visible durante active y qa) ── -->
+    <div id="class-sidebar-participants" class="class-sidebar class-sidebar--participants hidden">
+      <div class="class-sidebar-header">Participantes</div>
+      <div class="class-sidebar-tiles">
+        <!-- Professor webcam tile -->
+        <div class="class-video-tile class-tile-self" id="class-tile-self">
+          <video id="class-webcam" class="class-tile-video" autoplay muted playsinline></video>
+          <div class="class-tile-label">Tú</div>
+        </div>
+        <!-- Student tiles -->
+        <div class="class-video-tile" id="class-tile-s1" data-student="1">
+          <div class="class-tile-avatar avatar-s1">MG</div>
+          <div class="class-tile-name">María García</div>
+          <div class="class-tile-label">María</div>
+        </div>
+        <div class="class-video-tile" id="class-tile-s2" data-student="2">
+          <div class="class-tile-avatar avatar-s2">CR</div>
+          <div class="class-tile-name">Carlos Reyes</div>
+          <div class="class-tile-label">Carlos</div>
+        </div>
+        <div class="class-video-tile" id="class-tile-s3" data-student="3">
+          <div class="class-tile-avatar avatar-s3">SK</div>
+          <div class="class-tile-name">Sofía Kim</div>
+          <div class="class-tile-label">Sofía</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Sidebar: Chat (visible durante active y qa) ── -->
+    <!-- Assistant chat panel — independent column between main area and student chat -->
+    <div id="class-qa-assistant-panel" class="class-qa-assistant-panel hidden">
+      <div class="class-qa-assistant-resize-handle" id="class-qa-assistant-resize"></div>
+      <div class="class-qa-assistant-bar">
+        <span class="class-qa-assistant-label">Asistente</span>
+        <button id="class-qa-assistant-close" class="class-notes-toggle-btn">✕</button>
+      </div>
+      <div id="class-qa-assistant-messages" class="class-qa-assistant-messages"></div>
+      <div class="class-qa-assistant-input-row">
+        <textarea id="class-qa-assistant-input" class="class-qa-assistant-input" rows="2"
+          placeholder="Pregunta al asistente…"></textarea>
+        <button id="class-qa-assistant-send" class="btn-primary-sm">Enviar</button>
+      </div>
+    </div>
+
+    <div id="class-sidebar-chat" class="class-sidebar class-sidebar--chat hidden">
+      <div class="class-sidebar-chat-resize" id="class-sidebar-chat-resize"></div>
+      <div class="class-sidebar-header">Chat de clase</div>
+      <div id="class-qa-messages" class="class-qa-messages"></div>
+      <div class="class-qa-input-row">
+        <textarea id="class-qa-input" class="class-qa-input" rows="2"
+          placeholder="Escribe tu respuesta…" disabled></textarea>
+        <button id="class-qa-send" class="btn-primary-sm" disabled>Enviar</button>
+      </div>
+    </div>
+
+  </div><!-- /class-fullscreen -->
+
+  <!-- ── Settings panel ───────────────────────────────────────────────── -->
+  <div id="settings-panel" class="fullscreen hidden">
+    <div class="settings-drawer">
+      <div class="settings-header">
+        <span>Configuración</span>
+        <button id="btn-close-settings" class="icon-btn">✕</button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-section">
+          <h3>Proveedor de IA</h3>
+          <div class="form-group">
+            <label>Proveedor</label>
+            <div class="provider-selector" id="s-provider-selector">
+              <button class="provider-btn" data-provider="openai">OpenAI</button>
+              <button class="provider-btn" data-provider="anthropic">Anthropic</button>
+              <button class="provider-btn" data-provider="deepseek">DeepSeek</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label id="s-api-key-label">API Key</label>
+            <input type="password" id="s-api-key" placeholder="sk-...">
+          </div>
+          <div class="form-group">
+            <label>Modelo</label>
+            <select id="s-llm-model"></select>
+          </div>
+          <div class="form-group">
+            <label>Semantic Scholar API Key <span class="optional">(opcional)</span></label>
+            <input type="text" id="s-ss-key">
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3>Programación</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Día</label>
+              <select id="s-fetch-day">
+                <option value="monday">Lunes</option><option value="tuesday">Martes</option>
+                <option value="wednesday">Miércoles</option><option value="thursday">Jueves</option>
+                <option value="friday">Viernes</option><option value="saturday">Sábado</option>
+                <option value="sunday">Domingo</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Hora</label>
+              <input type="time" id="s-fetch-hour">
+            </div>
+            <div class="form-group">
+              <label>Máx.</label>
+              <select id="s-max-papers">
+                <option value="1">1</option><option value="2">2</option>
+                <option value="3">3</option><option value="5">5</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3>Categorías ArXiv</h3>
+          <div id="s-categories-grid" class="categories-grid"></div>
+        </div>
+        <div class="settings-section">
+          <h3>Universidades</h3>
+          <p class="settings-hint">Una por línea. Papers de estas instituciones pasan el filtro.</p>
+          <textarea id="s-universities" rows="5"></textarea>
+        </div>
+        <div class="settings-section">
+          <h3>Centros de Research / Frontier AI</h3>
+          <p class="settings-hint">Una por línea. Papers de Anthropic, OpenAI, DeepMind, Meta, etc. también pasan el filtro.</p>
+          <textarea id="s-research-centers" rows="5" placeholder="Anthropic&#10;OpenAI&#10;Google DeepMind&#10;Meta AI"></textarea>
+        </div>
+        <div class="settings-section">
+          <h3>Autores</h3>
+          <textarea id="s-authors" rows="4" placeholder="LeCun&#10;Bengio"></textarea>
+        </div>
+        <div class="settings-section">
+          <h3>Transcripción de voz</h3>
+          <div class="form-group">
+            <label>Proveedor</label>
+            <select id="s-transcription-provider">
+              <option value="webspeech">Web Speech API (rápida, gratis)</option>
+              <option value="whisper">Whisper / OpenAI (precisa)</option>
+            </select>
+          </div>
+          <p class="settings-hint">Web Speech usa Chromium directamente. El modelo de transcripción se elige al preparar cada clase.</p>
+        </div>
+        <div class="settings-section">
+          <h3>Papers de Referencia</h3>
+          <p class="settings-hint">PDFs de papers que ya encontraste interesantes. Nuevos papers se filtran por similitud semántica contra esta colección.</p>
+          <div class="form-group">
+            <label>Carpeta</label>
+            <div class="folder-row">
+              <input type="text" id="s-ref-folder" readonly placeholder="Sin carpeta configurada">
+              <button id="btn-pick-ref-folder" class="btn-secondary">Explorar</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Umbral de similitud <span class="optional">(0.0 – 1.0)</span></label>
+            <input type="number" id="s-similarity-threshold" min="0" max="1" step="0.05" placeholder="0.72" class="input-narrow">
+          </div>
+          <div class="folder-row ref-stats-row">
+            <span id="s-ref-stats" class="ref-stats-label">— papers indexados</span>
+            <button id="btn-reindex" class="btn-secondary">Re-indexar</button>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3>Modelo para Class Mode</h3>
+          <p class="settings-hint">Proveedor y modelo usados para pistas, evaluaciones y Q&A. Por defecto DeepSeek (más rápido y barato para intercambios frecuentes).</p>
+          <div class="form-group">
+            <label>Proveedor</label>
+            <div class="provider-selector" id="s-class-provider-selector">
+              <button class="class-provider-btn" data-provider="openai">OpenAI</button>
+              <button class="class-provider-btn" data-provider="anthropic">Anthropic</button>
+              <button class="class-provider-btn" data-provider="deepseek">DeepSeek</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Modelo</label>
+            <select id="s-class-llm-model"></select>
+          </div>
+          <div class="form-group">
+            <label id="s-class-api-key-label">API Key <span class="optional">(opcional — si es distinta a la del proveedor principal)</span></label>
+            <input type="password" id="s-class-api-key" placeholder="sk-...">
+          </div>
+        </div>
+        <div class="settings-footer">
+          <button id="btn-save-settings" class="btn-primary">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <!-- Annotation popup (shown on text selection in PDF viewer) -->
+  <div id="annotation-popup" class="annotation-popup hidden">
+    <p class="annotation-preview" id="annotation-preview"></p>
+    <textarea id="annotation-comment" class="annotation-comment" placeholder="Comentario (opcional)..." rows="4"></textarea>
+    <div class="annotation-btns">
+      <button id="btn-annotation-cancel" class="btn-ghost">Cancelar</button>
+      <button id="btn-annotation-confirm" class="btn-primary">Añadir a notas</button>
+    </div>
+  </div>
+
+  <div id="ctx-menu" class="ctx-menu hidden">
+    <button class="ctx-item" data-action="open">Abrir</button>
+    <button class="ctx-item ctx-ref-only ctx-hidden" data-action="rename">Renombrar</button>
+    <div class="ctx-separator"></div>
+    <button class="ctx-item ctx-item-danger" data-action="delete">Eliminar</button>
+  </div>
+
+  <script src="../node_modules/pdfjs-dist/build/pdf.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
