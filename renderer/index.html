@@ -349,6 +349,7 @@
       <div id="class-view-prep" class="class-view hidden">
         <header class="class-header">
           <h2 class="class-header-title">Preparación de la clase</h2>
+          <button id="class-btn-exit-prep" class="class-exit-btn">Salir de la clase</button>
         </header>
         <p id="class-paper-title" class="class-paper-title"></p>
         <div class="class-prep-body">
@@ -433,6 +434,7 @@
             <span class="class-topbar-title">Presentación</span>
           </div>
           <div class="class-topbar-right">
+            <button id="class-btn-exit-active" class="class-exit-btn">Salir de la clase</button>
             <button id="class-btn-end-presentation" class="class-end-btn">
               Terminar presentación →
             </button>
@@ -462,6 +464,7 @@
             <span class="class-topbar-title">Preguntas y respuestas</span>
           </div>
           <div class="class-topbar-right">
+            <button id="class-btn-exit-qa" class="class-exit-btn">Salir de la clase</button>
             <button id="class-btn-toggle-notes" class="class-notes-toggle-btn" title="Ver paper y notas">Paper</button>
           </div>
         </div>
@@ -494,22 +497,61 @@
           <button id="class-btn-done" class="btn-primary">Volver al paper</button>
         </header>
         <div class="class-results-body">
-          <div class="class-score-ring">
-            <span id="class-score-num" class="class-score-num">—</span>
-            <span class="class-score-label">/ 100</span>
+
+          <!-- Nota final -->
+          <div class="class-score-final-block">
+            <span class="class-score-final-num" id="class-score-final-num">—</span>
+            <span class="class-score-final-denom">/ 100</span>
+            <span class="class-score-final-label">Nota Final</span>
           </div>
-          <p id="class-feedback-text" class="class-feedback-text"></p>
-          <div class="class-results-detail">
-            <div class="class-results-col">
-              <h4>Fortalezas</h4>
-              <p id="class-strengths"></p>
+
+          <!-- Dos scores -->
+          <div class="class-scores-row">
+            <div class="class-score-block">
+              <span class="class-score-big" id="class-score-pres-num">—</span>
+              <span class="class-score-denom">/ 100</span>
+              <span class="class-score-label">Presentación · 50%</span>
             </div>
-            <div class="class-results-col">
-              <h4>Mejoras</h4>
-              <p id="class-improvements"></p>
+            <div class="class-scores-divider"></div>
+            <div class="class-score-block">
+              <span class="class-score-big" id="class-score-qa-num">—</span>
+              <span class="class-score-denom">/ 100</span>
+              <span class="class-score-label">Preguntas · 50%</span>
             </div>
           </div>
-          <div class="class-qa-summary" id="class-qa-summary"></div>
+
+          <!-- Feedback de presentación -->
+          <div class="class-results-section">
+            <h3 class="class-section-heading">Presentación</h3>
+            <p id="class-pres-feedback" class="class-feedback-text"></p>
+            <div class="class-results-detail">
+              <div class="class-results-col">
+                <h4>Fortalezas</h4>
+                <p id="class-pres-strengths"></p>
+              </div>
+              <div class="class-results-col">
+                <h4>Mejoras</h4>
+                <p id="class-pres-improvements"></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabla Q&A -->
+          <div class="class-results-section">
+            <h3 class="class-section-heading">Preguntas y respuestas</h3>
+            <table class="class-qa-table">
+              <thead>
+                <tr>
+                  <th>Estudiante</th>
+                  <th>Pregunta</th>
+                  <th>Ayuda usada</th>
+                  <th>Pts</th>
+                </tr>
+              </thead>
+              <tbody id="class-qa-table-body"></tbody>
+            </table>
+          </div>
+
         </div>
       </div>
 
@@ -552,10 +594,26 @@
         <button id="class-qa-assistant-close" class="class-notes-toggle-btn">✕</button>
       </div>
       <div id="class-qa-assistant-messages" class="class-qa-assistant-messages"></div>
-      <div class="class-qa-assistant-input-row">
-        <textarea id="class-qa-assistant-input" class="class-qa-assistant-input" rows="2"
-          placeholder="Pregunta al asistente…"></textarea>
-        <button id="class-qa-assistant-send" class="btn-primary-sm">Enviar</button>
+      <div class="chat-pill-wrap">
+        <div class="chat-pill" id="assistant-pill">
+          <textarea id="class-qa-assistant-input" class="chat-pill-input" rows="1"
+            placeholder="Pregunta al asistente…"></textarea>
+          <div class="chat-pill-waveform hidden" id="assistant-waveform">
+            <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
+            <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
+            <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
+            <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
+            <span class="waveform-bar"></span><span class="waveform-bar"></span>
+          </div>
+          <button id="class-qa-assistant-voice-cancel" class="chat-pill-rec-btn chat-pill-cancel hidden" title="Cancelar">✕</button>
+          <button id="class-qa-assistant-voice-confirm" class="chat-pill-rec-btn chat-pill-confirm hidden" title="Enviar">✓</button>
+          <button id="class-qa-assistant-voice" class="chat-pill-mic" title="Grabar">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </button>
+          <button id="class-qa-assistant-send" class="chat-pill-send" title="Enviar">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -563,10 +621,38 @@
       <div class="class-sidebar-chat-resize" id="class-sidebar-chat-resize"></div>
       <div class="class-sidebar-header">Chat de clase</div>
       <div id="class-qa-messages" class="class-qa-messages"></div>
-      <div class="class-qa-input-row">
-        <textarea id="class-qa-input" class="class-qa-input" rows="2"
-          placeholder="Escribe tu respuesta…" disabled></textarea>
-        <button id="class-qa-send" class="btn-primary-sm" disabled>Enviar</button>
+      <div class="chat-pill-wrap">
+        <div class="chat-pill" id="qa-pill">
+          <textarea id="class-qa-input" class="chat-pill-input" rows="1"
+            placeholder="Escribe tu respuesta…" disabled></textarea>
+          <div class="chat-pill-waveform hidden" id="qa-waveform">
+            <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
+            <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
+            <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
+            <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
+            <span class="waveform-bar"></span><span class="waveform-bar"></span>
+          </div>
+          <button id="class-qa-voice-cancel" class="chat-pill-rec-btn chat-pill-cancel hidden" title="Cancelar">✕</button>
+          <button id="class-qa-voice-confirm" class="chat-pill-rec-btn chat-pill-confirm hidden" title="Enviar">✓</button>
+          <button id="class-qa-voice" class="chat-pill-mic" title="Grabar" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </button>
+          <button id="class-qa-send" class="chat-pill-send" title="Enviar" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Exit-class confirm modal -->
+    <div id="class-exit-overlay" class="confirm-overlay hidden">
+      <div class="confirm-modal">
+        <p class="confirm-title">¿Salir de la clase?</p>
+        <p class="confirm-body">La clase se reiniciará desde cero.</p>
+        <div class="confirm-btns">
+          <button id="class-exit-cancel" class="btn-ghost">Cancelar</button>
+          <button id="class-exit-ok" class="btn-danger">Salir</button>
+        </div>
       </div>
     </div>
 
@@ -704,6 +790,18 @@
   </div>
 
   <div id="toast-container"></div>
+
+  <!-- Confirm class modal -->
+  <div id="class-confirm-overlay" class="confirm-overlay hidden">
+    <div class="confirm-modal">
+      <p class="confirm-title">¿Iniciar clase?</p>
+      <p class="confirm-body" id="class-confirm-paper-title"></p>
+      <div class="confirm-btns">
+        <button id="class-confirm-cancel" class="btn-ghost">Cancelar</button>
+        <button id="class-confirm-ok" class="btn-primary">Iniciar</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Annotation popup (shown on text selection in PDF viewer) -->
   <div id="annotation-popup" class="annotation-popup hidden">

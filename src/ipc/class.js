@@ -1,4 +1,4 @@
-const { canHaveClass, STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, generateHint, assistantChat } = require('../class')
+const { canHaveClass, STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, evaluatePresentation, generateHint, assistantChat } = require('../class')
 
 function registerClassHandlers({ ipcMain, db, deps }) {
   const { createLLM, createTranscription } = deps
@@ -102,22 +102,49 @@ function registerClassHandlers({ ipcMain, db, deps }) {
     const llm = createClassLLM(settings)
     const session = db.getClassSession(sessionId)
     const paper = db.getPaper(session.paper_id)
-    let clarityScore = 70
-    let feedback = { score: 70, feedback: 'Clase completada.', strengths: '', improvements: '' }
-    try {
-      const result = await evaluateClarity({ paper, transcript, qaLog: qaLog || [] }, llm)
-      clarityScore = result.score ?? 70
-      feedback = result
-    } catch (err) {
-      console.error('[class-end-session]', err?.message || err)
+
+    // Q&A score: algorithmic, no LLM needed
+    const HINT_SCORES = { 0: 100, 1: 70, 2: 40, 3: 0 }
+    const perStudent = (qaLog || []).map(qa => ({
+      ...qa,
+      score: HINT_SCORES[qa.hintLevel ?? 0] ?? 100
+    }))
+    const qaScore = perStudent.length
+      ? Math.round(perStudent.reduce((s, q) => s + q.score, 0) / perStudent.length)
+      : 70
+
+    // Presentation score: LLM evaluates transcript only
+    let presResult = { score: 0, feedback: 'Sin transcripción disponible.', strengths: '', improvements: 'El profesor no habló durante la presentación o no se capturó audio.' }
+    if (transcript && transcript.trim().length > 30) {
+      try {
+        presResult = await evaluatePresentation({ paper, transcript }, llm)
+      } catch (err) {
+        console.error('[class-end-session] presentation', err?.message || err)
+        presResult = { score: 0, feedback: 'No se pudo evaluar la presentación.', strengths: '', improvements: '' }
+      }
+    }
+
+    const overallScore = Math.round(((presResult.score ?? 70) + qaScore) / 2)
+    const feedbackObj = {
+      presentationScore: presResult.score ?? 70,
+      qaScore,
+      presentationFeedback: presResult.feedback || '',
+      presentationStrengths: presResult.strengths || '',
+      presentationImprovements: presResult.improvements || '',
+      perStudent
     }
     db.updateClassSession(sessionId, {
       transcript: transcript || '',
-      clarity_score: clarityScore,
-      feedback: JSON.stringify(feedback),
+      clarity_score: overallScore,
+      feedback: JSON.stringify(feedbackObj),
       qa_summary: JSON.stringify(qaLog || [])
     })
-    return { clarityScore, feedback }
+    return {
+      presentationScore: presResult.score ?? 70,
+      qaScore,
+      presentationFeedback: presResult,
+      perStudent
+    }
   })
 
   ipcMain.handle('class-get-sessions', (_e, paperId) => {

@@ -1,4 +1,4 @@
-const { STUDENTS, generateTurn, evaluateAndReact, evaluateClarity } = require('./students')
+const { STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, evaluatePresentation } = require('./students')
 const { generateHint, assistantChat } = require('./hints')
 
 function canHaveClass(paper) {
@@ -9,4 +9,4 @@ function canHaveClass(paper) {
   return { ok: true }
 }
 
-module.exports = { STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, canHaveClass, generateHint, assistantChat }
+module.exports = { STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, evaluatePresentation, canHaveClass, generateHint, assistantChat }

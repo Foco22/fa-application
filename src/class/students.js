@@ -131,4 +131,31 @@ Evalúa la presentación y responde con JSON:
   }
 }
 
-module.exports = { STUDENTS, generateTurn, evaluateAndReact, evaluateClarity }
+async function evaluatePresentation(context, llm) {
+  const { paper, transcript } = context
+  const messages = [{
+    role: 'user',
+    content: `Eres un evaluador de presentaciones académicas orales.
+
+Paper: ${paper.title}
+Abstract: ${paper.abstract || ''}
+
+Transcripción de la presentación (lo que dijo el profesor en voz alta):
+${transcript || '(sin transcripción disponible)'}
+
+Evalúa ÚNICAMENTE la calidad de la presentación oral: claridad de la explicación,
+estructura, profundidad conceptual y capacidad de síntesis del contenido del paper.
+NO evalúes preguntas ni respuestas — solo la exposición inicial.
+
+Responde con JSON exacto:
+{"score": <entero 0-100>, "feedback": "<2-3 oraciones de feedback constructivo>", "strengths": "<qué explicó bien>", "improvements": "<qué podría mejorar>"}`
+  }]
+  try {
+    const raw = await llm.chat(messages)
+    return parseJSONResponse(raw)
+  } catch {
+    return { score: 0, feedback: 'No se pudo evaluar la presentación.', strengths: '', improvements: '' }
+  }
+}
+
+module.exports = { STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, evaluatePresentation }

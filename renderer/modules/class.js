@@ -123,6 +123,7 @@ export function showView(name) {
   const withSidebars = name === 'active' || name === 'qa'
   document.getElementById('class-sidebar-participants').classList.toggle('hidden', !withSidebars)
   document.getElementById('class-sidebar-chat').classList.toggle('hidden', !withSidebars)
+  document.getElementById('class-qa-assistant-panel')?.classList.add('hidden')
 
   // Chat input: only enabled during Q&A (managed by enableChatInput — default to disabled here)
   if (name !== 'qa') {
@@ -135,8 +136,42 @@ export function showView(name) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+function showExitConfirm() {
+  document.getElementById('class-exit-overlay').classList.remove('hidden')
+}
+
+function hideExitConfirm() {
+  document.getElementById('class-exit-overlay').classList.add('hidden')
+}
+
 export function initClass() {
   document.getElementById('class-btn-done')?.addEventListener('click', exitClassMode)
+
+  // Exit confirm modal
+  document.getElementById('class-exit-cancel').addEventListener('click', hideExitConfirm)
+  document.getElementById('class-exit-overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) hideExitConfirm()
+  })
+  document.getElementById('class-exit-ok').addEventListener('click', () => {
+    hideExitConfirm()
+    exitClassMode()
+  })
+  document.getElementById('class-btn-exit-prep').addEventListener('click', showExitConfirm)
+  document.getElementById('class-btn-exit-active').addEventListener('click', showExitConfirm)
+  document.getElementById('class-btn-exit-qa').addEventListener('click', showExitConfirm)
+
+  attachVoiceButton({
+    micBtnId: 'class-qa-voice', sendBtnId: 'class-qa-send',
+    cancelBtnId: 'class-qa-voice-cancel', confirmBtnId: 'class-qa-voice-confirm',
+    textareaId: 'class-qa-input', waveformId: 'qa-waveform',
+    sendFn: sendQAResponse
+  })
+  attachVoiceButton({
+    micBtnId: 'class-qa-assistant-voice', sendBtnId: 'class-qa-assistant-send',
+    cancelBtnId: 'class-qa-assistant-voice-cancel', confirmBtnId: 'class-qa-assistant-voice-confirm',
+    textareaId: 'class-qa-assistant-input', waveformId: 'assistant-waveform',
+    sendFn: sendAssistantMessage
+  })
 
   document.getElementById('class-btn-toggle-notes').addEventListener('click', toggleQaPdf)
   document.getElementById('class-qa-pdf-hints-close').addEventListener('click', closePdfHints)
@@ -610,8 +645,12 @@ function highlightParticipant(studentId, active) {
 function enableChatInput(enabled) {
   const input = document.getElementById('class-qa-input')
   const send  = document.getElementById('class-qa-send')
+  const voice = document.getElementById('class-qa-voice')
+  const pill  = document.getElementById('qa-pill')
   if (input) { input.disabled = !enabled; if (enabled) { input.value = ''; input.focus() } }
-  if (send)  send.disabled = !enabled
+  if (send)  send.disabled  = !enabled
+  if (voice) voice.disabled = !enabled
+  if (pill)  pill.style.opacity = enabled ? '' : '.5'
 }
 
 // ── Progressive hints ─────────────────────────────────────────────────────────
@@ -1064,7 +1103,7 @@ async function processStudent(index) {
   } catch {
     removeTypingIndicator()
     addChatBubble('system', null, `No se pudo obtener pregunta de ${student.name}. Continuando…`)
-    _qaLog.push({ studentId: student.id, studentName: student.name, question: '', professorAnswer: '' })
+    _qaLog.push({ studentId: student.id, studentName: student.name, question: '', professorAnswer: '', hintLevel: 0 })
     highlightParticipant(student.id, false)
     setTimeout(() => processStudent(index + 1), 1000)
   }
@@ -1112,7 +1151,8 @@ async function sendQAResponse() {
         studentId: student.id,
         studentName: student.name,
         question: _qaHistory[0]?.question || '',
-        professorAnswer: text
+        professorAnswer: text,
+        hintLevel: _hintLevel
       })
       highlightParticipant(student.id, false)
       setTimeout(() => processStudent(_qaStudentIndex + 1), 1400)
@@ -1134,7 +1174,7 @@ async function sendQAResponse() {
         enableChatInput(true)
       } catch {
         removeTypingIndicator()
-        _qaLog.push({ studentId: student.id, studentName: student.name, question: _qaHistory[0]?.question || '', professorAnswer: text })
+        _qaLog.push({ studentId: student.id, studentName: student.name, question: _qaHistory[0]?.question || '', professorAnswer: text, hintLevel: _hintLevel })
         highlightParticipant(student.id, false)
         setTimeout(() => processStudent(_qaStudentIndex + 1), 800)
       }
@@ -1153,46 +1193,57 @@ async function finishQA() {
   document.getElementById('class-qa-progress').textContent = 'Calculando resultados…'
   enableChatInput(false)
 
-  let clarityScore = 70
-  let feedback = { feedback: 'Clase completada.', strengths: '', improvements: '' }
+  let endResult = { presentationScore: 70, qaScore: 70, presentationFeedback: null, perStudent: _qaLog }
 
   try {
-    const result = await window.api.classEndSession({
+    endResult = await window.api.classEndSession({
       sessionId: _sessionId,
       transcript: _transcript,
       qaLog: _qaLog
     })
-    clarityScore = result.clarityScore ?? 70
-    feedback = result.feedback || feedback
   } catch {}
 
-  renderResults(clarityScore, feedback)
+  renderResults(endResult)
   showView('results')
 }
 
-function renderResults(score, feedback) {
-  document.getElementById('class-score-num').textContent = score ?? '—'
-  document.getElementById('class-feedback-text').textContent = feedback?.feedback || ''
-  document.getElementById('class-strengths').textContent    = feedback?.strengths  || ''
-  document.getElementById('class-improvements').textContent = feedback?.improvements || ''
+const HINT_LABELS = ['Sin ayuda', 'Campanilla', 'Asistente', 'Respuesta revelada']
+const HINT_COLORS = ['var(--green)', 'var(--yellow)', 'var(--orange)', 'var(--red)']
+const HINT_SCORES = [100, 70, 40, 0]
 
-  const summary = document.getElementById('class-qa-summary')
-  summary.innerHTML = ''
-  if (_qaLog.length > 0) {
-    const title = document.createElement('h4')
-    title.className = 'class-summary-title'
-    title.textContent = 'Preguntas y respuestas'
-    summary.appendChild(title)
-    _qaLog.forEach(qa => {
-      const item = document.createElement('div')
-      item.className = 'class-summary-item'
-      item.innerHTML = `
-        <div class="class-summary-student">${qa.studentName}</div>
-        <div class="class-summary-q">${qa.question}</div>
-        <div class="class-summary-a">Tu respuesta: ${qa.professorAnswer}</div>`
-      summary.appendChild(item)
-    })
-  }
+function renderResults({ presentationScore, qaScore, presentationFeedback, perStudent }) {
+  // Scores
+  const finalScore = (presentationScore != null && qaScore != null)
+    ? Math.round((presentationScore + qaScore) / 2) : '—'
+  document.getElementById('class-score-final-num').textContent = finalScore
+  document.getElementById('class-score-pres-num').textContent  = presentationScore ?? '—'
+  document.getElementById('class-score-qa-num').textContent    = qaScore ?? '—'
+
+  // Presentation feedback
+  const pf = presentationFeedback || {}
+  document.getElementById('class-pres-feedback').textContent    = pf.feedback    || ''
+  document.getElementById('class-pres-strengths').textContent   = pf.strengths   || ''
+  document.getElementById('class-pres-improvements').textContent = pf.improvements || ''
+
+  // Q&A table
+  const table = document.getElementById('class-qa-table-body')
+  table.innerHTML = ''
+  const students = perStudent || _qaLog
+  students.forEach(qa => {
+    const level = qa.hintLevel ?? 0
+    const pts   = HINT_SCORES[level] ?? 100
+    const row = document.createElement('tr')
+    row.innerHTML = `
+      <td class="qat-student">${qa.studentName || '—'}</td>
+      <td class="qat-question">${qa.question || '—'}</td>
+      <td class="qat-hint">
+        <span class="hint-badge" style="background:${HINT_COLORS[level]}22;color:${HINT_COLORS[level]};border-color:${HINT_COLORS[level]}44">
+          ${HINT_LABELS[level] || '—'}
+        </span>
+      </td>
+      <td class="qat-score" style="color:${HINT_COLORS[level]}">${pts}</td>`
+    table.appendChild(row)
+  })
 }
 
 // ── Transcripción: Web Speech API (default, rápida) + Whisper (fallback) ─────
@@ -1375,6 +1426,146 @@ async function startWhisperRecognition() {
 
   _vadPoll = vadPoll
   _audioCtx = audioCtx
+}
+
+// ── Voice input buttons (push-to-talk for Q&A and assistant chat) ─────────────
+
+function attachVoiceButton({ micBtnId, sendBtnId, cancelBtnId, confirmBtnId, textareaId, waveformId, sendFn }) {
+  const micBtn     = document.getElementById(micBtnId)
+  const sendBtn    = document.getElementById(sendBtnId)
+  const cancelBtn  = document.getElementById(cancelBtnId)
+  const confirmBtn = document.getElementById(confirmBtnId)
+  const waveformEl = document.getElementById(waveformId)
+  if (!micBtn) return
+
+  let _voiceRecorder  = null
+  let _voiceStream    = null
+  let _voiceChunks    = []
+  let _cancelled      = false
+  let _animFrame      = null
+  let _analyser       = null
+  let _vadCtx         = null
+
+  const bars = waveformEl ? Array.from(waveformEl.querySelectorAll('.waveform-bar')) : []
+
+  function showRecordingUI(show) {
+    const textarea = document.getElementById(textareaId)
+    if (textarea)     textarea.classList.toggle('hidden', show)
+    if (waveformEl)   waveformEl.classList.toggle('hidden', !show)
+    if (cancelBtn)    cancelBtn.classList.toggle('hidden', !show)
+    if (confirmBtn)   confirmBtn.classList.toggle('hidden', !show)
+    if (micBtn)       micBtn.classList.toggle('hidden', show)
+    if (sendBtn)      sendBtn.classList.toggle('hidden', show)
+  }
+
+  function startWaveform(stream) {
+    _vadCtx  = new AudioContext()
+    _analyser = _vadCtx.createAnalyser()
+    _analyser.fftSize = 64
+    _vadCtx.createMediaStreamSource(stream).connect(_analyser)
+    const data = new Uint8Array(_analyser.frequencyBinCount)
+    function draw() {
+      _analyser.getByteFrequencyData(data)
+      bars.forEach((bar, i) => {
+        const val = data[Math.floor(i * data.length / bars.length)] || 0
+        const h = Math.max(3, (val / 255) * 26)
+        bar.style.height = h + 'px'
+      })
+      _animFrame = requestAnimationFrame(draw)
+    }
+    draw()
+  }
+
+  function stopWaveform() {
+    cancelAnimationFrame(_animFrame)
+    _animFrame = null
+    bars.forEach(b => { b.style.height = '4px' })
+    _analyser = null
+    _vadCtx?.close()
+    _vadCtx = null
+  }
+
+  function resetUI() {
+    showRecordingUI(false)
+    micBtn.classList.remove('recording')
+    stopWaveform()
+  }
+
+  async function startRecording() {
+    try {
+      _voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+    } catch (err) {
+      toast('Sin acceso al micrófono: ' + (err.message || err), 'error')
+      return
+    }
+    _cancelled   = false
+    _voiceChunks = []
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus' : 'audio/webm'
+
+    _voiceRecorder = new MediaRecorder(_voiceStream, { mimeType })
+    _voiceRecorder.ondataavailable = e => { if (e.data.size > 0) _voiceChunks.push(e.data) }
+    _voiceRecorder.onstop = async () => {
+      _voiceStream?.getTracks().forEach(t => t.stop())
+      _voiceStream = null
+      stopWaveform()
+      showRecordingUI(false)
+      micBtn.classList.remove('recording')
+
+      if (_cancelled) return
+
+      const blob = new Blob(_voiceChunks, { type: mimeType })
+      if (blob.size < 100) { toast('No se detectó audio', 'error'); return }
+
+      micBtn.style.opacity = '.4'
+      try {
+        const arrayBuffer = await blob.arrayBuffer()
+        const audio = Array.from(new Uint8Array(arrayBuffer))
+        const result = await window.api.classTranscribeAudio({
+          audio, mimeType,
+          language: _classLanguage || undefined,
+          model: _classModel || undefined
+        })
+        if (result?.error) { toast('Error: ' + result.error, 'error'); return }
+        const text = result?.text?.trim()
+        if (!text || isHallucination(text)) { toast('No se detectó voz en el audio', 'error'); return }
+        const textarea = document.getElementById(textareaId)
+        if (textarea) { textarea.value = text; textarea.dispatchEvent(new Event('input')) }
+        sendFn()
+      } catch (err) {
+        toast('Error al transcribir: ' + (err.message || 'intenta de nuevo'), 'error')
+      } finally {
+        micBtn.style.opacity = ''
+      }
+    }
+
+    _voiceRecorder.start(500)
+    micBtn.classList.add('recording')
+    showRecordingUI(true)
+    startWaveform(_voiceStream)
+  }
+
+  function confirmRecording() {
+    _cancelled = false
+    if (_voiceRecorder?.state === 'recording') _voiceRecorder.stop()
+  }
+
+  micBtn.addEventListener('click', startRecording)
+
+  cancelBtn?.addEventListener('click', () => {
+    _cancelled = true
+    if (_voiceRecorder?.state === 'recording') _voiceRecorder.stop()
+    else resetUI()
+  })
+
+  confirmBtn?.addEventListener('click', confirmRecording)
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && _voiceRecorder?.state === 'recording') {
+      e.preventDefault()
+      confirmRecording()
+    }
+  })
 }
 
 function stopSpeechRecognition() {

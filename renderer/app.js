@@ -26,7 +26,7 @@ export function setPdfExpanded(val) {
 
 export function switchTab(tab) {
   if (tab === 'clase') {
-    if (state.activePaper) enterClassMode(state.activePaper)
+    if (state.activePaper) showClassConfirm(state.activePaper)
     return
   }
   if (tab !== 'pdf' && state.pdfExpanded) setPdfExpanded(false)
@@ -48,6 +48,27 @@ export function switchTab(tab) {
   }
   if (tab === 'notas') document.getElementById('pv-notes').focus()
 }
+
+/* ── Class confirm modal ────────────────────────────────────────────────── */
+
+function showClassConfirm(paper) {
+  const overlay = document.getElementById('class-confirm-overlay')
+  document.getElementById('class-confirm-paper-title').textContent = paper.title || paper.id
+  overlay.classList.remove('hidden')
+}
+
+function hideClassConfirm() {
+  document.getElementById('class-confirm-overlay').classList.add('hidden')
+}
+
+document.getElementById('class-confirm-cancel').addEventListener('click', hideClassConfirm)
+document.getElementById('class-confirm-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) hideClassConfirm()
+})
+document.getElementById('class-confirm-ok').addEventListener('click', () => {
+  hideClassConfirm()
+  if (state.activePaper) enterClassMode(state.activePaper)
+})
 
 /* ── Dependency injection ───────────────────────────────────────────────── */
 

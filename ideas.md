@@ -1,10 +1,7 @@
 
 Clase:
 
--Botom cuando inicio, deberia decir estar seguro de salir de la clase, y esa clase se reinica se vuelv de cero no queda como a media. Se murio.
--Los textos de loa studiante deben estr con fondo transaprente, no tener fondo. Cada chat tambien deberia tenrer l hora y dia, en un formato pequeño peroque aparezca.
-- Hay un informe (revisar esto). Si el profesor uso hatsa el ultimo comodin, deberia ser menos notas, hay un ppuntaje, deberia castigar en base a la putno que lego. Si el profesor fue capaz de responder si usar ningun ayuda mjor, si uso la camapan, mneos puntos, si uso campana mas asistente menos puntos y si le tuve que dar la respuesta 0 puntos. 
-- Voz, todas mis respuesta deberia ser por voz, entonces yo deberia tener un buttom par responder al estudianrte. Yo aprieto, responde y cierro ese bottom. No quiero que las respuesta del profe esten en texto, prefiero en voz, porque cuando uno deci algo, lo aprende, no escribiendo. El humano funciona habloand y diciendo las cosas en voz alta.
+- Whisper local para tranacricopn, no remoto.
 
 
 Retrieval:
@@ -13,7 +10,26 @@ Retrieval:
 - Keywords del usuario.
 - Preferidos. Si yo quiero agregarla a prefiero, se va.
 
+Logo
+- Sol 
+
+Ideas para avanzar:
+
+Sí, tienes razón. Corrijo el orden:
+
+1. electron-builder → generar los 3 archivos (.AppImage, .dmg, .exe)
+2. GitHub Actions → que compile automático en los 3 OS
+3. Sentry → antes de que alguien lo use
+4. Landing en Vercel → para que esas 5 personas puedan bajársela fácil
+5. Hablar con esas 5 personas
+6. PostHog → cuando ya no puedas hablar con todos
+
+La landing no es para escalar, es para que el link que mandas por WhatsApp a tus primeros 5 usuarios no sea un link feo de GitHub. Tienes razón en eso.
+
+¿Arrancamos con el paso 1 entonces? Configurar electron-builder + GitHub Actions para que genere los 3 instaladores automáticamente.
+
+
+- Todo en Ingles y en español. En setting, debe haber una configuracion para que si es enspaño, todo sea en espaol, y si en ingles todo es ingels.
 Aprender:
 -El sistema deberia aprender de si mismo, como hacer que busque mejor, que haga mejores preguntas, y que vaya viendo mi rendimiento.
-
-- 
+-Setting correcto.
