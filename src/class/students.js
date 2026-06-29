@@ -56,7 +56,10 @@ async function generateTurn(student, context, llm) {
   })
 
   const response = await llm.chat(messages)
-  return response.trim()
+  console.log('[generateTurn] raw response:', JSON.stringify(response)?.slice(0, 200))
+  const text = (response || '').trim()
+  if (!text) throw new Error('LLM returned empty response')
+  return text
 }
 
 async function evaluateAndReact(student, context, llm) {

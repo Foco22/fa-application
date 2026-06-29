@@ -67,13 +67,13 @@ function registerClassHandlers({ ipcMain, db, deps }) {
   })
 
   ipcMain.handle('class-student-question', async (_e, { studentId, paperId, sessionId, history, previousQA, reaction }) => {
-    const settings = db.getAllSettings()
-    const llm = createClassLLM(settings)
-    const paper = db.getPaper(paperId)
-    const slides = db.getClassSlides(sessionId)
     const student = STUDENTS.find(s => s.id === studentId)
     if (!student) return { question: '¿Podría explicar más sobre el método?' }
     try {
+      const settings = db.getAllSettings()
+      const llm = createClassLLM(settings)
+      const paper = db.getPaper(paperId)
+      const slides = db.getClassSlides(sessionId)
       const question = await generateTurn(student, { paper, slides, history: history || [], previousQA: previousQA || [], reaction: reaction || null }, llm)
       return { question }
     } catch (err) {

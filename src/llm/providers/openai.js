@@ -44,7 +44,11 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
 
     async chat(messages) {
       const response = await client.chat.completions.create({ model: MODEL, messages })
-      return response.choices[0].message.content
+      const msg = response.choices[0].message
+      // reasoning models (e.g. DeepSeek R1-style) put the answer in content and
+      // the thinking in reasoning_content — but content can be null if only
+      // reasoning_content is populated; fall back so we always return something
+      return msg.content || msg.reasoning_content || null
     },
 
     async extractAffiliationsWithAI(firstPageText) {

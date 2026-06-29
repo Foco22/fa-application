@@ -55,22 +55,85 @@ const STUDENTS = [
   { id: 3, name: 'Sofía',  initials: 'SK', color: '#f59e0b' },
 ]
 
+// ── Session reset ─────────────────────────────────────────────────────────────
+
+function clearSessionState() {
+  // Stop any in-progress media
+  _timer?.stop()
+  _timer = null
+  stopSpeechRecognition()
+  stopWebcam()
+
+  // Reset all state variables
+  _sessionId         = null
+  _selectedDuration  = 180
+  _slides            = []
+  _dbSlides          = []
+  _currentSlideIndex = 0
+  _transcript        = ''
+  _professorBubble   = null
+  _prepSlideIndex    = 0
+  _qaStudentIndex    = 0
+  _qaHistory         = []
+  _qaLog             = []
+  _qaExchangeCount   = 0
+  _qaActive          = false
+  _hintLevel         = 0
+  _pendingMissing    = null
+  _cachedHintResult  = null
+  _assistantHistory  = []
+  _assistantExcerpts = []
+  _assistantMissing  = null
+  _assistantCanReveal = false
+  _pdfHintsDoc       = null
+  _pdfHintsExcerpts  = []
+  _pdfHintsScale     = 1.2
+
+  // Clear DOM
+  const qaMsg = document.getElementById('class-qa-messages')
+  if (qaMsg) qaMsg.innerHTML = ''
+  const asstMsg = document.getElementById('class-qa-assistant-messages')
+  if (asstMsg) asstMsg.innerHTML = ''
+  const tableBody = document.getElementById('class-qa-table-body')
+  if (tableBody) tableBody.innerHTML = ''
+
+  // Reset score display
+  const scoreIds = ['class-score-final-num', 'class-score-pres-num', 'class-score-qa-num']
+  scoreIds.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—' })
+  const presFields = ['class-pres-feedback', 'class-pres-strengths', 'class-pres-improvements']
+  presFields.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '' })
+
+  // Remove hint overlays
+  document.getElementById('class-hint-bell-overlay')?.remove()
+  document.getElementById('class-hint-assistant-overlay')?.remove()
+
+  // Hide auxiliary panels
+  document.getElementById('class-qa-assistant-panel')?.classList.add('hidden')
+  document.getElementById('class-qa-pdf-hints')?.classList.add('hidden')
+
+  // Reset timer display
+  const timerEl = document.getElementById('class-timer-display')
+  if (timerEl) timerEl.textContent = '3:00'
+
+  // Deselect all participants
+  document.querySelectorAll('[data-student]').forEach(t => t.classList.remove('speaking', 'active'))
+
+  // Remove any webcam-fallback avatar injected into the self tile
+  const selfTile = document.getElementById('class-tile-self')
+  if (selfTile) {
+    selfTile.querySelectorAll('.class-tile-avatar').forEach(el => el.remove())
+    const vid = selfTile.querySelector('video')
+    if (vid) vid.style.display = ''
+  }
+
+  enableChatInput(false)
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export function enterClassMode(paper) {
+  clearSessionState()
   _paper = paper
-  _slides = []
-  _dbSlides = []
-  _sessionId = null
-  _selectedDuration = 180
-  _transcript = ''
-  _professorBubble = null
-  _prepSlideIndex = 0
-  _qaStudentIndex = 0
-  _qaHistory = []
-  _qaLog = []
-  _qaExchangeCount = 0
-  _qaActive = false
 
   document.getElementById('vault-panel').classList.add('hidden')
   document.getElementById('content-panel').classList.add('hidden')
@@ -84,9 +147,7 @@ export function enterClassMode(paper) {
 }
 
 export function exitClassMode() {
-  _timer?.stop()
-  stopSpeechRecognition()
-  stopWebcam()
+  clearSessionState()
   document.getElementById('class-fullscreen').classList.add('hidden')
   document.getElementById('vault-panel').classList.remove('hidden')
   document.getElementById('content-panel').classList.remove('hidden')
@@ -462,6 +523,7 @@ async function setupActiveView(slides) {
     if (tile) {
       const vid = tile.querySelector('video')
       if (vid) vid.style.display = 'none'
+      tile.querySelectorAll('.class-tile-avatar').forEach(el => el.remove())
       const avatar = document.createElement('div')
       avatar.className = 'class-tile-avatar'
       avatar.textContent = 'YO'
@@ -1097,6 +1159,7 @@ async function processStudent(index) {
       previousQA: _qaLog.map(q => ({ studentName: q.studentName, question: q.question }))
     })
     removeTypingIndicator()
+    if (!question) throw new Error('empty question')
     addChatBubble('student', student.name, question)
     _qaHistory.push({ question, answer: null })
     enableChatInput(true)
@@ -1169,6 +1232,7 @@ async function sendQAResponse() {
           reaction: result.reaction
         })
         removeTypingIndicator()
+        if (!question) throw new Error('empty question')
         addChatBubble('student', student.name, question)
         _qaHistory.push({ question, answer: null })
         enableChatInput(true)

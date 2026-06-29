@@ -174,6 +174,44 @@ describe('DeepSeek provider — generateQuiz', () => {
   })
 })
 
+// ── chat ─────────────────────────────────────────────────────────────────────
+
+describe('DeepSeek provider — chat', () => {
+  function makeChatClient(message) {
+    return {
+      chat: { completions: { create: vi.fn().mockResolvedValue({ choices: [{ message }] }) } }
+    }
+  }
+
+  it('returns content when present', async () => {
+    const mockClient = makeChatClient({ content: 'Hola profesor, ¿qué métricas usaron?', reasoning_content: null })
+    const provider = createDeepSeekProvider('test-key', null, mockClient)
+    const result = await provider.chat([{ role: 'user', content: 'pregunta' }])
+    expect(result).toBe('Hola profesor, ¿qué métricas usaron?')
+  })
+
+  it('falls back to reasoning_content when content is null (reasoning model)', async () => {
+    const mockClient = makeChatClient({ content: null, reasoning_content: 'El problema es X, por tanto la respuesta es Y.' })
+    const provider = createDeepSeekProvider('test-key', null, mockClient)
+    const result = await provider.chat([{ role: 'user', content: 'pregunta' }])
+    expect(result).toBe('El problema es X, por tanto la respuesta es Y.')
+  })
+
+  it('returns null when both content and reasoning_content are null', async () => {
+    const mockClient = makeChatClient({ content: null, reasoning_content: null })
+    const provider = createDeepSeekProvider('test-key', null, mockClient)
+    const result = await provider.chat([{ role: 'user', content: 'pregunta' }])
+    expect(result).toBeNull()
+  })
+
+  it('prefers content over reasoning_content when both present', async () => {
+    const mockClient = makeChatClient({ content: 'respuesta final', reasoning_content: 'pensamiento interno' })
+    const provider = createDeepSeekProvider('test-key', null, mockClient)
+    const result = await provider.chat([{ role: 'user', content: 'pregunta' }])
+    expect(result).toBe('respuesta final')
+  })
+})
+
 // ── factory — createLLM ───────────────────────────────────────────────────────
 
 describe('createLLM factory', async () => {
