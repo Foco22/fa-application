@@ -1138,17 +1138,7 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
   padding: 1px 5px; border-radius: var(--r-xs);
 }
 
-.chat-input-area {
-  padding: var(--sp-sm); border-top: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: var(--sp-xs); flex-shrink: 0;
-  background: #1a1a1a;
-}
-.chat-input-area textarea {
-  resize: none; font-size: 14px; min-height: 56px;
-  background: #1a1a1a; border-color: var(--border);
-}
-.chat-input-area textarea:focus { border-color: var(--border-2); box-shadow: none; }
-#btn-chat-send { align-self: flex-end; }
+/* home chat uses .chat-pill-wrap — same as class chat */
 
 /* ── Settings panel ──────────────────────────────────────────────────────── */
 #settings-panel { background: rgba(0,0,0,.6); display: flex; justify-content: flex-end; z-index: 200; }
