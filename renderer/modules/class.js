@@ -675,50 +675,48 @@ async function endPresentation() {
   _pdfHintsScale = 1.2
 
   showView('qa')
-  startQA()
-
-  // Batch transcription: transcribe after Q&A view is visible so bubbles appear in the right chat
+  
+  // Batch transcription first — startQA() runs only after transcript is ready
   if (batchAudio) {
-    window.api.logToMain?.(`[batch] esperando recorder... chunks=${batchAudio.chunks.length} done=${batchAudio._recorderDone}`)
-    // Wait for MediaRecorder.onstop to fire (fires after last ondataavailable)
     await new Promise(resolve => {
       if (batchAudio._recorderDone) { resolve(); return }
       const check = setInterval(() => { if (batchAudio._recorderDone) { clearInterval(check); resolve() } }, 50)
       setTimeout(() => { clearInterval(check); resolve() }, 3000)
     })
     const { chunks, mimeType: batchMime } = batchAudio
-    window.api.logToMain?.(`[batch] chunks=${chunks.length} backend=${_transcriptionBackend}`)
-    if (chunks.length === 0) { addChatBubble('system', null, '⚠ No se grabó audio'); return }
-    const loadingBubble = addChatBubble('system', null, '⏳ Transcribiendo tu presentación…')
-    try {
-      const blob = new Blob(chunks, { type: batchMime })
-      window.api.logToMain?.(`[batch] enviando ${(blob.size / 1024).toFixed(0)} KB backend=${_transcriptionBackend} model=${_classModel}`)
-      const arrayBuffer = await blob.arrayBuffer()
-      const audio = Array.from(new Uint8Array(arrayBuffer))
-      const isGroq = _transcriptionBackend === 'groq'
-      const result = await window.api.classTranscribeAudio({
-        audio,
-        mimeType: batchMime,
-        language: _classLanguage || undefined,
-        model:    _classModel || (isGroq ? 'whisper-large-v3-turbo' : undefined),
-        provider: isGroq ? 'groq' : 'openai',
-      })
-      loadingBubble?.remove()
-      window.api.logToMain?.(`[batch] resultado: text="${(result?.text||'').slice(0,80)}" error="${result?.error||''}"`)
-      if (result?.text?.trim()) {
-        _transcript = result.text
-        addChatBubble('professor', 'Tu presentación', result.text)
-        await window.api.classSaveTranscript({ sessionId: _sessionId, transcript: _transcript }).catch(() => {})
-      } else if (result?.error) {
-        addChatBubble('system', null, `⚠ Error transcribiendo: ${result.error}`)
-      } else {
-        addChatBubble('system', null, '⚠ Transcripción vacía — habla más cerca del micrófono')
+    if (chunks.length === 0) {
+      addChatBubble('system', null, '⚠ No se grabó audio')
+    } else {
+      const loadingBubble = addChatBubble('system', null, '⏳ Transcribiendo tu presentación…')
+      try {
+        const blob = new Blob(chunks, { type: batchMime })
+        const arrayBuffer = await blob.arrayBuffer()
+        const audio = Array.from(new Uint8Array(arrayBuffer))
+        const isGroq = _transcriptionBackend === 'groq'
+        const result = await window.api.classTranscribeAudio({
+          audio,
+          mimeType: batchMime,
+          language: _classLanguage || undefined,
+          model:    _classModel || (isGroq ? 'whisper-large-v3-turbo' : undefined),
+          provider: isGroq ? 'groq' : 'openai',
+        })
+        loadingBubble?.remove()
+        if (result?.text?.trim()) {
+          _transcript = result.text
+          addChatBubble('professor', 'Tu presentación', result.text)
+          await window.api.classSaveTranscript({ sessionId: _sessionId, transcript: _transcript }).catch(() => {})
+        } else if (result?.error) {
+          addChatBubble('system', null, `⚠ Error transcribiendo: ${result.error}`)
+        } else {
+          addChatBubble('system', null, '⚠ Transcripción vacía — habla más cerca del micrófono')
+        }
+      } catch (err) {
+        loadingBubble?.remove()
       }
-    } catch (err) {
-      window.api.logToMain?.(`[batch] error: ${err?.message || err}`)
-      loadingBubble?.remove()
     }
   }
+
+  startQA()
 }
 
 // ── ClassTimer ────────────────────────────────────────────────────────────────
@@ -1264,6 +1262,7 @@ async function processStudent(index) {
       sessionId: _sessionId,
       history: [],
       previousQA: _qaLog.map(q => ({ studentName: q.studentName, question: q.question })),
+      transcript: _transcript || null,
       llmProvider: _prepLlmProvider, llmModel: _prepLlmModel
     })
     removeTypingIndicator()

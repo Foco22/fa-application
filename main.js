@@ -40,6 +40,7 @@ function createWindow() {
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: '#000000',
+    icon: path.join(__dirname, 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,

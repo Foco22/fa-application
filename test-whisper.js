@@ -53,10 +53,15 @@ async function main() {
     console.log('⚠  Audio demasiado silencioso — el micrófono no captura voz')
   }
 
-  // Amplificar 12dB con ffmpeg
+  // Groq funciona mejor con raw — OpenAI necesita amplificación
   const ampFile = '/tmp/test-whisper-amp.wav'
-  execSync(`ffmpeg -y -i ${wavFile} -af "volume=12dB" ${ampFile} 2>/dev/null`)
-  console.log('Amplificado 12dB con ffmpeg')
+  if (provider !== 'groq') {
+    execSync(`ffmpeg -y -i ${wavFile} -af "volume=12dB" ${ampFile} 2>/dev/null`)
+    console.log('Amplificado 12dB con ffmpeg')
+  } else {
+    fs.copyFileSync(wavFile, ampFile)
+    console.log('Audio sin procesar')
+  }
 
   const baseURL = provider === 'groq' ? 'https://api.groq.com/openai/v1' : undefined
   const model   = provider === 'groq' ? 'whisper-large-v3-turbo' : 'gpt-4o-mini-transcribe'

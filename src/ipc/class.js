@@ -72,7 +72,7 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
     db.updateClassSession(sessionId, { transcript })
   })
 
-  ipcMain.handle('class-student-question', async (_e, { studentId, paperId, sessionId, history, previousQA, reaction, llmProvider, llmModel }) => {
+  ipcMain.handle('class-student-question', async (_e, { studentId, paperId, sessionId, history, previousQA, reaction, transcript, llmProvider, llmModel }) => {
     const student = STUDENTS.find(s => s.id === studentId)
     if (!student) return { question: '¿Podría explicar más sobre el método?' }
     try {
@@ -80,7 +80,7 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
       const llm = createClassLLM(settings, { llmProvider, llmModel })
       const paper = db.getPaper(paperId)
       const slides = db.getClassSlides(sessionId)
-      const question = await generateTurn(student, { paper, slides, history: history || [], previousQA: previousQA || [], reaction: reaction || null }, llm)
+      const question = await generateTurn(student, { paper, slides, history: history || [], previousQA: previousQA || [], reaction: reaction || null, transcript: transcript || null }, llm)
       return { question }
     } catch (err) {
       console.error('[class-student-question]', err?.message || err)

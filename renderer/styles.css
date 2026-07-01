@@ -240,13 +240,17 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
   -webkit-app-region: drag; position: relative; z-index: 50;
 }
 .topbar button, .topbar input { -webkit-app-region: no-drag; }
-.topbar-left, .topbar-right { display: flex; align-items: center; gap: var(--sp-xs); }
+.topbar-left { display: flex; align-items: center; gap: var(--sp-xs); margin-left: calc(-1 * var(--sp-md)); }
+.topbar-right { display: flex; align-items: center; gap: var(--sp-xs); }
 .topbar-center { position: absolute; left: 50%; transform: translateX(-50%); }
 
-.app-name {
-  font-family: var(--font-display);
-  font-size: 14px; font-weight: 600;
-  color: var(--text-2); letter-spacing: -0.3px;
+.app-logo-wrap {
+  width: var(--activity-w);
+  display: flex; align-items: center; justify-content: center;
+}
+.app-logo {
+  width: 26px; height: 26px;
+  object-fit: contain;
 }
 .fetch-status { font-size: 12px; color: var(--text-3); letter-spacing: -0.12px; }
 

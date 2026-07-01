@@ -1,16 +1,14 @@
 
-Clase:
+- Claass
+ Hacer prueba completya
 
-- Whisper local para tranacricopn, no remoto.
 
 Retrieval:
 - Hybrid Search
-- Rerank
+- Rerank (free)
 - Soloy abstract
 - Keywords del usuario.
 
-Logo
-- Sol 
 
 Costs
 - Seccion costo, monitoreo todo.

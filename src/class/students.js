@@ -1,5 +1,5 @@
 const { parseJSONResponse } = require('../llm/prompts')
-const { buildTurnInstruction, buildHistoryBlock, buildPreviousQABlock, buildStudentSystemPrompt } = require('./prompts')
+const { buildTurnInstruction, buildHistoryBlock, buildPreviousQABlock, buildStudentSystemPrompt, buildSlidesBlock } = require('./prompts')
 
 const STUDENTS = [
   {
@@ -32,15 +32,20 @@ const STUDENTS = [
 ]
 
 async function generateTurn(student, context, llm) {
-  const { paper, slides, history, previousQA } = context
+  const { paper, slides, history, previousQA, transcript } = context
   const isFirst = !history || history.length === 0
+
+  const slidesBlock = buildSlidesBlock(slides)
+  const transcriptBlock = transcript
+    ? `\n\nLo que el profesor dijo en su presentación:\n"""\n${transcript}\n"""`
+    : ''
+  const prevBlock = buildPreviousQABlock(previousQA)
+
+  const contextMsg = `El profesor acaba de terminar su presentación.${slidesBlock}${transcriptBlock}${prevBlock}`
 
   const messages = [
     { role: 'system', content: student.systemPrompt(paper, slides) },
-    {
-      role: 'user',
-      content: `El profesor acaba de terminar su explicación.${buildPreviousQABlock(previousQA)}`
-    }
+    { role: 'user', content: contextMsg }
   ]
 
   for (const h of (history || [])) {
