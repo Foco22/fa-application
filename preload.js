@@ -46,6 +46,10 @@ contextBridge.exposeInMainWorld('api', {
   classEndSession:      (data)      => ipcRenderer.invoke('class-end-session', data),
   classGetSessions:     (paperId)   => ipcRenderer.invoke('class-get-sessions', paperId),
   classTranscribeAudio: (data)      => ipcRenderer.invoke('class-transcribe-audio', data),
+  classStartStream:     (opts)      => ipcRenderer.invoke('class-start-stream', opts),
+  classStopStream:      ()          => ipcRenderer.invoke('class-stop-stream'),
+  onStreamText:  (cb) => ipcRenderer.on('class-stream-text',  (_e, text) => cb(text)),
+  onStreamDebug: (cb) => ipcRenderer.on('class-stream-debug', (_e, msg)  => cb(msg)),
   classGetHint:         (data)      => ipcRenderer.invoke('class-get-hint', data),
   classAssistantMessage:(data)      => ipcRenderer.invoke('class-assistant-message', data),
 
@@ -53,5 +57,6 @@ contextBridge.exposeInMainWorld('api', {
   maximizeWindow:  ()         => ipcRenderer.send('window-maximize'),
   closeWindow:     ()         => ipcRenderer.send('window-close'),
 
-  removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
+  removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
+  logToMain: (msg) => ipcRenderer.send('renderer-log', msg)
 })

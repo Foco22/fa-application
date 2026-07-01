@@ -3,15 +3,18 @@ Clase:
 
 - Whisper local para tranacricopn, no remoto.
 
-
 Retrieval:
 - Hybrid Search
+- Rerank
 - Soloy abstract
 - Keywords del usuario.
-- Preferidos. Si yo quiero agregarla a prefiero, se va.
 
 Logo
 - Sol 
+
+Costs
+- Seccion costo, monitoreo todo.
+
 
 Ideas para avanzar:
 

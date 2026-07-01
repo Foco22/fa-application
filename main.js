@@ -18,11 +18,14 @@ const cron                    = require('node-cron')
 const { registerHandlers }    = require('./src/ipc')
 const { createEmbeddings, indexReferenceFolder, indexFiles, scoreAbstractAgainst } = require('./src/embeddings')
 const { createTranscription } = require('./src/transcription')
+const { createWhisperStream } = require('./src/transcription/whisper-stream')
 const vaultMod                = require('./src/vault')
 
-const DB_PATH   = path.join(app.getPath('userData'), 'papers.db')
-const PDFS_DIR  = path.join(app.getPath('userData'), 'pdfs')
-const VAULT_DIR = vaultMod.DEFAULT_VAULT_DIR
+const DB_PATH             = path.join(app.getPath('userData'), 'papers.db')
+const PDFS_DIR            = path.join(app.getPath('userData'), 'pdfs')
+const VAULT_DIR           = vaultMod.DEFAULT_VAULT_DIR
+const WHISPER_STREAM_BIN  = path.join(__dirname, 'tools/whisper.cpp/build/bin/whisper-stream')
+const WHISPER_MODELS_DIR  = path.join(__dirname, 'tools/whisper.cpp/models')
 
 let mainWindow
 let db
@@ -46,6 +49,7 @@ function createWindow() {
   mainWindow.maximize()
   mainWindow.loadFile('renderer/index.html')
 
+  ipcMain.on('renderer-log', (_e, msg) => console.log('[renderer]', msg))
   ipcMain.on('window-minimize', () => mainWindow.minimize())
   ipcMain.on('window-maximize', () => {
     mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize()
@@ -80,6 +84,9 @@ app.whenReady().then(() => {
       downloadPdf, extractText, extractFirstPage, matchesUniversityInText,
       createEmbeddings, scoreAbstractAgainst, indexReferenceFolder, indexFiles,
       createTranscription,
+      createWhisperStream,
+      whisperStreamBin:  fs.existsSync(WHISPER_STREAM_BIN) ? WHISPER_STREAM_BIN : null,
+      whisperModelsDir:  fs.existsSync(WHISPER_MODELS_DIR) ? WHISPER_MODELS_DIR : null,
       shell, dialog,
       httpClient: axios, pdfParse, pdfsDir: PDFS_DIR, vault
     }

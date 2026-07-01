@@ -406,11 +406,40 @@
               <option value="pt">Português</option>
               <option value="">Auto-detectar</option>
             </select>
-            <span class="class-section-title" style="margin-top:16px">Modelo de transcripción</span>
+            <span class="class-section-title" style="margin-top:16px">Compañía transcripción</span>
+            <select id="class-transcription-backend-select" class="class-lang-select">
+              <option value="groq">Groq</option>
+              <option value="whisper">OpenAI</option>
+              <option value="whisper-local">Local (whisper.cpp)</option>
+              <option value="webspeech">Web Speech (Chrome)</option>
+            </select>
+            <span class="class-section-title" style="margin-top:4px" id="class-groq-model-label">Modelo transcripción</span>
+            <select id="class-groq-model-select" class="class-lang-select">
+              <option value="whisper-large-v3-turbo">whisper-large-v3-turbo</option>
+              <option value="whisper-large-v3">whisper-large-v3</option>
+            </select>
+            <span class="class-section-title" style="margin-top:4px" id="class-model-select-label">Modelo transcripción</span>
             <select id="class-model-select" class="class-lang-select">
               <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</option>
               <option value="gpt-4o-transcribe">gpt-4o-transcribe</option>
               <option value="whisper-1">whisper-1</option>
+            </select>
+            <span class="class-section-title" style="margin-top:4px" id="class-local-model-label">Modelo local</span>
+            <select id="class-local-model-select" class="class-lang-select">
+              <option value="small">small (289MB)</option>
+              <option value="base">base (142MB)</option>
+              <option value="large-v3-turbo">turbo (1.6GB, solo GPU)</option>
+              <option value="medium">medium (solo GPU)</option>
+            </select>
+            <span class="class-section-title" style="margin-top:16px">Compañía LLM</span>
+            <select id="class-prep-llm-provider" class="class-lang-select">
+              <option value="deepseek">DeepSeek</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+            </select>
+            <span class="class-section-title" style="margin-top:4px">Modelo LLM</span>
+            <select id="class-prep-llm-model" class="class-lang-select">
+              <option value="deepseek-v4-flash">deepseek-v4-flash</option>
             </select>
             <button id="class-btn-start" class="btn-primary class-start-btn" disabled>
               Iniciar Clase →
@@ -625,6 +654,10 @@
     <div id="class-sidebar-chat" class="class-sidebar class-sidebar--chat hidden">
       <div class="class-sidebar-chat-resize" id="class-sidebar-chat-resize"></div>
       <div class="class-sidebar-header">Chat de clase</div>
+      <div id="class-rec-indicator" class="class-rec-indicator hidden">
+        <span class="class-rec-dot"></span>
+        <span id="class-rec-label">Escuchando…</span>
+      </div>
       <div id="class-qa-messages" class="class-qa-messages"></div>
       <div class="chat-pill-wrap">
         <div class="chat-pill" id="qa-pill">
@@ -742,11 +775,17 @@
           <div class="form-group">
             <label>Proveedor</label>
             <select id="s-transcription-provider">
+              <option value="groq">Groq Whisper (recomendado — rápido, multilingual)</option>
               <option value="webspeech">Web Speech API (rápida, gratis)</option>
               <option value="whisper">Whisper / OpenAI (precisa)</option>
+              <option value="whisper-local">Whisper local / whisper.cpp (gratis, sin internet)</option>
             </select>
           </div>
-          <p class="settings-hint">Web Speech usa Chromium directamente. El modelo de transcripción se elige al preparar cada clase.</p>
+          <div class="form-group" id="s-groq-key-group">
+            <label>Groq API Key <a href="https://console.groq.com/keys" target="_blank" style="font-size:11px;margin-left:6px">Obtener gratis →</a></label>
+            <input type="password" id="s-groq-api-key" placeholder="gsk_...">
+          </div>
+          <p class="settings-hint">Groq usa <code>whisper-large-v3-turbo</code> (español+inglés, más rápido que OpenAI). Web Speech usa Chromium directamente. Whisper local requiere compilar <code>tools/whisper.cpp/stream</code>.</p>
         </div>
         <div class="settings-section">
           <h3>Papers de Referencia</h3>

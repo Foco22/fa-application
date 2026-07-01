@@ -1,4 +1,5 @@
 import { toast } from './toast.js'
+import { LLM_PROVIDERS } from './constants.js'
 
 // ── Module state ─────────────────────────────────────────────────────────────
 let _paper = null
@@ -18,10 +19,16 @@ let _mediaRecorder = null
 let _transcribeInterval = null
 let _vadPoll = null
 let _audioCtx = null
+let _pendingBatchAudio = null
 let _speechRecognition = null
 let _recognitionActive = false
+let _usingWhisperLocal = false
 let _classLanguage = 'es'
-let _classModel = 'gpt-4o-mini-transcribe'
+let _classModel = 'whisper-large-v3-turbo'
+let _localModel = 'small'
+let _transcriptionBackend = 'groq'
+let _prepLlmProvider = 'deepseek'
+let _prepLlmModel = 'deepseek-v4-flash'
 
 // Q&A state
 let _qaStudentIndex = 0
@@ -72,6 +79,7 @@ function clearSessionState() {
   _currentSlideIndex = 0
   _transcript        = ''
   _professorBubble   = null
+  _pendingBatchAudio = null
   _prepSlideIndex    = 0
   _qaStudentIndex    = 0
   _qaHistory         = []
@@ -131,6 +139,26 @@ function clearSessionState() {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+function updatePrepLlmModels(provider) {
+  const sel = document.getElementById('class-prep-llm-model')
+  if (!sel) return
+  const models = LLM_PROVIDERS[provider]?.models || []
+  sel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('')
+}
+
+function updateModelSelectVisibility(backend) {
+  const showGroq   = backend === 'groq'
+  const showOpenAI = backend === 'whisper'
+  const showLocal  = backend === 'whisper-local'
+  const el = (id) => document.getElementById(id)
+  if (el('class-groq-model-label'))   el('class-groq-model-label').style.display   = showGroq   ? '' : 'none'
+  if (el('class-groq-model-select'))  el('class-groq-model-select').style.display  = showGroq   ? '' : 'none'
+  if (el('class-model-select-label')) el('class-model-select-label').style.display = showOpenAI ? '' : 'none'
+  if (el('class-model-select'))       el('class-model-select').style.display       = showOpenAI ? '' : 'none'
+  if (el('class-local-model-label'))  el('class-local-model-label').style.display  = showLocal  ? '' : 'none'
+  if (el('class-local-model-select')) el('class-local-model-select').style.display = showLocal  ? '' : 'none'
+}
+
 export function enterClassMode(paper) {
   clearSessionState()
   _paper = paper
@@ -144,6 +172,22 @@ export function enterClassMode(paper) {
   renderSlidesGrid()
   resetUI()
   showView('prep')
+
+  // Pre-populate selectors from saved settings
+  window.api.getSettings().then(s => {
+    const backendSel = document.getElementById('class-transcription-backend-select')
+    if (backendSel) {
+      backendSel.value = s.transcriptionProvider || 'groq'
+      updateModelSelectVisibility(backendSel.value)
+    }
+    const llmSel = document.getElementById('class-prep-llm-provider')
+    if (llmSel) {
+      llmSel.value = s.classLlmProvider || 'deepseek'
+      updatePrepLlmModels(llmSel.value)
+      const modelSel = document.getElementById('class-prep-llm-model')
+      if (modelSel && s.classLlmModel) modelSel.value = s.classLlmModel
+    }
+  }).catch(() => {})
 }
 
 export function exitClassMode() {
@@ -298,6 +342,14 @@ export function initClass() {
       _pdfHintsScale = Math.max(PDF_ZOOM_MIN, parseFloat((_pdfHintsScale - PDF_ZOOM_STEP).toFixed(2)))
       await renderPdfHintsPages()
     }
+  })
+
+  document.getElementById('class-transcription-backend-select')?.addEventListener('change', (e) => {
+    updateModelSelectVisibility(e.target.value)
+  })
+
+  document.getElementById('class-prep-llm-provider')?.addEventListener('change', (e) => {
+    updatePrepLlmModels(e.target.value)
   })
 
   document.getElementById('class-file-input').addEventListener('change', onFileChange)
@@ -477,8 +529,14 @@ async function startClass() {
     setLoading('¡Todo listo! Iniciando clase…', '')
     const { slides } = await window.api.classStartSession({ sessionId })
 
-    _classLanguage = document.getElementById('class-lang-select')?.value ?? 'es'
-    _classModel = document.getElementById('class-model-select')?.value || 'gpt-4o-mini-transcribe'
+    _classLanguage        = document.getElementById('class-lang-select')?.value ?? 'es'
+    _transcriptionBackend = document.getElementById('class-transcription-backend-select')?.value || 'groq'
+    _classModel           = _transcriptionBackend === 'groq'
+      ? (document.getElementById('class-groq-model-select')?.value || 'whisper-large-v3-turbo')
+      : (document.getElementById('class-model-select')?.value || 'gpt-4o-mini-transcribe')
+    _localModel           = document.getElementById('class-local-model-select')?.value || 'small'
+    _prepLlmProvider      = document.getElementById('class-prep-llm-provider')?.value || 'deepseek'
+    _prepLlmModel         = document.getElementById('class-prep-llm-model')?.value || 'deepseek-v4-flash'
     await setupActiveView(slides)
     showView('active')
   } catch (err) {
@@ -577,6 +635,8 @@ function stopWebcam() {
 
 async function endPresentation() {
   _timer?.stop()
+  // Capture batch data before stopSpeechRecognition resets _pendingBatchAudio via rec.stop()
+  const batchAudio = _pendingBatchAudio
   stopSpeechRecognition()
 
   if (_sessionId && _transcript) {
@@ -616,6 +676,49 @@ async function endPresentation() {
 
   showView('qa')
   startQA()
+
+  // Batch transcription: transcribe after Q&A view is visible so bubbles appear in the right chat
+  if (batchAudio) {
+    window.api.logToMain?.(`[batch] esperando recorder... chunks=${batchAudio.chunks.length} done=${batchAudio._recorderDone}`)
+    // Wait for MediaRecorder.onstop to fire (fires after last ondataavailable)
+    await new Promise(resolve => {
+      if (batchAudio._recorderDone) { resolve(); return }
+      const check = setInterval(() => { if (batchAudio._recorderDone) { clearInterval(check); resolve() } }, 50)
+      setTimeout(() => { clearInterval(check); resolve() }, 3000)
+    })
+    const { chunks, mimeType: batchMime } = batchAudio
+    window.api.logToMain?.(`[batch] chunks=${chunks.length} backend=${_transcriptionBackend}`)
+    if (chunks.length === 0) { addChatBubble('system', null, '⚠ No se grabó audio'); return }
+    const loadingBubble = addChatBubble('system', null, '⏳ Transcribiendo tu presentación…')
+    try {
+      const blob = new Blob(chunks, { type: batchMime })
+      window.api.logToMain?.(`[batch] enviando ${(blob.size / 1024).toFixed(0)} KB backend=${_transcriptionBackend} model=${_classModel}`)
+      const arrayBuffer = await blob.arrayBuffer()
+      const audio = Array.from(new Uint8Array(arrayBuffer))
+      const isGroq = _transcriptionBackend === 'groq'
+      const result = await window.api.classTranscribeAudio({
+        audio,
+        mimeType: batchMime,
+        language: _classLanguage || undefined,
+        model:    _classModel || (isGroq ? 'whisper-large-v3-turbo' : undefined),
+        provider: isGroq ? 'groq' : 'openai',
+      })
+      loadingBubble?.remove()
+      window.api.logToMain?.(`[batch] resultado: text="${(result?.text||'').slice(0,80)}" error="${result?.error||''}"`)
+      if (result?.text?.trim()) {
+        _transcript = result.text
+        addChatBubble('professor', 'Tu presentación', result.text)
+        await window.api.classSaveTranscript({ sessionId: _sessionId, transcript: _transcript }).catch(() => {})
+      } else if (result?.error) {
+        addChatBubble('system', null, `⚠ Error transcribiendo: ${result.error}`)
+      } else {
+        addChatBubble('system', null, '⚠ Transcripción vacía — habla más cerca del micrófono')
+      }
+    } catch (err) {
+      window.api.logToMain?.(`[batch] error: ${err?.message || err}`)
+      loadingBubble?.remove()
+    }
+  }
 }
 
 // ── ClassTimer ────────────────────────────────────────────────────────────────
@@ -852,7 +955,8 @@ async function sendAssistantMessage() {
       missing: _assistantMissing,
       excerpts: _assistantExcerpts,
       history: _assistantHistory,
-      canRevealAnswer: _assistantCanReveal
+      canRevealAnswer: _assistantCanReveal,
+      llmProvider: _prepLlmProvider, llmModel: _prepLlmModel
     })
     removeAssistantTyping()
     if (reply) addAssistantMessage(reply, 'assistant')
@@ -917,7 +1021,8 @@ async function fetchAndShowExcerpts(missing) {
         paperId: _paper.id,
         history: _qaHistory,
         exchangeCount: 1,
-        missing
+        missing,
+        llmProvider: _prepLlmProvider, llmModel: _prepLlmModel
       })
       hideSpotlightLoading()
     }
@@ -1079,7 +1184,8 @@ async function fetchAndShowGuidance(missing) {
       paperId: _paper.id,
       history: _qaHistory,
       exchangeCount: 2,
-      missing
+      missing,
+      llmProvider: _prepLlmProvider, llmModel: _prepLlmModel
     })
     removeAssistantTyping()
     if (result?.excerpts?.length) _assistantExcerpts = result.excerpts
@@ -1101,7 +1207,8 @@ async function fetchAndShowAnswer(missing) {
       paperId: _paper.id,
       history: _qaHistory,
       exchangeCount: 3,
-      missing
+      missing,
+      llmProvider: _prepLlmProvider, llmModel: _prepLlmModel
     })
     removeAssistantTyping()
     if (result?.excerpts?.length) _assistantExcerpts = result.excerpts
@@ -1156,7 +1263,8 @@ async function processStudent(index) {
       paperId: _paper.id,
       sessionId: _sessionId,
       history: [],
-      previousQA: _qaLog.map(q => ({ studentName: q.studentName, question: q.question }))
+      previousQA: _qaLog.map(q => ({ studentName: q.studentName, question: q.question })),
+      llmProvider: _prepLlmProvider, llmModel: _prepLlmModel
     })
     removeTypingIndicator()
     if (!question) throw new Error('empty question')
@@ -1193,7 +1301,8 @@ async function sendQAResponse() {
       sessionId: _sessionId,
       professorAnswer: text,
       history: _qaHistory,
-      exchangeCount: _qaExchangeCount
+      exchangeCount: _qaExchangeCount,
+      llmProvider: _prepLlmProvider, llmModel: _prepLlmModel
     })
     removeTypingIndicator()
 
@@ -1229,7 +1338,8 @@ async function sendQAResponse() {
           sessionId: _sessionId,
           history: _qaHistory,
           previousQA: _qaLog.map(q => ({ studentName: q.studentName, question: q.question })),
-          reaction: result.reaction
+          reaction: result.reaction,
+          llmProvider: _prepLlmProvider, llmModel: _prepLlmModel
         })
         removeTypingIndicator()
         if (!question) throw new Error('empty question')
@@ -1263,7 +1373,8 @@ async function finishQA() {
     endResult = await window.api.classEndSession({
       sessionId: _sessionId,
       transcript: _transcript,
-      qaLog: _qaLog
+      qaLog: _qaLog,
+      llmProvider: _prepLlmProvider, llmModel: _prepLlmModel
     })
   } catch {}
 
@@ -1310,12 +1421,27 @@ function renderResults({ presentationScore, qaScore, presentationFeedback, perSt
   })
 }
 
+// ── Recording indicator ───────────────────────────────────────────────────────
+
+function setRecordingIndicator(active, label = 'Escuchando…') {
+  const el  = document.getElementById('class-rec-indicator')
+  const lbl = document.getElementById('class-rec-label')
+  if (!el) return
+  el.classList.toggle('hidden', !active)
+  if (lbl) lbl.textContent = label
+}
+
 // ── Transcripción: Web Speech API (default, rápida) + Whisper (fallback) ─────
 
-const CHUNK_INTERVAL_MS = 2000  // Whisper chunk every 2 seconds
 
 // Frases que Whisper alucina cuando hay silencio o ruido de fondo
 const WHISPER_HALLUCINATIONS = [
+  // Silencio / ruido de fondo (whisper alucina estas con micro abierto sin voz)
+  '♪', '...', 'música', 'aplausos', 'risas', 'silencio',
+  'music', 'applause', 'laughter', 'noise', 'inaudible',
+  // Saludos de YouTube que whisper "imagina" (silencio detectado como intro de video)
+  '¡hola!', '¡hola, ', '¡halo!', 'halo,', 'abuenas', 'a buenas',
+  'en clips', 'en clipsión', 'clipsión',
   // YouTube / streaming (español)
   'gracias por ver el vídeo', 'gracias por ver el video', 'gracias por ver',
   'suscríbete', 'suscribete', 'like y suscríbete', 'dale like',
@@ -1328,8 +1454,13 @@ const WHISPER_HALLUCINATIONS = [
   'please subscribe', 'don\'t forget to subscribe', 'hit the like button',
   'see you in the next', 'see you next time', 'that\'s all for today',
   'subtitles by', 'captions by',
-  // Artefactos de ruido / silencio
-  'se viva', '♪', '...',
+  // Artefactos genéricos
+  'se viva', 'alimmenta', 'amara.org', 'comunidad de amara', 'subtítulos realizados', 'norte de brasil',
+  'marquías, humanos', 'oficina de marquías',
+  'www.', '.com', '.org', '.net',   // URLs siempre son alucinación
+  // Prompt-completion hallucinations (whisper repite el prompt cuando no entiende)
+  'el profesor explica', 'universidad autónoma de méxico',
+  'por qué están nos llorando',
 ]
 
 // Detecta artefactos de ruido: palabra única repetida 4+ veces (ej. "no, no, no, no")
@@ -1343,12 +1474,12 @@ function isHallucination(text) {
 }
 
 async function startSpeechRecognition() {
-  const settings = await window.api.getSettings()
-  const provider = settings.transcriptionProvider || 'whisper'
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-  console.log('[speech] provider:', provider, '| SpeechRecognition available:', !!SpeechRecognition)
-  if (provider === 'webspeech' && SpeechRecognition) {
+  console.log('[speech] backend:', _transcriptionBackend, '| SpeechRecognition available:', !!SpeechRecognition)
+  if (_transcriptionBackend === 'webspeech' && SpeechRecognition) {
     startWebSpeechRecognition(SpeechRecognition)
+  } else if (_transcriptionBackend === 'whisper-local') {
+    await startWhisperLocalStream()
   } else {
     await startWhisperRecognition()
   }
@@ -1366,6 +1497,7 @@ function startWebSpeechRecognition(SpeechRecognition) {
   recognition.onstart = () => {
     console.log('[speech] Web Speech API started')
     if (liveEl) liveEl.textContent = '🎙 Escuchando…'
+    setRecordingIndicator(true, 'Escuchando (Web Speech)…')
   }
 
   recognition.onresult = (event) => {
@@ -1407,9 +1539,33 @@ function startWebSpeechRecognition(SpeechRecognition) {
   recognition.start()
 }
 
+async function startWhisperLocalStream() {
+  const liveEl = document.getElementById('class-transcript-live')
+  if (liveEl) liveEl.textContent = '🎙 Iniciando whisper local…'
+
+  const result = await window.api.classStartStream({ language: _classLanguage || 'es', localModel: _localModel || 'small' })
+  if (result?.error) {
+    if (liveEl) liveEl.textContent = `⚠ ${result.error}`
+    return
+  }
+
+  _usingWhisperLocal = true
+  window.api.onStreamText((text) => {
+    console.log('[stream-text]', text)
+    if (!isHallucination(text)) appendTranscript(text)
+    else console.warn('[hallucination filtered]', text)
+  })
+  window.api.onStreamDebug?.((msg) => {
+    console.log('[whisper-debug]', msg)
+    if (liveEl) liveEl.textContent = msg.slice(0, 120)
+  })
+  if (liveEl) liveEl.textContent = '🎙 Iniciando modelo…'
+  setRecordingIndicator(true, 'Transcribiendo con whisper.cpp…')
+}
+
 async function startWhisperRecognition() {
   const liveEl = document.getElementById('class-transcript-live')
-  if (liveEl) liveEl.textContent = '🎙 Iniciando micrófono…'
+  if (liveEl) liveEl.textContent = '🔴 Grabando…'
 
   let stream
   try {
@@ -1423,73 +1579,16 @@ async function startWhisperRecognition() {
     ? 'audio/webm;codecs=opus'
     : 'audio/webm'
 
-  let pendingChunks = []
-  let inFlight = 0          // llamadas API en curso
-  const MAX_PARALLEL = 2    // máximo 2 llamadas simultáneas
+  // Batch mode: record raw stream, amplify PCM post-capture before sending to Whisper
+  const audioChunks = []
+  _mediaRecorder = new MediaRecorder(stream, { mimeType })
+  _mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data) }
+  _mediaRecorder.start(5000)  // collect in 5s pieces (keeps memory bounded)
 
-  // VAD: threshold bajo para no descartar habla rápida o suave
-  const audioCtx = new AudioContext()
-  const analyser = audioCtx.createAnalyser()
-  audioCtx.createMediaStreamSource(stream).connect(analyser)
-  const vadBuffer = new Uint8Array(analyser.frequencyBinCount)
-  let segmentHadVoice = false
-  const VAD_RMS_THRESHOLD = 8
-  const vadPoll = setInterval(() => {
-    analyser.getByteTimeDomainData(vadBuffer)
-    const rms = Math.sqrt(vadBuffer.reduce((s, v) => s + (v - 128) ** 2, 0) / vadBuffer.length)
-    if (rms > VAD_RMS_THRESHOLD) segmentHadVoice = true
-  }, 100)
+  setRecordingIndicator(true, 'Grabando…')
 
-  async function sendChunk(blob) {
-    if (inFlight >= MAX_PARALLEL) return  // descarta en vez de acumular lag
-    inFlight++
-    try {
-      const arrayBuffer = await blob.arrayBuffer()
-      const audio = Array.from(new Uint8Array(arrayBuffer))
-      const result = await window.api.classTranscribeAudio({ audio, mimeType, language: _classLanguage || undefined, model: _classModel || undefined })
-      if (result?.text?.trim() && !isHallucination(result.text)) {
-        appendTranscript(result.text)
-      } else if (result?.error) {
-        if (liveEl) liveEl.textContent = `⚠ ${result.error}`
-        return
-      }
-    } catch { /* silencioso — siguiente chunk lo intentará */ }
-    finally {
-      inFlight--
-      if (liveEl && inFlight === 0) liveEl.textContent = '🎙 Escuchando…'
-    }
-  }
-
-  function buildRecorder() {
-    const rec = new MediaRecorder(stream, { mimeType })
-    rec.ondataavailable = (e) => { if (e.data.size > 0) pendingChunks.push(e.data) }
-    rec.onstop = () => {
-      const hadVoice = segmentHadVoice
-      segmentHadVoice = false
-      const chunks = pendingChunks.splice(0)
-      if (chunks.length === 0 || !hadVoice) return
-      const blob = new Blob(chunks, { type: mimeType })
-      if (blob.size < 500) return
-      if (liveEl) liveEl.textContent = '🎙 Procesando…'
-      sendChunk(blob)  // fire-and-forget, hasta MAX_PARALLEL concurrentes
-    }
-    return rec
-  }
-
-  _mediaRecorder = buildRecorder()
-  _mediaRecorder.start()
-  if (liveEl) liveEl.textContent = '🎙 Escuchando…'
-
-  _transcribeInterval = setInterval(() => {
-    if (_mediaRecorder?.state === 'recording') {
-      _mediaRecorder.stop()
-      _mediaRecorder = buildRecorder()
-      _mediaRecorder.start()
-    }
-  }, CHUNK_INTERVAL_MS)
-
-  _vadPoll = vadPoll
-  _audioCtx = audioCtx
+  _audioCtx = { close: () => stream.getTracks().forEach(t => t.stop()) }
+  _pendingBatchAudio = { chunks: audioChunks, mimeType }
 }
 
 // ── Voice input buttons (push-to-talk for Q&A and assistant chat) ─────────────
@@ -1639,18 +1738,32 @@ function stopSpeechRecognition() {
     _speechRecognition.stop()
     _speechRecognition = null
   }
-  // Whisper / MediaRecorder — stop recorder before tracks so onstop fires with last chunk
+  // Whisper local subprocess
+  if (_usingWhisperLocal) {
+    window.api.classStopStream?.()
+    window.api.removeAllListeners?.('class-stream-text')
+    _usingWhisperLocal = false
+  }
+  // Whisper cloud batch mode — stop recorder and collect all chunks
   clearInterval(_transcribeInterval)
   _transcribeInterval = null
   clearInterval(_vadPoll)
   _vadPoll = null
-  if (_mediaRecorder) {
+  if (_mediaRecorder && _pendingBatchAudio) {
+    const rec = _mediaRecorder
+    _mediaRecorder = null
+    rec.ondataavailable = (e) => { if (e.data.size > 0) _pendingBatchAudio.chunks.push(e.data) }
+    rec.onstop = () => { _pendingBatchAudio._recorderDone = true }
+    try { rec.stop() } catch {}
+    // AudioContext and stream tracks stopped via _audioCtx.close() below
+  } else if (_mediaRecorder) {
     const rec = _mediaRecorder
     _mediaRecorder = null
     try { rec.stop() } catch {}
-    rec.stream.getTracks().forEach(t => t.stop())
+    try { rec.stream.getTracks().forEach(t => t.stop()) } catch {}
   }
   if (_audioCtx) { _audioCtx.close(); _audioCtx = null }
+  setRecordingIndicator(false)
 }
 
 // ── Transcript ────────────────────────────────────────────────────────────────

@@ -1,14 +1,20 @@
+const path = require('path')
+const fs   = require('fs')
 const { canHaveClass, STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, evaluatePresentation, generateHint, assistantChat } = require('../class')
 
-function registerClassHandlers({ ipcMain, db, deps }) {
-  const { createLLM, createTranscription } = deps
+function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
+  const { createLLM, createTranscription, createWhisperStream, whisperStreamBin, whisperModelsDir } = deps
 
-  function createClassLLM(settings) {
+  let _whisperStream = null
+
+  function createClassLLM(settings, overrides = {}) {
+    const provider = overrides.llmProvider || settings.classLlmProvider || 'deepseek'
+    const model    = overrides.llmModel    || settings.classLlmModel    || 'deepseek-v4-flash'
     return createLLM({
       ...settings,
-      llmProvider: settings.classLlmProvider || 'deepseek',
-      llmModel:    settings.classLlmModel    || 'deepseek-v4-flash',
-      apiKey:      settings.classApiKey      || settings.apiKey
+      llmProvider: provider,
+      llmModel:    model,
+      apiKey:      settings.classApiKey || settings.apiKey
     })
   }
 
@@ -66,12 +72,12 @@ function registerClassHandlers({ ipcMain, db, deps }) {
     db.updateClassSession(sessionId, { transcript })
   })
 
-  ipcMain.handle('class-student-question', async (_e, { studentId, paperId, sessionId, history, previousQA, reaction }) => {
+  ipcMain.handle('class-student-question', async (_e, { studentId, paperId, sessionId, history, previousQA, reaction, llmProvider, llmModel }) => {
     const student = STUDENTS.find(s => s.id === studentId)
     if (!student) return { question: '¿Podría explicar más sobre el método?' }
     try {
       const settings = db.getAllSettings()
-      const llm = createClassLLM(settings)
+      const llm = createClassLLM(settings, { llmProvider, llmModel })
       const paper = db.getPaper(paperId)
       const slides = db.getClassSlides(sessionId)
       const question = await generateTurn(student, { paper, slides, history: history || [], previousQA: previousQA || [], reaction: reaction || null }, llm)
@@ -82,9 +88,9 @@ function registerClassHandlers({ ipcMain, db, deps }) {
     }
   })
 
-  ipcMain.handle('class-student-evaluate', async (_e, { studentId, paperId, sessionId, professorAnswer, history, exchangeCount }) => {
+  ipcMain.handle('class-student-evaluate', async (_e, { studentId, paperId, sessionId, professorAnswer, history, exchangeCount, llmProvider, llmModel }) => {
     const settings = db.getAllSettings()
-    const llm = createClassLLM(settings)
+    const llm = createClassLLM(settings, { llmProvider, llmModel })
     const paper = db.getPaper(paperId)
     const slides = db.getClassSlides(sessionId)
     const student = STUDENTS.find(s => s.id === studentId)
@@ -97,9 +103,9 @@ function registerClassHandlers({ ipcMain, db, deps }) {
     }
   })
 
-  ipcMain.handle('class-end-session', async (_e, { sessionId, transcript, qaLog }) => {
+  ipcMain.handle('class-end-session', async (_e, { sessionId, transcript, qaLog, llmProvider, llmModel }) => {
     const settings = db.getAllSettings()
-    const llm = createClassLLM(settings)
+    const llm = createClassLLM(settings, { llmProvider, llmModel })
     const session = db.getClassSession(sessionId)
     const paper = db.getPaper(session.paper_id)
 
@@ -151,11 +157,11 @@ function registerClassHandlers({ ipcMain, db, deps }) {
     return db.getClassSessions(paperId)
   })
 
-  ipcMain.handle('class-get-hint', async (_e, { studentId, paperId, history, exchangeCount, missing }) => {
+  ipcMain.handle('class-get-hint', async (_e, { studentId, paperId, history, exchangeCount, missing, llmProvider, llmModel }) => {
     const paper = db.getPaper(paperId)
     const student = STUDENTS.find(s => s.id === studentId)
     const settings = db.getAllSettings()
-    const llm = createClassLLM(settings)
+    const llm = createClassLLM(settings, { llmProvider, llmModel })
     try {
       return await generateHint(student, { paper, history: history || [], exchangeCount, missing }, llm)
     } catch {
@@ -163,9 +169,9 @@ function registerClassHandlers({ ipcMain, db, deps }) {
     }
   })
 
-  ipcMain.handle('class-assistant-message', async (_e, { paperId, message, question, missing, excerpts, history, canRevealAnswer }) => {
+  ipcMain.handle('class-assistant-message', async (_e, { question, missing, excerpts, history, canRevealAnswer, llmProvider, llmModel }) => {
     const settings = db.getAllSettings()
-    const llm = createClassLLM(settings)
+    const llm = createClassLLM(settings, { llmProvider, llmModel })
     try {
       const reply = await assistantChat({ question, missing, excerpts, history: history || [], canRevealAnswer: !!canRevealAnswer }, llm)
       return { reply }
@@ -175,15 +181,57 @@ function registerClassHandlers({ ipcMain, db, deps }) {
     }
   })
 
-  ipcMain.handle('class-transcribe-audio', async (_e, { audio, mimeType, language, model }) => {
+  ipcMain.handle('class-start-stream', (_e, { language = 'es', localModel = 'small' } = {}) => {
+    if (!whisperStreamBin || !whisperModelsDir) {
+      return { error: 'whisper.cpp no instalado. Compila tools/whisper.cpp/stream y descarga el modelo.' }
+    }
+    const modelPath = path.join(whisperModelsDir, `ggml-${localModel}.bin`)
+    if (!fs.existsSync(modelPath)) {
+      return { error: `Modelo "${localModel}" no encontrado. Descárgalo: bash models/download-ggml-model.sh ${localModel}` }
+    }
+    if (_whisperStream) { _whisperStream.stop(); _whisperStream = null }
+    _whisperStream = createWhisperStream(whisperStreamBin, modelPath)
+    _whisperStream.start({
+      language,
+      onText:  (text) => {
+        console.log('[whisper-text]', text)
+        mainWindow?.webContents.send('class-stream-text', text)
+      },
+      onDebug: (msg)  => {
+        console.log('[whisper-debug]', msg)
+        mainWindow?.webContents.send('class-stream-debug', msg)
+      },
+      onError: (err)  => {
+        console.error('[whisper-error]', err.message)
+        mainWindow?.webContents.send('class-stream-debug', `[error] ${err.message}`)
+      }
+    })
+    return { ok: true }
+  })
+
+  ipcMain.handle('class-stop-stream', () => {
+    _whisperStream?.stop()
+    _whisperStream = null
+    return { ok: true }
+  })
+
+  ipcMain.handle('class-transcribe-audio', async (_e, { audio, mimeType, language, model, prompt, provider }) => {
     const settings = db.getAllSettings()
-    const apiKey = settings.openaiApiKey || settings.apiKey
-    if (!apiKey) return { text: null, error: 'Configura una API key en Settings' }
+    const isGroq   = provider === 'groq'
+    const apiKey   = isGroq
+      ? settings.groqApiKey
+      : (settings.openaiApiKey || settings.apiKey)
+    if (!apiKey) return { text: null, error: isGroq
+      ? 'Agrega tu Groq API Key en Settings → Transcripción'
+      : 'Configura una API key en Settings' }
 
     try {
-      const transcription = createTranscription(apiKey, { model })
-      return await transcription.transcribe(audio, mimeType, language)
+      const transcription = createTranscription(apiKey, { model, provider })
+      const result = await transcription.transcribe(audio, mimeType, language, prompt)
+      console.log(`[transcribe] provider=${provider} model=${model} bytes=${audio?.length} text="${(result?.text||'').slice(0,80)}"`)
+      return result
     } catch (err) {
+      console.error(`[transcribe] error provider=${provider}:`, err.message)
       return { text: null, error: err.message }
     }
   })

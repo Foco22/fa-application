@@ -72,8 +72,9 @@ export async function openSettings() {
     btn.onclick = () => setActiveClassProvider(btn.dataset.provider)
   })
 
-  document.getElementById('s-api-key').value   = s.apiKey || ''
-  document.getElementById('s-ss-key').value    = s.semanticScholarApiKey || ''
+  document.getElementById('s-api-key').value      = s.apiKey || ''
+  document.getElementById('s-ss-key').value       = s.semanticScholarApiKey || ''
+  document.getElementById('s-groq-api-key').value = s.groqApiKey || ''
   document.getElementById('s-universities').value = s.universityList || DEFAULT_UNIVERSITIES.join('\n')
   document.getElementById('s-research-centers').value = s.researchCenterList || DEFAULT_RESEARCH_CENTERS.join('\n')
   document.getElementById('s-authors').value   = s.authorList || ''
@@ -115,6 +116,7 @@ export async function saveSettings() {
     authorList:            document.getElementById('s-authors').value,
     categoryList:          getSelectedCategories('s-categories-grid').join(','),
     transcriptionProvider: document.getElementById('s-transcription-provider').value,
+    groqApiKey:            document.getElementById('s-groq-api-key').value.trim(),
     referenceFolderPath:   document.getElementById('s-ref-folder').value,
     similarityThreshold:   document.getElementById('s-similarity-threshold').value || '0.72',
   }

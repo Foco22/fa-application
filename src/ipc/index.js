@@ -9,7 +9,7 @@ function registerHandlers({ ipcMain, db, deps, mainWindow }) {
   registerPapersHandlers({ ipcMain, db, deps, mainWindow })
   registerLearningHandlers({ ipcMain, db, deps, mainWindow })
   registerReferenceHandlers({ ipcMain, db, deps })
-  registerClassHandlers({ ipcMain, db, deps })
+  registerClassHandlers({ ipcMain, db, deps, mainWindow })
 
   return { runFetch: () => runFetch({ db, deps, mainWindow }) }
 }
