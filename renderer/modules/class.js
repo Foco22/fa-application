@@ -1699,7 +1699,8 @@ function attachVoiceButton({ micBtnId, sendBtnId, cancelBtnId, confirmBtnId, tex
         const result = await window.api.classTranscribeAudio({
           audio, mimeType,
           language: _classLanguage || undefined,
-          model: _classModel || undefined
+          model: _classModel || undefined,
+          provider: _transcriptionBackend === 'groq' ? 'groq' : 'openai'
         })
         if (result?.error) { toast('Error: ' + result.error, 'error'); return }
         const text = result?.text?.trim()

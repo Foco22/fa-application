@@ -105,7 +105,7 @@ function registerReferenceHandlers({ ipcMain, db, deps }) {
 
   ipcMain.handle('get-reference-list', () =>
     db.getReferencePapersList().map(r => {
-      const filename = r.path.split('/').pop().replace(/\.pdf$/i, '')
+      const filename = path.basename(r.path, '.pdf')
       const paperId  = 'ref-' + filename.replace(/[^a-zA-Z0-9._-]/g, '-')
       const paper    = db.getPaper(paperId)
       const name     = paper?.title || filename
