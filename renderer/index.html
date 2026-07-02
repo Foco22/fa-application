@@ -504,10 +504,18 @@
             <button id="class-btn-toggle-notes" class="class-notes-toggle-btn" title="Ver paper y notas">Paper</button>
           </div>
         </div>
-        <!-- Spotlight: the active student -->
+        <!-- Spotlight: professor webcam + student overlay -->
         <div class="class-qa-spotlight" id="class-qa-spotlight">
-          <div class="class-spotlight-avatar" id="class-spotlight-avatar"></div>
-          <div class="class-spotlight-name" id="class-spotlight-name">Esperando…</div>
+          <!-- Professor self-view (main) -->
+          <video id="class-qa-selfview" class="class-qa-selfview" autoplay muted playsinline></video>
+          <div class="class-qa-selfview-placeholder" id="class-qa-selfview-placeholder">
+            <span>Sin cámara</span>
+          </div>
+          <!-- Active student overlay (pip) -->
+          <div class="class-qa-student-pip" id="class-qa-student-pip">
+            <div class="class-spotlight-avatar" id="class-spotlight-avatar"></div>
+            <div class="class-spotlight-name" id="class-spotlight-name">Esperando…</div>
+          </div>
         </div>
         <!-- PDF view (replaces spotlight when toggled) -->
         <object id="class-qa-pdf-view" class="class-qa-pdf-view hidden" type="application/pdf" data=""></object>

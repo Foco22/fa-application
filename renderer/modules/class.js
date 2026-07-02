@@ -1218,6 +1218,19 @@ async function fetchAndShowAnswer(missing) {
 
 async function startQA() {
   _qaActive = true
+
+  // Show professor's own webcam in the spotlight
+  const selfview = document.getElementById('class-qa-selfview')
+  const placeholder = document.getElementById('class-qa-selfview-placeholder')
+  if (_webcamStream && selfview) {
+    selfview.srcObject = _webcamStream
+    selfview.classList.remove('hidden')
+    placeholder?.classList.add('hidden')
+  } else if (selfview) {
+    selfview.classList.add('hidden')
+    placeholder?.classList.remove('hidden')
+  }
+
   addChatBubble('system', null, 'La presentación ha terminado. Los estudiantes tienen preguntas.')
   await processStudent(0)
 }
