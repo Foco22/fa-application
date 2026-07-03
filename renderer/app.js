@@ -81,9 +81,13 @@ initContextMenu({ openPaper, renderVault })
 async function triggerFetch() {
   const actBtn   = document.getElementById('act-fetch')
   const status   = document.getElementById('fetch-status')
+  const overlay  = document.getElementById('fetch-overlay')
+  const overlayText = document.getElementById('fetch-overlay-text')
   actBtn.disabled = true
   actBtn.classList.add('spinning')
   status.textContent = 'Buscando papers…'
+  overlayText.textContent = 'Buscando papers nuevos…'
+  overlay.classList.remove('hidden')
 
   try {
     const result = await window.api.fetchPapers()
@@ -109,6 +113,7 @@ async function triggerFetch() {
   }
   actBtn.disabled = false
   actBtn.classList.remove('spinning')
+  overlay.classList.add('hidden')
 }
 
 /* ── Main app ───────────────────────────────────────────────────────────── */

@@ -36,7 +36,8 @@ function registerReferenceHandlers({ ipcMain, db, deps }) {
       return { indexed: 0, errors: 0, total: db.getReferenceCount() }
     }
     const embProvider = createEmbeddings(settings)
-    const res = await indexReferenceFolder(settings.referenceFolderPath, db, embProvider, pdfParse)
+    const llm         = createLLM(settings)
+    const res = await indexReferenceFolder(settings.referenceFolderPath, db, embProvider, pdfParse, llm)
     return { ...res, total: db.getReferenceCount() }
   })
 
@@ -90,7 +91,8 @@ function registerReferenceHandlers({ ipcMain, db, deps }) {
 
         if (!db.getReferencePaper(filePath)) {
           const embedding = await embProvider.generateEmbedding(snippet)
-          db.saveReferencePaper({ path: filePath, snippet, embedding: JSON.stringify(embedding) })
+          const abstractSummary = await llm.summarizeAbstract(abstract || snippet)
+          db.saveReferencePaper({ path: filePath, snippet, embedding: JSON.stringify(embedding), abstract_summary: abstractSummary })
         }
 
         indexed++

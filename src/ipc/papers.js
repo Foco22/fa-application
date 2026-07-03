@@ -1,53 +1,99 @@
 const fs   = require('fs')
 const path = require('path')
 
+const PRERANK_CAP = 15 // candidates handed to the cross-encoder rerank per fetch
+
+// Selection phase: scores every ArXiv candidate against two independent
+// interest signals (reference collection, declared keywordList), each
+// evaluated with hybrid search (embedding similarity + literal keyword
+// match). A candidate survives if ANY of the 4 signals clears its bar — see
+// INGESTA.md "v2 — Rediseño" for the full rationale.
+async function selectCandidates(candidates, { db, deps, settings, embProvider, similarityThreshold }) {
+  const { scoreEmbeddingAgainst, embedKeywordList, extractKeywords, keywordOverlap, createReranker } = deps
+
+  const refRows       = db.getReferencePapers()
+  const refEmbeddings = refRows.map(r => JSON.parse(r.embedding))
+  const refKeywords   = refRows.flatMap(r => extractKeywords(r.snippet || ''))
+  const refSummaries  = refRows.map(r => r.abstract_summary).filter(Boolean)
+
+  const declaredKeywords = (settings.keywordList || '').split('\n').map(s => s.trim()).filter(Boolean)
+  const keywordEmbeddings = embProvider ? await embedKeywordList(settings.keywordList, embProvider) : []
+
+  const hasInterestSignal = refRows.length > 0 || declaredKeywords.length > 0
+  if (!hasInterestSignal) return { survivors: candidates, rerankQuery: '' }
+
+  const scored = []
+  for (const paper of candidates) {
+    let embSimRef = 0, embSimInterest = 0
+
+    const needsEmbedding = embProvider && (refEmbeddings.length > 0 || keywordEmbeddings.length > 0)
+    if (needsEmbedding) {
+      const abstractEmbedding = await embProvider.generateEmbedding(paper.abstract)
+      if (refEmbeddings.length > 0)      embSimRef      = scoreEmbeddingAgainst(abstractEmbedding, refEmbeddings)
+      if (keywordEmbeddings.length > 0)  embSimInterest = scoreEmbeddingAgainst(abstractEmbedding, keywordEmbeddings.map(k => k.embedding))
+    }
+
+    const kwRef      = refKeywords.length > 0      ? keywordOverlap(paper.abstract, refKeywords)      : false
+    const kwInterest = declaredKeywords.length > 0  ? keywordOverlap(paper.abstract, declaredKeywords)  : false
+
+    const passes = embSimRef >= similarityThreshold || kwRef ||
+                   embSimInterest >= similarityThreshold || kwInterest
+
+    if (!passes) continue
+
+    const rankScore = Math.max(embSimRef, embSimInterest) + (kwRef || kwInterest ? 0.1 : 0)
+    scored.push({ paper, rankScore })
+  }
+
+  const preRanked = scored.sort((a, b) => b.rankScore - a.rankScore).slice(0, PRERANK_CAP)
+  const rerankQuery = [...refSummaries, ...declaredKeywords].join('. ')
+
+  if (preRanked.length === 0 || !rerankQuery) {
+    return { survivors: preRanked.map(s => s.paper), rerankQuery }
+  }
+
+  const reranker = createReranker()
+  const ranked = await reranker.rerank(rerankQuery, preRanked.map(s => s.paper.abstract))
+  return { survivors: ranked.map(r => preRanked[r.index].paper), rerankQuery }
+}
+
 async function runFetch({ db, deps, mainWindow }) {
   const {
     createLLM, createEmbeddings,
     fetchPapers, getAffiliations,
     downloadPdf, extractText, extractFirstPage,
-    matchesUniversityInText, scoreAbstractAgainst,
+    matchesUniversityInText,
     httpClient, pdfParse, vault
   } = deps
 
   const settings             = db.getAllSettings()
   const maxPapers            = parseInt(settings.maxPapers || '3', 10)
-  const similarityThreshold  = parseFloat(settings.similarityThreshold || '0.72')
+  const similarityThreshold  = parseFloat(settings.similarityThreshold || '0.6')
   const universityList       = (settings.universityList     || '').split('\n').map(s => s.trim()).filter(Boolean)
   const researchCenterList   = (settings.researchCenterList || '').split('\n').map(s => s.trim()).filter(Boolean)
   const orgFilter            = [...universityList, ...researchCenterList]
   const llm                  = settings.apiKey ? createLLM(settings)        : null
   const embProvider          = settings.apiKey ? createEmbeddings(settings)  : null
 
-  const refEmbeddings = db.getReferencePapers().map(r => JSON.parse(r.embedding))
-
   const result = await fetchPapers(settings, httpClient)
   if (result.error) return { error: result.error }
 
-  console.log(`[fetch] ${result.length} candidates from ArXiv. Saving up to ${maxPapers} that pass filters.`)
-  if (refEmbeddings.length > 0) {
-    console.log(`[fetch] Reference collection: ${refEmbeddings.length} papers (threshold: ${similarityThreshold})`)
+  console.log(`[fetch] ${result.length} candidates from ArXiv.`)
+
+  let selected
+  try {
+    const { survivors } = await selectCandidates(result, { db, deps, settings, embProvider, similarityThreshold })
+    selected = survivors.slice(0, maxPapers)
+  } catch (embErr) {
+    console.error(`[fetch]   Selection phase error: ${embErr.message}`)
+    return { error: `Error al filtrar candidatos: ${embErr.message}. Si el problema persiste, revisá tu API key de OpenAI en Configuración.` }
   }
 
+  console.log(`[fetch] ${selected.length} candidates selected after filter + rerank. Processing up to ${maxPapers}.`)
+
   const saved = []
-  for (const paper of result) {
-    if (saved.length >= maxPapers) break
-
+  for (const paper of selected) {
     console.log(`\n[fetch] ── Paper: "${paper.title}" (${paper.id})`)
-
-    if (embProvider && refEmbeddings.length > 0) {
-      try {
-        const score = await scoreAbstractAgainst(paper.abstract, refEmbeddings, embProvider)
-        console.log(`[fetch]   Similarity: ${score.toFixed(3)} (threshold: ${similarityThreshold})`)
-        if (score < similarityThreshold) {
-          console.log(`[fetch]   REJECTED by similarity`)
-          continue
-        }
-      } catch (embErr) {
-        console.error(`[fetch]   Embeddings error: ${embErr.message}`)
-        return { error: 'La API key de OpenAI es inválida o expiró. Actualízala en Configuración → API Key.' }
-      }
-    }
 
     vault.ensureDirs(paper)
     const dl = await downloadPdf(paper.id, paper.pdf_url, httpClient, path.dirname(vault.pdfPath(paper)))
@@ -160,4 +206,4 @@ function registerPapersHandlers({ ipcMain, db, deps, mainWindow }) {
   })
 }
 
-module.exports = { registerPapersHandlers, runFetch }
+module.exports = { registerPapersHandlers, runFetch, selectCandidates, PRERANK_CAP }

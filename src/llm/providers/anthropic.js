@@ -4,6 +4,7 @@ const {
   buildQuizPrompt,
   buildAffiliationsPrompt,
   buildMetadataPrompt,
+  buildAbstractSummaryPrompt,
   candidateAffiliationLines,
   parseJSONResponse,
 } = require('../prompts')
@@ -92,6 +93,19 @@ function createAnthropicProvider(apiKey, model = null, _client = null) {
         return parseJSONResponse(extractText(response.content))
       } catch {
         return { title: '', authors: '', abstract: '' }
+      }
+    },
+
+    async summarizeAbstract(abstract) {
+      try {
+        const response = await client.messages.create({
+          model: MODEL,
+          max_tokens: 150,
+          messages: [{ role: 'user', content: buildAbstractSummaryPrompt(abstract) }],
+        })
+        return extractText(response.content).trim()
+      } catch {
+        return (abstract || '').slice(0, 200)
       }
     },
   }

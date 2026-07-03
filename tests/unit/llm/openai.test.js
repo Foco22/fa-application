@@ -171,6 +171,32 @@ describe('OpenAI provider — extractPaperMetadata', () => {
   })
 })
 
+// ─── summarizeAbstract ────────────────────────────────────────────────────────
+
+describe('OpenAI provider — summarizeAbstract', () => {
+  it('returns the trimmed summary text', async () => {
+    const mockClient = makeJsonClient('  A short summary.  ')
+    const result = await createOpenAIProvider('sk-test', null, mockClient).summarizeAbstract('We study diffusion models.')
+    expect(result).toBe('A short summary.')
+  })
+
+  it('includes the abstract text in the prompt', async () => {
+    const mockClient = makeJsonClient('summary')
+    await createOpenAIProvider('sk-test', null, mockClient).summarizeAbstract('Unique abstract content XYZ')
+    const args = mockClient.chat.completions.create.mock.calls[0][0]
+    expect(args.messages[0].content).toContain('Unique abstract content XYZ')
+  })
+
+  it('falls back to a truncated abstract when the API call throws', async () => {
+    const mockClient = {
+      chat: { completions: { create: vi.fn().mockRejectedValue(new Error('timeout')) } }
+    }
+    const longAbstract = 'y'.repeat(500)
+    const result = await createOpenAIProvider('sk-test', null, mockClient).summarizeAbstract(longAbstract)
+    expect(result).toBe(longAbstract.slice(0, 200))
+  })
+})
+
 // ─── chat ─────────────────────────────────────────────────────────────────────
 
 describe('OpenAI provider — chat', () => {

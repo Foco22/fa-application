@@ -87,8 +87,13 @@ function parseFeed(xml) {
   })
 }
 
-const FETCH_POOL = 50  // candidates fetched from ArXiv; maxPapers applied after filtering
+const FETCH_PAGE_SIZE = 100  // candidates per ArXiv request
+const FETCH_POOL_CAP  = 300  // defensive cap on total candidates per run (not a design target)
 
+// Paginates through ArXiv results for the whole weekly window instead of
+// cutting at a fixed number — sorting by submittedDate desc + a fixed
+// max_results would systematically drop early-week papers once a broad
+// category selection exceeds one page.
 async function fetchPapers(settings, httpClient, today = new Date()) {
   const { categoryList, authorList } = settings
 
@@ -100,14 +105,24 @@ async function fetchPapers(settings, httpClient, today = new Date()) {
     return { error: err.message }
   }
 
-  const url = `${ARXIV_API}?search_query=${encodeURIComponent(query)}&sortBy=submittedDate&sortOrder=descending&max_results=${FETCH_POOL}`
+  const all = []
+  let start = 0
 
   try {
-    const response = await httpClient.get(url)
-    return parseFeed(response.data)
+    while (all.length < FETCH_POOL_CAP) {
+      const pageSize = Math.min(FETCH_PAGE_SIZE, FETCH_POOL_CAP - all.length)
+      const url = `${ARXIV_API}?search_query=${encodeURIComponent(query)}&sortBy=submittedDate&sortOrder=descending&start=${start}&max_results=${pageSize}`
+      const response = await httpClient.get(url)
+      const page = parseFeed(response.data)
+      all.push(...page)
+      if (page.length < pageSize) break // fewer than requested → window exhausted
+      start += pageSize
+    }
   } catch (err) {
     return { error: err.message }
   }
+
+  return all
 }
 
-module.exports = { calculateDateWindow, buildQuery, parseFeed, fetchPapers }
+module.exports = { calculateDateWindow, buildQuery, parseFeed, fetchPapers, FETCH_PAGE_SIZE, FETCH_POOL_CAP }

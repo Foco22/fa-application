@@ -86,6 +86,18 @@ Text:
 ${firstPageText.slice(0, 3000)}`
 }
 
+function buildAbstractSummaryPrompt(abstract) {
+  return `Summarize the following paper abstract in 1-2 concise sentences, in English,
+focused on the core topic and technique — not results, not filler. This summary is
+used internally to match this paper against other research profiles, so keep it
+dense with the actual subject matter.
+
+Abstract:
+${abstract}
+
+Return ONLY the summary text. No preamble, no quotes, no markdown.`
+}
+
 function candidateAffiliationLines(text) {
   const keywords = [
     'university', 'institute', 'college', 'school of', 'department',
@@ -108,6 +120,7 @@ module.exports = {
   buildQuizPrompt,
   buildAffiliationsPrompt,
   buildMetadataPrompt,
+  buildAbstractSummaryPrompt,
   candidateAffiliationLines,
   parseJSONResponse,
 }

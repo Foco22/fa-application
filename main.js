@@ -16,7 +16,9 @@ const { chatWithPaper }               = require('./src/chat')
 const { createScheduler }     = require('./src/scheduler')
 const cron                    = require('node-cron')
 const { registerHandlers }    = require('./src/ipc')
-const { createEmbeddings, indexReferenceFolder, indexFiles, scoreAbstractAgainst } = require('./src/embeddings')
+const { createEmbeddings, indexReferenceFolder, indexFiles, scoreEmbeddingAgainst, embedKeywordList } = require('./src/embeddings')
+const { extractKeywords, keywordOverlap } = require('./src/ingestion/keywords')
+const { createReranker } = require('./src/rerank')
 const { createTranscription } = require('./src/transcription')
 const { createWhisperStream } = require('./src/transcription/whisper-stream')
 const vaultMod                = require('./src/vault')
@@ -83,7 +85,8 @@ app.whenReady().then(() => {
       chatWithPaper, fetchPapers,
       getAffiliations, matchesUniversityList,
       downloadPdf, extractText, extractFirstPage, matchesUniversityInText,
-      createEmbeddings, scoreAbstractAgainst, indexReferenceFolder, indexFiles,
+      createEmbeddings, scoreEmbeddingAgainst, embedKeywordList, indexReferenceFolder, indexFiles,
+      extractKeywords, keywordOverlap, createReranker,
       createTranscription,
       createWhisperStream,
       whisperStreamBin:  fs.existsSync(WHISPER_STREAM_BIN) ? WHISPER_STREAM_BIN : null,
@@ -96,7 +99,8 @@ app.whenReady().then(() => {
   // Auto-index reference folder on startup
   if (settings.referenceFolderPath && settings.apiKey) {
     const embeddingProvider = createEmbeddings(settings)
-    indexReferenceFolder(settings.referenceFolderPath, db, embeddingProvider, pdfParse)
+    const llm = createLLM(settings)
+    indexReferenceFolder(settings.referenceFolderPath, db, embeddingProvider, pdfParse, llm)
       .then(r => console.log(`[startup] Reference index: +${r.indexed} indexed, ${r.errors} errors`))
       .catch(err => console.error('[startup] Reference index error:', err.message))
   }

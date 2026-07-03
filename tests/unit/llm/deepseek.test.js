@@ -212,6 +212,25 @@ describe('DeepSeek provider — chat', () => {
   })
 })
 
+// ── summarizeAbstract ─────────────────────────────────────────────────────────
+
+describe('DeepSeek provider — summarizeAbstract', () => {
+  it('returns the trimmed summary text', async () => {
+    const mockClient = makeJsonClient('  Resumen breve.  ')
+    const provider = createDeepSeekProvider('test-key', null, mockClient)
+    const result = await provider.summarizeAbstract('Estudiamos modelos de difusión.')
+    expect(result).toBe('Resumen breve.')
+  })
+
+  it('falls back to a truncated abstract when the API call throws', async () => {
+    const mockClient = { chat: { completions: { create: vi.fn().mockRejectedValue(new Error('down')) } } }
+    const provider = createDeepSeekProvider('test-key', null, mockClient)
+    const longAbstract = 'z'.repeat(500)
+    const result = await provider.summarizeAbstract(longAbstract)
+    expect(result).toBe(longAbstract.slice(0, 200))
+  })
+})
+
 // ── factory — createLLM ───────────────────────────────────────────────────────
 
 describe('createLLM factory', async () => {

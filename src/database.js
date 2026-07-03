@@ -59,17 +59,19 @@ function openDatabase(path) {
     );
 
     CREATE TABLE IF NOT EXISTS reference_papers (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      path       TEXT UNIQUE NOT NULL,
-      snippet    TEXT,
-      embedding  TEXT NOT NULL,
-      indexed_at DATETIME DEFAULT (datetime('now'))
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      path              TEXT UNIQUE NOT NULL,
+      snippet           TEXT,
+      embedding         TEXT NOT NULL,
+      abstract_summary  TEXT,
+      indexed_at        DATETIME DEFAULT (datetime('now'))
     );
   `)
 
   // Migrate: add columns if they don't exist yet (existing DBs)
   try { db.exec('ALTER TABLE papers ADD COLUMN notes TEXT') } catch (_) {}
   try { db.exec('ALTER TABLE papers ADD COLUMN highlights TEXT') } catch (_) {}
+  try { db.exec('ALTER TABLE reference_papers ADD COLUMN abstract_summary TEXT') } catch (_) {}
 
   const savePaper = db.prepare(`
     INSERT INTO papers (id, title, authors, abstract, pdf_url, published_date,
@@ -120,12 +122,12 @@ function openDatabase(path) {
   )
 
   const saveReferencePaper = db.prepare(`
-    INSERT OR IGNORE INTO reference_papers (path, snippet, embedding)
-    VALUES (@path, @snippet, @embedding)
+    INSERT OR IGNORE INTO reference_papers (path, snippet, embedding, abstract_summary)
+    VALUES (@path, @snippet, @embedding, @abstract_summary)
   `)
 
   const getReferencePaper  = db.prepare('SELECT id FROM reference_papers WHERE path = ?')
-  const getReferencePapers     = db.prepare('SELECT path, embedding FROM reference_papers')
+  const getReferencePapers     = db.prepare('SELECT path, snippet, embedding, abstract_summary FROM reference_papers')
   const getReferencePapersList = db.prepare('SELECT id, path FROM reference_papers ORDER BY indexed_at DESC')
   const getReferenceCount      = db.prepare('SELECT COUNT(*) AS n FROM reference_papers')
 
@@ -145,7 +147,7 @@ function openDatabase(path) {
     saveNotes:           (id, notes)      => saveNotes.run(notes, id),
     saveHighlights:      (id, highlights) => saveHighlights.run(highlights, id),
     deletePaper:         (id) => deletePaper.run(id),
-    saveReferencePaper:     (r)          => saveReferencePaper.run(r),
+    saveReferencePaper:     (r)          => saveReferencePaper.run({ abstract_summary: null, ...r }),
     getReferencePaper:      (p)          => getReferencePaper.get(p),
     getReferencePapers:     ()           => getReferencePapers.all(),
     getReferencePapersList: ()           => getReferencePapersList.all(),

@@ -1,6 +1,4 @@
 
-- Claass
- Hacer prueba completya
 
 
 Retrieval:

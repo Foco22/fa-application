@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { calculateDateWindow, buildQuery, parseFeed, fetchPapers } from '../../../src/ingestion/arxiv.js'
+import { calculateDateWindow, buildQuery, parseFeed, fetchPapers, FETCH_PAGE_SIZE, FETCH_POOL_CAP } from '../../../src/ingestion/arxiv.js'
 
 // ─── fixture: minimal ArXiv Atom feed ────────────────────────────────────────
 
@@ -163,10 +163,26 @@ describe('parseFeed', () => {
 
 // ─── fetchPapers ──────────────────────────────────────────────────────────────
 
+// builds a synthetic Atom feed with `n` unique entries, useful for pagination tests
+function makeFeed(n, offset = 0) {
+  const entries = Array.from({ length: n }, (_, i) => {
+    const idx = offset + i
+    return `<entry>
+      <id>http://arxiv.org/abs/2401.${String(idx).padStart(5, '0')}v1</id>
+      <title>Paper ${idx}</title>
+      <summary>Abstract ${idx}.</summary>
+      <published>2024-01-09T00:00:00Z</published>
+      <author><name>Author ${idx}</name></author>
+      <link title="pdf" href="http://arxiv.org/pdf/2401.${String(idx).padStart(5, '0')}v1" rel="related"/>
+    </entry>`
+  }).join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">${entries}</feed>`
+}
+
 describe('fetchPapers', () => {
   it('returns { error } when both lists are empty', async () => {
     const result = await fetchPapers(
-      { categoryList: '', authorList: '', maxPapers: '3' },
+      { categoryList: '', authorList: '' },
       null, // httpClient not needed
       new Date('2025-06-16')
     )
@@ -176,30 +192,30 @@ describe('fetchPapers', () => {
   it('calls the ArXiv API with the correct base URL', async () => {
     const mockHttp = { get: vi.fn().mockResolvedValue({ data: FEED_ONE }) }
     await fetchPapers(
-      { categoryList: 'cs.AI', authorList: '', maxPapers: '3' },
+      { categoryList: 'cs.AI', authorList: '' },
       mockHttp,
       new Date('2025-06-16')
     )
-    expect(mockHttp.get).toHaveBeenCalledOnce()
     const url = mockHttp.get.mock.calls[0][0]
     expect(url).toContain('export.arxiv.org/api/query')
   })
 
-  it('passes max_results from settings to the API', async () => {
+  it('requests the first page with start=0 and the default page size', async () => {
     const mockHttp = { get: vi.fn().mockResolvedValue({ data: FEED_ONE }) }
     await fetchPapers(
-      { categoryList: 'cs.AI', authorList: '', maxPapers: '5' },
+      { categoryList: 'cs.AI', authorList: '' },
       mockHttp,
       new Date('2025-06-16')
     )
     const url = mockHttp.get.mock.calls[0][0]
-    expect(url).toContain('max_results=5')
+    expect(url).toContain('start=0')
+    expect(url).toContain(`max_results=${FETCH_PAGE_SIZE}`)
   })
 
-  it('returns parsed papers on success', async () => {
+  it('returns parsed papers on success (single, partial page)', async () => {
     const mockHttp = { get: vi.fn().mockResolvedValue({ data: FEED_TWO }) }
     const papers = await fetchPapers(
-      { categoryList: 'cs.AI', authorList: '', maxPapers: '3' },
+      { categoryList: 'cs.AI', authorList: '' },
       mockHttp,
       new Date('2025-06-16')
     )
@@ -207,10 +223,38 @@ describe('fetchPapers', () => {
     expect(papers).toHaveLength(2)
   })
 
+  it('stops after one request when the page comes back smaller than the page size', async () => {
+    const mockHttp = { get: vi.fn().mockResolvedValue({ data: FEED_TWO }) }
+    await fetchPapers({ categoryList: 'cs.AI', authorList: '' }, mockHttp, new Date('2025-06-16'))
+    expect(mockHttp.get).toHaveBeenCalledOnce()
+  })
+
+  it('paginates: requests a second page when the first page is full', async () => {
+    const mockHttp = { get: vi.fn()
+      .mockResolvedValueOnce({ data: makeFeed(FETCH_PAGE_SIZE, 0) })
+      .mockResolvedValueOnce({ data: makeFeed(5, FETCH_PAGE_SIZE) })
+    }
+    const papers = await fetchPapers({ categoryList: 'cs.AI', authorList: '' }, mockHttp, new Date('2025-06-16'))
+    expect(mockHttp.get).toHaveBeenCalledTimes(2)
+    expect(papers).toHaveLength(FETCH_PAGE_SIZE + 5)
+    const secondUrl = mockHttp.get.mock.calls[1][0]
+    expect(secondUrl).toContain(`start=${FETCH_PAGE_SIZE}`)
+  })
+
+  it('stops at the defensive pool cap even if pages keep coming back full', async () => {
+    const mockHttp = { get: vi.fn().mockImplementation((url) => {
+      const start = parseInt(new URL(url).searchParams.get('start'), 10)
+      return Promise.resolve({ data: makeFeed(FETCH_PAGE_SIZE, start) })
+    }) }
+    const papers = await fetchPapers({ categoryList: 'cs.AI', authorList: '' }, mockHttp, new Date('2025-06-16'))
+    expect(papers).toHaveLength(FETCH_POOL_CAP)
+    expect(mockHttp.get).toHaveBeenCalledTimes(FETCH_POOL_CAP / FETCH_PAGE_SIZE)
+  })
+
   it('returns { error } when the HTTP call throws', async () => {
     const mockHttp = { get: vi.fn().mockRejectedValue(new Error('network error')) }
     const result = await fetchPapers(
-      { categoryList: 'cs.AI', authorList: '', maxPapers: '3' },
+      { categoryList: 'cs.AI', authorList: '' },
       mockHttp,
       new Date('2025-06-16')
     )

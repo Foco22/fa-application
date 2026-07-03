@@ -41,6 +41,7 @@ function makeDeps(overrides = {}) {
     createLLM: vi.fn().mockReturnValue({
       extractPaperMetadata:     vi.fn().mockResolvedValue({ title: 'T', authors: 'A', abstract: 'Ab' }),
       extractAffiliationsWithAI: vi.fn().mockResolvedValue(null),
+      summarizeAbstract:         vi.fn().mockResolvedValue('A short summary.'),
     }),
     createEmbeddings: vi.fn().mockReturnValue({
       generateEmbedding: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
@@ -102,7 +103,7 @@ describe('index-reference-folder', () => {
     expect(result).toEqual({ indexed: 0, errors: 0, total: expect.any(Number) })
   })
 
-  it('calls indexReferenceFolder with provider and pdfParse', async () => {
+  it('calls indexReferenceFolder with provider, pdfParse and the llm', async () => {
     const { invoke, deps } = setup()
     await invoke('index-reference-folder')
     expect(deps.indexReferenceFolder).toHaveBeenCalledOnce()
@@ -110,7 +111,8 @@ describe('index-reference-folder', () => {
       '/refs',
       expect.any(Object),
       expect.objectContaining({ generateEmbedding: expect.any(Function) }),
-      deps.pdfParse
+      deps.pdfParse,
+      expect.objectContaining({ summarizeAbstract: expect.any(Function) })
     )
   })
 
@@ -170,6 +172,15 @@ describe('index-files', () => {
     })
     await invoke('index-files', ['/docs/paper.pdf'])
     expect(db.saveReferencePaper).not.toHaveBeenCalled()
+  })
+
+  it('generates and saves an abstract_summary via the llm', async () => {
+    const { invoke, db, deps } = setup()
+    await invoke('index-files', ['/docs/paper.pdf'])
+    expect(deps.createLLM().summarizeAbstract).toHaveBeenCalled()
+    expect(db.saveReferencePaper).toHaveBeenCalledWith(
+      expect.objectContaining({ abstract_summary: 'A short summary.' })
+    )
   })
 
   it('counts errors when a file throws during processing', async () => {

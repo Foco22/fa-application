@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
-import { cosineSimilarity, indexReferenceFolder, indexFiles, scoreAbstractAgainst, createEmbeddings } from '../../../src/embeddings/index.js'
+import { cosineSimilarity, indexReferenceFolder, indexFiles, scoreAbstractAgainst, scoreEmbeddingAgainst, embedKeywordList, createEmbeddings } from '../../../src/embeddings/index.js'
 
 // ─── cosineSimilarity ─────────────────────────────────────────────────────────
 
@@ -136,6 +136,24 @@ describe('indexReferenceFolder', () => {
     expect(result.indexed).toBe(2)
     expect(result.errors).toBe(0)
   })
+
+  it('saves null abstract_summary when no llm is provided', async () => {
+    const db = makeDb()
+    await indexReferenceFolder('/refs', db, makeProvider(), makePdfParse())
+    expect(db.saveReferencePaper).toHaveBeenCalledWith(
+      expect.objectContaining({ abstract_summary: null })
+    )
+  })
+
+  it('generates and saves abstract_summary when an llm is provided', async () => {
+    const db  = makeDb()
+    const llm = { summarizeAbstract: vi.fn().mockResolvedValue('A short summary.') }
+    await indexReferenceFolder('/refs', db, makeProvider(), makePdfParse('some snippet text'), llm)
+    expect(llm.summarizeAbstract).toHaveBeenCalledWith('some snippet text')
+    expect(db.saveReferencePaper).toHaveBeenCalledWith(
+      expect.objectContaining({ abstract_summary: 'A short summary.' })
+    )
+  })
 })
 
 // ─── indexFiles ───────────────────────────────────────────────────────────────
@@ -174,6 +192,24 @@ describe('indexFiles', () => {
     expect(result.errors).toBe(1)
     expect(result.indexed).toBe(0)
   })
+
+  it('generates and saves abstract_summary when an llm is provided', async () => {
+    const db  = makeDb()
+    const llm = { summarizeAbstract: vi.fn().mockResolvedValue('Short summary.') }
+    await indexFiles(['/docs/paper.pdf'], db, makeProvider(), makePdfParse('snippet text'), llm)
+    expect(llm.summarizeAbstract).toHaveBeenCalledWith('snippet text')
+    expect(db.saveReferencePaper).toHaveBeenCalledWith(
+      expect.objectContaining({ abstract_summary: 'Short summary.' })
+    )
+  })
+
+  it('saves null abstract_summary when no llm is provided', async () => {
+    const db = makeDb()
+    await indexFiles(['/docs/paper.pdf'], db, makeProvider(), makePdfParse())
+    expect(db.saveReferencePaper).toHaveBeenCalledWith(
+      expect.objectContaining({ abstract_summary: null })
+    )
+  })
 })
 
 // ─── scoreAbstractAgainst ─────────────────────────────────────────────────────
@@ -195,5 +231,58 @@ describe('scoreAbstractAgainst', () => {
     const provider = makeProvider([1, 0])
     await scoreAbstractAgainst('my abstract', [[1, 0]], provider)
     expect(provider.generateEmbedding).toHaveBeenCalledWith('my abstract')
+  })
+})
+
+// ─── scoreEmbeddingAgainst ────────────────────────────────────────────────────
+
+describe('scoreEmbeddingAgainst', () => {
+  it('returns the maximum cosine similarity across all reference embeddings', () => {
+    const score = scoreEmbeddingAgainst([1, 0], [[0, 1], [1, 0], [0.5, 0.5]])
+    expect(score).toBeCloseTo(1.0)
+  })
+
+  it('returns 0 when the reference list is empty', () => {
+    expect(scoreEmbeddingAgainst([1, 0], [])).toBe(0)
+  })
+
+  it('does not call any embedding provider (pure function)', () => {
+    // no provider argument at all — this must work on precomputed vectors only
+    expect(() => scoreEmbeddingAgainst([1, 0], [[1, 0]])).not.toThrow()
+  })
+})
+
+// ─── embedKeywordList ─────────────────────────────────────────────────────────
+
+describe('embedKeywordList', () => {
+  it('returns [] for an empty or blank keywordList', async () => {
+    expect(await embedKeywordList('', makeProvider())).toEqual([])
+    expect(await embedKeywordList('   \n  ', makeProvider())).toEqual([])
+  })
+
+  it('embeds each non-blank line as its own keyword', async () => {
+    const provider = makeProvider([0.1, 0.2])
+    await embedKeywordList('diffusion models\ncausal inference', provider)
+    expect(provider.generateEmbedding).toHaveBeenCalledTimes(2)
+    expect(provider.generateEmbedding).toHaveBeenCalledWith('diffusion models')
+    expect(provider.generateEmbedding).toHaveBeenCalledWith('causal inference')
+  })
+
+  it('returns { keyword, embedding } pairs', async () => {
+    const embedding = [0.1, 0.2, 0.3]
+    const result = await embedKeywordList('diffusion models', makeProvider(embedding))
+    expect(result).toEqual([{ keyword: 'diffusion models', embedding }])
+  })
+
+  it('ignores blank lines', async () => {
+    const provider = makeProvider()
+    const result = await embedKeywordList('diffusion models\n\n\ncausal inference\n', provider)
+    expect(result).toHaveLength(2)
+  })
+
+  it('never calls the provider when there are no keywords', async () => {
+    const provider = makeProvider()
+    await embedKeywordList('', provider)
+    expect(provider.generateEmbedding).not.toHaveBeenCalled()
   })
 })

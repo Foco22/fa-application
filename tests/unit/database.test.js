@@ -158,3 +158,41 @@ describe('saveQuizResult / getQuizResults', () => {
     expect(db.getQuizResults('no-paper')).toEqual([])
   })
 })
+
+// ─── reference papers ─────────────────────────────────────────────────────────
+
+describe('saveReferencePaper / getReferencePapers', () => {
+  it('saves a reference paper with an abstract_summary and retrieves it', () => {
+    db.saveReferencePaper({
+      path: '/refs/paper1.pdf',
+      snippet: 'first 3000 chars...',
+      embedding: JSON.stringify([0.1, 0.2]),
+      abstract_summary: 'A short summary of the paper.',
+    })
+
+    const rows = db.getReferencePapers()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].abstract_summary).toBe('A short summary of the paper.')
+  })
+
+  it('defaults abstract_summary to null when not provided', () => {
+    db.saveReferencePaper({
+      path: '/refs/paper2.pdf',
+      snippet: 'text',
+      embedding: JSON.stringify([0.1, 0.2]),
+    })
+
+    const rows = db.getReferencePapers()
+    expect(rows[0].abstract_summary).toBeNull()
+  })
+
+  it('ignores duplicate paths (INSERT OR IGNORE)', () => {
+    const paper = { path: '/refs/dup.pdf', snippet: 's', embedding: '[0.1]', abstract_summary: 'first' }
+    db.saveReferencePaper(paper)
+    db.saveReferencePaper({ ...paper, abstract_summary: 'second' })
+
+    const rows = db.getReferencePapers()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].abstract_summary).toBe('first')
+  })
+})

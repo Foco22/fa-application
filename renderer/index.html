@@ -781,6 +781,11 @@
           <textarea id="s-authors" rows="4" placeholder="LeCun&#10;Bengio"></textarea>
         </div>
         <div class="settings-section">
+          <h3>Palabras clave</h3>
+          <p class="settings-hint">Una por línea. Temas que te interesan más allá de tu colección de referencia — amplían la búsqueda a cosas nuevas, no solo a lo que ya leíste.</p>
+          <textarea id="s-keywords" rows="4" placeholder="reinforcement learning&#10;diffusion models"></textarea>
+        </div>
+        <div class="settings-section">
           <h3>Transcripción de voz</h3>
           <div class="form-group">
             <label>Proveedor</label>
@@ -844,6 +849,14 @@
   </div>
 
   <div id="toast-container"></div>
+
+  <!-- Fetch loading overlay: blocks interaction with the rest of the app while a fetch is running -->
+  <div id="fetch-overlay" class="fetch-overlay hidden">
+    <div class="fetch-overlay-content">
+      <span class="spinner spinner-lg"></span>
+      <p id="fetch-overlay-text">Buscando papers nuevos…</p>
+    </div>
+  </div>
 
   <!-- Confirm class modal -->
   <div id="class-confirm-overlay" class="confirm-overlay hidden">

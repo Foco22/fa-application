@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
-import { runFetch } from '../../../src/ipc/papers.js'
+import { runFetch, selectCandidates, PRERANK_CAP } from '../../../src/ipc/papers.js'
+import { scoreEmbeddingAgainst } from '../../../src/embeddings/index.js'
+import { extractKeywords, keywordOverlap } from '../../../src/ingestion/keywords.js'
 
 // ─── shared fixtures ──────────────────────────────────────────────────────────
 
@@ -16,11 +18,12 @@ const PAPER = {
 const SETTINGS = {
   apiKey: 'sk-test',
   maxPapers: '3',
-  similarityThreshold: '0.72',
+  similarityThreshold: '0.6',
   universityList: 'MIT\nStanford',
   researchCenterList: '',
   semanticScholarApiKey: '',
   categoryList: 'cs.AI',
+  keywordList: '',
 }
 
 // ─── context factory ──────────────────────────────────────────────────────────
@@ -43,13 +46,21 @@ function makeCtx(overrides = {}) {
   const deps = {
     createLLM:             vi.fn().mockReturnValue(mockLLM),
     createEmbeddings:      vi.fn().mockReturnValue(mockEmbProvider),
+    createReranker:        vi.fn().mockReturnValue({
+      rerank: vi.fn().mockImplementation(async (_query, documents) =>
+        documents.map((_, index) => ({ index, score: 1 - index * 0.01 }))
+      ),
+    }),
+    scoreEmbeddingAgainst: scoreEmbeddingAgainst,
+    embedKeywordList:      vi.fn().mockResolvedValue([]),
+    extractKeywords:       extractKeywords,
+    keywordOverlap:        keywordOverlap,
     fetchPapers:           vi.fn().mockResolvedValue([{ ...PAPER }]),
     getAffiliations:       vi.fn().mockResolvedValue(null),
     downloadPdf:           vi.fn().mockResolvedValue({ success: true, path: '/tmp/2401.00001.pdf' }),
     extractFirstPage:      vi.fn().mockResolvedValue({ success: true, text: 'first page MIT' }),
     extractText:           vi.fn().mockResolvedValue({ success: true, text: 'full text' }),
     matchesUniversityInText: vi.fn().mockReturnValue(true),
-    scoreAbstractAgainst:  vi.fn().mockResolvedValue(0.9),
     httpClient:            {},
     pdfParse:              vi.fn(),
     vault: {
@@ -92,13 +103,29 @@ describe('runFetch — fetchPapers error', () => {
   })
 })
 
-// ─── similarity filter ────────────────────────────────────────────────────────
+// ─── selection phase: no interest signal configured ───────────────────────────
 
-describe('runFetch — similarity filter', () => {
-  it('rejects paper when similarity score is below threshold', async () => {
+describe('runFetch — selection phase: no interest signal', () => {
+  it('skips filtering entirely when there is no reference collection and no keywordList', async () => {
+    const { db, deps, mainWindow } = makeCtx()
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(deps.createEmbeddings().generateEmbedding).not.toHaveBeenCalled()
+    expect(deps.createReranker).not.toHaveBeenCalled()
+    expect(db.savePaper).toHaveBeenCalledOnce()
+  })
+})
+
+// ─── selection phase: reference collection (embedding + keyword) ─────────────
+
+describe('runFetch — selection phase: reference collection', () => {
+  it('rejects when embedding similarity is below threshold and no keyword overlaps', async () => {
     const { db, deps, mainWindow } = makeCtx({
-      db:   { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[0.1,0.2]' }]) },
-      deps: { scoreAbstractAgainst: vi.fn().mockResolvedValue(0.5) },
+      db: { getReferencePapers: vi.fn().mockReturnValue([
+        { embedding: '[1,0]', snippet: 'unrelated content here', abstract_summary: 'A summary about biology.' }
+      ]) },
+      deps: { createEmbeddings: vi.fn().mockReturnValue({ generateEmbedding: vi.fn().mockResolvedValue([0, 1]) }) },
     })
 
     await runFetch({ db, deps, mainWindow })
@@ -106,10 +133,12 @@ describe('runFetch — similarity filter', () => {
     expect(db.savePaper).not.toHaveBeenCalled()
   })
 
-  it('accepts paper when similarity score meets threshold', async () => {
+  it('accepts when embedding similarity meets threshold', async () => {
     const { db, deps, mainWindow } = makeCtx({
-      db:   { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[0.1,0.2]' }]) },
-      deps: { scoreAbstractAgainst: vi.fn().mockResolvedValue(0.85) },
+      db: { getReferencePapers: vi.fn().mockReturnValue([
+        { embedding: '[1,0]', snippet: '', abstract_summary: 'A summary about AI.' }
+      ]) },
+      deps: { createEmbeddings: vi.fn().mockReturnValue({ generateEmbedding: vi.fn().mockResolvedValue([1, 0]) }) },
     })
 
     await runFetch({ db, deps, mainWindow })
@@ -117,27 +146,158 @@ describe('runFetch — similarity filter', () => {
     expect(db.savePaper).toHaveBeenCalledOnce()
   })
 
-  it('skips similarity filter when reference collection is empty', async () => {
+  it('accepts via literal keyword overlap even when embedding similarity is low', async () => {
     const { db, deps, mainWindow } = makeCtx({
-      db:   { getReferencePapers: vi.fn().mockReturnValue([]) },
-      deps: { scoreAbstractAgainst: vi.fn().mockResolvedValue(0.1) },
+      db: { getReferencePapers: vi.fn().mockReturnValue([
+        { embedding: '[1,0]', snippet: 'we look at ai and other systems.', abstract_summary: 'A summary.' }
+      ]) },
+      deps: { createEmbeddings: vi.fn().mockReturnValue({ generateEmbedding: vi.fn().mockResolvedValue([0, 1]) }) },
     })
+    // "ai" is extracted as its own keyword from the reference snippet and
+    // literally appears in PAPER.abstract ("A paper about AI.")
 
     await runFetch({ db, deps, mainWindow })
 
-    expect(deps.scoreAbstractAgainst).not.toHaveBeenCalled()
     expect(db.savePaper).toHaveBeenCalledOnce()
   })
 
-  it('skips similarity filter when there is no apiKey', async () => {
+  it('aborts the whole fetch when the embeddings API throws, surfacing the real error message', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      db: { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[1,0]', snippet: '', abstract_summary: 'x' }]) },
+      deps: { createEmbeddings: vi.fn().mockReturnValue({ generateEmbedding: vi.fn().mockRejectedValue(new Error('invalid key')) }) },
+    })
+
+    const result = await runFetch({ db, deps, mainWindow })
+
+    // must include the actual thrown message, not just a generic guess —
+    // a misleading fixed message here once masked an unrelated bug (rerank)
+    expect(result.error).toContain('invalid key')
+    expect(result.error).toContain('API key')
+    expect(db.savePaper).not.toHaveBeenCalled()
+  })
+
+  it('skips embedding signals (but not keyword signals) when there is no apiKey', async () => {
     const { db, deps, mainWindow } = makeCtx({
       settings: { apiKey: '' },
-      db:       { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[0.1,0.2]' }]) },
+      db: { getReferencePapers: vi.fn().mockReturnValue([
+        { embedding: '[1,0]', snippet: 'we look at ai and other systems.', abstract_summary: 'x' }
+      ]) },
     })
 
     await runFetch({ db, deps, mainWindow })
 
-    expect(deps.scoreAbstractAgainst).not.toHaveBeenCalled()
+    // no apiKey → no embedding provider → literal keyword overlap ("ai") still lets it through
+    expect(db.savePaper).toHaveBeenCalledOnce()
+  })
+})
+
+// ─── selection phase: declared keywordList (interest signal) ─────────────────
+
+describe('runFetch — selection phase: keywordList', () => {
+  it('accepts via embedding similarity against a declared keyword', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { keywordList: 'artificial intelligence' },
+      deps: {
+        embedKeywordList: vi.fn().mockResolvedValue([{ keyword: 'artificial intelligence', embedding: [1, 0] }]),
+        createEmbeddings: vi.fn().mockReturnValue({ generateEmbedding: vi.fn().mockResolvedValue([1, 0]) }),
+      },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(db.savePaper).toHaveBeenCalledOnce()
+  })
+
+  it('accepts via literal overlap of a declared keyword', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { keywordList: 'ai' },
+    })
+    // PAPER.abstract "A paper about AI." contains "ai" case-insensitively
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(db.savePaper).toHaveBeenCalledOnce()
+  })
+
+  it('rejects when neither embedding nor keyword overlap match the declared interest', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { keywordList: 'marine biology' },
+      deps: {
+        embedKeywordList: vi.fn().mockResolvedValue([{ keyword: 'marine biology', embedding: [0, 1] }]),
+        createEmbeddings: vi.fn().mockReturnValue({ generateEmbedding: vi.fn().mockResolvedValue([1, 0]) }),
+      },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(db.savePaper).not.toHaveBeenCalled()
+  })
+})
+
+// ─── pre-rank cap + rerank ─────────────────────────────────────────────────────
+
+describe('selectCandidates — pre-rank cap and rerank', () => {
+  function makeCandidates(n) {
+    return Array.from({ length: n }, (_, i) => ({ ...PAPER, id: `p${i}`, abstract: `abstract ${i} about ai` }))
+  }
+
+  it('caps the candidates handed to the reranker at PRERANK_CAP', async () => {
+    const candidates = makeCandidates(30)
+    const db = { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[1,0]', snippet: '', abstract_summary: 'profile' }]) }
+    const rerankSpy = vi.fn().mockImplementation(async (_q, docs) => docs.map((_, index) => ({ index, score: 1 })))
+    const deps = {
+      scoreEmbeddingAgainst,
+      embedKeywordList: vi.fn().mockResolvedValue([]),
+      extractKeywords,
+      keywordOverlap,
+      createReranker: vi.fn().mockReturnValue({ rerank: rerankSpy }),
+    }
+    const embProvider = { generateEmbedding: vi.fn().mockResolvedValue([1, 0]) } // matches ref → all 30 pass
+
+    await selectCandidates(candidates, { db, deps, settings: { ...SETTINGS }, embProvider, similarityThreshold: 0.6 })
+
+    expect(rerankSpy).toHaveBeenCalledOnce()
+    expect(rerankSpy.mock.calls[0][1]).toHaveLength(PRERANK_CAP)
+  })
+
+  it('orders survivors according to the reranker score, not the original order', async () => {
+    const candidates = makeCandidates(3)
+    const db = { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[1,0]', snippet: '', abstract_summary: 'profile' }]) }
+    // reranker says the LAST candidate (index 2) is actually the best match
+    const rerankSpy = vi.fn().mockResolvedValue([{ index: 2, score: 0.9 }, { index: 0, score: 0.5 }, { index: 1, score: 0.1 }])
+    const deps = {
+      scoreEmbeddingAgainst,
+      embedKeywordList: vi.fn().mockResolvedValue([]),
+      extractKeywords,
+      keywordOverlap,
+      createReranker: vi.fn().mockReturnValue({ rerank: rerankSpy }),
+    }
+    const embProvider = { generateEmbedding: vi.fn().mockResolvedValue([1, 0]) }
+
+    const { survivors } = await selectCandidates(candidates, { db, deps, settings: { ...SETTINGS }, embProvider, similarityThreshold: 0.6 })
+
+    expect(survivors.map(p => p.id)).toEqual(['p2', 'p0', 'p1'])
+  })
+
+  it('skips rerank and returns filtered candidates unranked when there is no rerank query', async () => {
+    // no reference abstract_summary, no keywordList → rerankQuery is empty even though a
+    // reference embedding exists (edge case: paper was indexed before abstract_summary existed)
+    const candidates = makeCandidates(2)
+    const db = { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[1,0]', snippet: '', abstract_summary: null }]) }
+    const createReranker = vi.fn()
+    const deps = {
+      scoreEmbeddingAgainst,
+      embedKeywordList: vi.fn().mockResolvedValue([]),
+      extractKeywords,
+      keywordOverlap,
+      createReranker,
+    }
+    const embProvider = { generateEmbedding: vi.fn().mockResolvedValue([1, 0]) }
+
+    const { survivors } = await selectCandidates(candidates, { db, deps, settings: { ...SETTINGS }, embProvider, similarityThreshold: 0.6 })
+
+    expect(createReranker).not.toHaveBeenCalled()
+    expect(survivors).toHaveLength(2)
   })
 })
 

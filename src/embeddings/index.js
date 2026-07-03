@@ -22,7 +22,7 @@ function cosineSimilarity(a, b) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB))
 }
 
-async function indexReferenceFolder(folderPath, db, provider, pdfParse) {
+async function indexReferenceFolder(folderPath, db, provider, pdfParse, llm = null) {
   if (!folderPath || !fs.existsSync(folderPath)) return { indexed: 0, errors: 0 }
 
   const files = fs.readdirSync(folderPath).filter(f => f.toLowerCase().endsWith('.pdf'))
@@ -37,7 +37,8 @@ async function indexReferenceFolder(folderPath, db, provider, pdfParse) {
       const { text } = await pdfParse(buf)
       const snippet  = text.slice(0, 3000)
       const embedding = await provider.generateEmbedding(snippet)
-      db.saveReferencePaper({ path: filePath, snippet, embedding: JSON.stringify(embedding) })
+      const abstract_summary = llm ? await llm.summarizeAbstract(snippet) : null
+      db.saveReferencePaper({ path: filePath, snippet, embedding: JSON.stringify(embedding), abstract_summary })
       indexed++
       console.log(`[embeddings] Indexed: ${file}`)
     } catch (err) {
@@ -49,17 +50,37 @@ async function indexReferenceFolder(folderPath, db, provider, pdfParse) {
   return { indexed, errors }
 }
 
-async function scoreAbstractAgainst(abstract, refEmbeddings, provider) {
-  const emb = await provider.generateEmbedding(abstract)
+// Pure — max cosine similarity against a set of precomputed embeddings.
+// Split out from scoreAbstractAgainst so a single abstract embedding can be
+// scored against both the reference collection and the user's keywordList
+// without re-embedding it twice.
+function scoreEmbeddingAgainst(embedding, refEmbeddings) {
   let max = 0
   for (const refEmb of refEmbeddings) {
-    const score = cosineSimilarity(emb, refEmb)
+    const score = cosineSimilarity(embedding, refEmb)
     if (score > max) max = score
   }
   return max
 }
 
-async function indexFiles(filePaths, db, provider, pdfParse) {
+async function scoreAbstractAgainst(abstract, refEmbeddings, provider) {
+  const emb = await provider.generateEmbedding(abstract)
+  return scoreEmbeddingAgainst(emb, refEmbeddings)
+}
+
+// Embeds each line of settings.keywordList once, so callers can reuse the
+// vectors across a whole fetch run instead of re-embedding per candidate.
+async function embedKeywordList(keywordListRaw, provider) {
+  const keywords = (keywordListRaw || '').split('\n').map(s => s.trim()).filter(Boolean)
+  const result = []
+  for (const keyword of keywords) {
+    const embedding = await provider.generateEmbedding(keyword)
+    result.push({ keyword, embedding })
+  }
+  return result
+}
+
+async function indexFiles(filePaths, db, provider, pdfParse, llm = null) {
   let indexed = 0, errors = 0
   for (const filePath of filePaths) {
     if (!filePath.toLowerCase().endsWith('.pdf')) continue
@@ -70,7 +91,8 @@ async function indexFiles(filePaths, db, provider, pdfParse) {
       const { text } = await pdfParse(buf)
       const snippet  = text.slice(0, 3000)
       const embedding = await provider.generateEmbedding(snippet)
-      db.saveReferencePaper({ path: filePath, snippet, embedding: JSON.stringify(embedding) })
+      const abstract_summary = llm ? await llm.summarizeAbstract(snippet) : null
+      db.saveReferencePaper({ path: filePath, snippet, embedding: JSON.stringify(embedding), abstract_summary })
       indexed++
       console.log(`[embeddings] Indexed: ${path.basename(filePath)}`)
     } catch (err) {
@@ -81,4 +103,7 @@ async function indexFiles(filePaths, db, provider, pdfParse) {
   return { indexed, errors }
 }
 
-module.exports = { createEmbeddings, cosineSimilarity, indexReferenceFolder, indexFiles, scoreAbstractAgainst }
+module.exports = {
+  createEmbeddings, cosineSimilarity, indexReferenceFolder, indexFiles,
+  scoreAbstractAgainst, scoreEmbeddingAgainst, embedKeywordList,
+}

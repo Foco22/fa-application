@@ -4,6 +4,7 @@ const {
   buildQuizPrompt,
   buildAffiliationsPrompt,
   buildMetadataPrompt,
+  buildAbstractSummaryPrompt,
   candidateAffiliationLines,
   parseJSONResponse,
 } = require('../prompts')
@@ -76,6 +77,19 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
         return parseJSONResponse(response.choices[0].message.content)
       } catch {
         return { title: '', authors: '', abstract: '' }
+      }
+    },
+
+    async summarizeAbstract(abstract) {
+      try {
+        const response = await client.chat.completions.create({
+          model: MODEL,
+          max_tokens: 150,
+          messages: [{ role: 'user', content: buildAbstractSummaryPrompt(abstract) }],
+        })
+        return (response.choices[0].message.content || '').trim()
+      } catch {
+        return (abstract || '').slice(0, 200)
       }
     },
 

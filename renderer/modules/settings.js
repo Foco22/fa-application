@@ -78,6 +78,7 @@ export async function openSettings() {
   document.getElementById('s-universities').value = s.universityList || DEFAULT_UNIVERSITIES.join('\n')
   document.getElementById('s-research-centers').value = s.researchCenterList || DEFAULT_RESEARCH_CENTERS.join('\n')
   document.getElementById('s-authors').value   = s.authorList || ''
+  document.getElementById('s-keywords').value  = s.keywordList || ''
   document.getElementById('s-fetch-day').value  = s.fetchDay  || 'monday'
   document.getElementById('s-fetch-hour').value = s.fetchHour || '09:00'
   document.getElementById('s-max-papers').value = s.maxPapers || '3'
@@ -85,7 +86,7 @@ export async function openSettings() {
   document.getElementById('s-transcription-provider').value = s.transcriptionProvider || 'whisper'
 
   document.getElementById('s-ref-folder').value            = s.referenceFolderPath || ''
-  document.getElementById('s-similarity-threshold').value  = s.similarityThreshold || '0.72'
+  document.getElementById('s-similarity-threshold').value  = s.similarityThreshold || '0.6'
 
   const selected = (s.categoryList || '').split(',').map(x => x.trim()).filter(Boolean)
   buildCategoriesGrid('s-categories-grid', selected)
@@ -114,11 +115,12 @@ export async function saveSettings() {
     universityList:        document.getElementById('s-universities').value,
     researchCenterList:    document.getElementById('s-research-centers').value,
     authorList:            document.getElementById('s-authors').value,
+    keywordList:           document.getElementById('s-keywords').value,
     categoryList:          getSelectedCategories('s-categories-grid').join(','),
     transcriptionProvider: document.getElementById('s-transcription-provider').value,
     groqApiKey:            document.getElementById('s-groq-api-key').value.trim(),
     referenceFolderPath:   document.getElementById('s-ref-folder').value,
-    similarityThreshold:   document.getElementById('s-similarity-threshold').value || '0.72',
+    similarityThreshold:   document.getElementById('s-similarity-threshold').value || '0.6',
   }
   await window.api.saveSettings(settings)
   document.getElementById('settings-panel').classList.add('hidden')

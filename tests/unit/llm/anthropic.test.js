@@ -160,6 +160,33 @@ describe('Anthropic provider — extractPaperMetadata', () => {
   })
 })
 
+// ─── summarizeAbstract ────────────────────────────────────────────────────────
+
+describe('Anthropic provider — summarizeAbstract', () => {
+  it('calls messages.create and returns the trimmed text', async () => {
+    const mockClient = makeCreateClient('  A short summary.  ')
+    const result = await createAnthropicProvider('sk-test', null, mockClient).summarizeAbstract('We study diffusion models.')
+    expect(mockClient.messages.create).toHaveBeenCalledOnce()
+    expect(result).toBe('A short summary.')
+  })
+
+  it('includes the abstract text in the prompt', async () => {
+    const mockClient = makeCreateClient('summary')
+    await createAnthropicProvider('sk-test', null, mockClient).summarizeAbstract('Unique abstract content XYZ')
+    const args = mockClient.messages.create.mock.calls[0][0]
+    expect(args.messages[0].content).toContain('Unique abstract content XYZ')
+  })
+
+  it('falls back to a truncated abstract when the API call throws', async () => {
+    const mockClient = {
+      messages: { create: vi.fn().mockRejectedValue(new Error('rate limit')), stream: vi.fn() }
+    }
+    const longAbstract = 'x'.repeat(500)
+    const result = await createAnthropicProvider('sk-test', null, mockClient).summarizeAbstract(longAbstract)
+    expect(result).toBe(longAbstract.slice(0, 200))
+  })
+})
+
 // ─── chat ─────────────────────────────────────────────────────────────────────
 
 describe('Anthropic provider — chat', () => {
