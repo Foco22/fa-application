@@ -224,8 +224,9 @@ export function showView(name) {
   const el = document.getElementById(`class-view-${name}`)
   if (el) el.classList.remove('hidden')
 
-  // Sidebars visible only during active class (not prep/loading/results)
-  const withSidebars = name === 'active' || name === 'qa'
+  // Sidebars (participants + chat) only during Q&A — during the presentation
+  // itself it should be just two big boxes: slides and the professor's camera.
+  const withSidebars = name === 'qa'
   document.getElementById('class-sidebar-participants').classList.toggle('hidden', !withSidebars)
   document.getElementById('class-sidebar-chat').classList.toggle('hidden', !withSidebars)
   document.getElementById('class-qa-assistant-panel')?.classList.add('hidden')
@@ -571,10 +572,17 @@ async function setupActiveView(slides) {
   })
   _timer.start()
 
-  // Webcam → persistent sidebar tile
+  // Webcam → persistent sidebar tile + large self-view next to the slides
+  const activeWebcam      = document.getElementById('class-active-webcam')
+  const activeWebcamPlaceholder = document.getElementById('class-active-webcam-placeholder')
   try {
     _webcamStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
     document.getElementById('class-webcam').srcObject = _webcamStream
+    if (activeWebcam) {
+      activeWebcam.srcObject = _webcamStream
+      activeWebcam.classList.remove('hidden')
+      activeWebcamPlaceholder?.classList.add('hidden')
+    }
   } catch {
     // Cámara no disponible: mostrar avatar placeholder en vez de ocultar el tile
     const tile = document.getElementById('class-tile-self')
@@ -588,6 +596,8 @@ async function setupActiveView(slides) {
       avatar.style.background = '#64748b'
       tile.insertBefore(avatar, tile.firstChild)
     }
+    activeWebcam?.classList.add('hidden')
+    activeWebcamPlaceholder?.classList.remove('hidden')
   }
 
   startSpeechRecognition()

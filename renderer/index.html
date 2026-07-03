@@ -476,12 +476,21 @@
             </button>
           </div>
         </div>
-        <div class="class-slides-panel">
-          <div id="class-slide-display" class="class-slide-display"></div>
-          <div class="class-slide-nav">
-            <button id="class-slide-prev" class="class-nav-btn" title="Anterior (←)">‹</button>
-            <span id="class-slide-indicator" class="class-slide-indicator">1 / 1</span>
-            <button id="class-slide-next" class="class-nav-btn" title="Siguiente (→)">›</button>
+        <div class="class-active-stage">
+          <div class="class-slides-panel">
+            <div id="class-slide-display" class="class-slide-display"></div>
+            <div class="class-slide-nav">
+              <button id="class-slide-prev" class="class-nav-btn" title="Anterior (←)">‹</button>
+              <span id="class-slide-indicator" class="class-slide-indicator">1 / 1</span>
+              <button id="class-slide-next" class="class-nav-btn" title="Siguiente (→)">›</button>
+            </div>
+          </div>
+          <!-- Professor self-view: lets you check your own posture/framing while presenting -->
+          <div class="class-active-webcam-box" id="class-active-webcam-box">
+            <video id="class-active-webcam" class="class-active-webcam" autoplay muted playsinline></video>
+            <div class="class-active-webcam-placeholder" id="class-active-webcam-placeholder">
+              <span>Sin cámara</span>
+            </div>
           </div>
         </div>
         <div class="class-transcript-bar">
