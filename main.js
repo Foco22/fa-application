@@ -22,6 +22,7 @@ const { createReranker } = require('./src/rerank')
 const { createTranscription } = require('./src/transcription')
 const { createWhisperStream } = require('./src/transcription/whisper-stream')
 const vaultMod                = require('./src/vault')
+const fetchLogMod             = require('./src/ingestion/fetchLog')
 
 const DB_PATH             = path.join(app.getPath('userData'), 'papers.db')
 const PDFS_DIR            = path.join(app.getPath('userData'), 'pdfs')
@@ -92,7 +93,8 @@ app.whenReady().then(() => {
       whisperStreamBin:  fs.existsSync(WHISPER_STREAM_BIN) ? WHISPER_STREAM_BIN : null,
       whisperModelsDir:  fs.existsSync(WHISPER_MODELS_DIR) ? WHISPER_MODELS_DIR : null,
       shell, dialog,
-      httpClient: axios, pdfParse, pdfsDir: PDFS_DIR, vault
+      httpClient: axios, pdfParse, pdfsDir: PDFS_DIR, vault,
+      writeFetchLog: (report) => fetchLogMod.writeFetchLog(VAULT_DIR, report)
     }
   })
 

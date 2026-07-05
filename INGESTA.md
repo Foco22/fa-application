@@ -88,6 +88,7 @@ Trae **50 papers** ordenados por fecha descendente.
   - Primero intenta con el LLM (`extractAffiliationsWithAI`) sobre el texto de la primera página
   - Si el LLM no retorna nada → hace regex sobre el texto directamente
   - Si ninguna afiliación coincide → elimina el PDF, paper descartado
+  - **Fallback**: si al terminar de procesar todos los candidatos seleccionados **ninguno** pasó este filtro (0 guardados), se guarda igual el mejor rankeado de los rechazados por universidad (el primero en orden de selección/rerank), en vez de dejar la semana sin ningún paper nuevo. Su PDF no se borra; el resto de los rechazados por este filtro sí. Queda marcado en `status`/log como guardado "como fallback"
 
 **Semantic Scholar API**
 - Llama con el ArXiv ID para obtener afiliaciones estructuradas
@@ -114,6 +115,38 @@ Trae **50 papers** ordenados por fecha descendente.
 | `maxPapers` | Siempre |
 
 ---
+
+## Debug: log de cada fetch
+
+Cada corrida de `runFetch()` escribe un reporte de diagnóstico en
+`<vault>/fetch-logs/<timestamp>.md` (legible) y `.json` (para inspección
+programática). Sirve para entender por qué un paper puntual entró o no —
+por ejemplo, si trajo un paper que no interesaba y hay que ajustar
+`keywordList` o la colección de referencia.
+
+Contiene, por cada candidato traído de ArXiv (título, autores, universidad
+cuando se pudo determinar):
+
+| Etapa (`stage`) | Significa que… |
+|---|---|
+| `saved` | Pasó todos los filtros y quedó guardado |
+| `selection` | Rechazado en el filtro de interés (embedding/keyword vs. referencia o `keywordList`) — incluye los scores exactos |
+| `rerank_cap` | Pasó el filtro de interés pero quedó fuera del top 15 antes del rerank |
+| `maxpapers_cutoff` | Sobrevivió selección + rerank pero no entró en el cupo de `maxPapers` |
+| `download` | Falló la descarga del PDF |
+| `first_page` | Falló `extractFirstPage` y había filtro de universidad activo |
+| `org_filter` | Se descargó el PDF pero la afiliación no coincide con `universityList`/`researchCenterList` — salvo que sea el fallback (ver abajo), en cuyo caso queda como `saved` con motivo "Guardado como fallback…" |
+| `pending` (sin más etapa) | No hay `keywordList` ni colección de referencia configurada — pasan todos sin evaluar |
+
+**Limitación conocida**: la universidad solo se conoce para candidatos que
+llegan a descargarse (después de superar selección + rerank). Los
+rechazados en `selection` o `rerank_cap` no tienen universidad en el log,
+porque nunca se descarga su PDF — hacerlo solo para loguear encarecería
+cada fetch sin necesidad.
+
+Implementado en `src/ingestion/fetchLog.js` (`renderMarkdown`,
+`writeFetchLog`) y conectado en `runFetch()` (`src/ipc/papers.js`) vía
+`deps.writeFetchLog`.
 
 ## Archivos involucrados
 

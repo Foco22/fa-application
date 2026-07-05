@@ -68,6 +68,7 @@ function makeCtx(overrides = {}) {
       pdfPath:    vi.fn().mockReturnValue('/vault/2401.00001/raw/2401.00001.pdf'),
       deletePaperDir: vi.fn(),
     },
+    writeFetchLog: vi.fn(),
     ...overrides.deps,
   }
 
@@ -318,15 +319,18 @@ describe('runFetch — PDF download failure', () => {
 // ─── org filter ───────────────────────────────────────────────────────────────
 
 describe('runFetch — org filter', () => {
-  it('rejects paper and deletes PDF when AI affiliations do not match', async () => {
+  it('saves the paper as a fallback when AI affiliations do not match and it is the only candidate', async () => {
+    // No other candidate could take its place — better one imperfect paper than
+    // an empty week. See "runFetch — org filter fallback" below for the cases
+    // where a real match exists among the candidates instead.
     const { db, deps, mainWindow } = makeCtx({
       llm: { extractAffiliationsWithAI: vi.fn().mockResolvedValue(['Harvard']) },
     })
 
     await runFetch({ db, deps, mainWindow })
 
-    expect(fs.unlinkSync).toHaveBeenCalledWith('/tmp/2401.00001.pdf')
-    expect(db.savePaper).not.toHaveBeenCalled()
+    expect(fs.unlinkSync).not.toHaveBeenCalled()
+    expect(db.savePaper).toHaveBeenCalledOnce()
   })
 
   it('accepts paper when AI affiliation matches org filter', async () => {
@@ -360,7 +364,7 @@ describe('runFetch — org filter', () => {
     expect(deps.matchesUniversityInText).toHaveBeenCalledWith('first page MIT', ['MIT', 'Stanford'])
   })
 
-  it('rejects via matchesUniversityInText fallback when it returns false', async () => {
+  it('saves as fallback via the matchesUniversityInText path too, when it is the only candidate', async () => {
     const { db, deps, mainWindow } = makeCtx({
       settings: { apiKey: '' },
       deps:     { matchesUniversityInText: vi.fn().mockReturnValue(false) },
@@ -368,8 +372,8 @@ describe('runFetch — org filter', () => {
 
     await runFetch({ db, deps, mainWindow })
 
-    expect(fs.unlinkSync).toHaveBeenCalled()
-    expect(db.savePaper).not.toHaveBeenCalled()
+    expect(fs.unlinkSync).not.toHaveBeenCalled()
+    expect(db.savePaper).toHaveBeenCalledOnce()
   })
 
   it('rejects and deletes PDF when first page fails and org filter is active', async () => {
@@ -393,6 +397,55 @@ describe('runFetch — org filter', () => {
 
     expect(fs.unlinkSync).not.toHaveBeenCalled()
     expect(db.savePaper).toHaveBeenCalledOnce()
+  })
+})
+
+// ─── org filter — fallback when ALL candidates fail ───────────────────────────
+
+describe('runFetch — org filter fallback', () => {
+  function makeTwoCandidateCtx(affiliationsPerCall, overrides = {}) {
+    const papers = [{ ...PAPER, id: 'p1' }, { ...PAPER, id: 'p2' }]
+    const extractAffiliationsWithAI = vi.fn()
+    for (const affils of affiliationsPerCall) extractAffiliationsWithAI.mockResolvedValueOnce(affils)
+
+    return makeCtx({
+      deps: {
+        fetchPapers: vi.fn().mockResolvedValue(papers),
+        downloadPdf: vi.fn().mockImplementation((id) => Promise.resolve({ success: true, path: `/tmp/${id}.pdf` })),
+        ...overrides.deps,
+      },
+      llm: { extractAffiliationsWithAI, ...overrides.llm },
+      ...overrides,
+    })
+  }
+
+  it('does not trigger the fallback when at least one candidate passes — the rejected one is still deleted', async () => {
+    const { db, deps, mainWindow } = makeTwoCandidateCtx([['Harvard'], ['Stanford University']])
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(fs.unlinkSync).toHaveBeenCalledWith('/tmp/p1.pdf')
+    expect(db.savePaper).toHaveBeenCalledOnce()
+    expect(db.savePaper.mock.calls[0][0].id).toBe('p2')
+  })
+
+  it('saves the best-ranked candidate as a fallback when ALL selected candidates fail the org filter', async () => {
+    const { db, deps, mainWindow } = makeTwoCandidateCtx([['Harvard'], ['Oxford']])
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(db.savePaper).toHaveBeenCalledOnce()
+    expect(db.savePaper.mock.calls[0][0].id).toBe('p1') // best-ranked = first in selection order
+    expect(fs.unlinkSync).toHaveBeenCalledWith('/tmp/p2.pdf')
+    expect(fs.unlinkSync).not.toHaveBeenCalledWith('/tmp/p1.pdf')
+  })
+
+  it('sends the new-papers notification for a fallback save', async () => {
+    const { db, deps, mainWindow } = makeTwoCandidateCtx([['Harvard'], ['Oxford']])
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(mainWindow.webContents.send).toHaveBeenCalledWith('new-papers', 1)
   })
 })
 
@@ -506,5 +559,158 @@ describe('runFetch — limits and notifications', () => {
     expect(Array.isArray(result)).toBe(true)
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('2401.00001')
+  })
+})
+
+// ─── selectCandidates — diagnostics report ────────────────────────────────────
+
+describe('selectCandidates — diagnostics report', () => {
+  it('marks a rejected candidate with a reason describing the scores', async () => {
+    const candidates = [{ ...PAPER, abstract: 'unrelated content about gardening' }]
+    const db = { getReferencePapers: vi.fn().mockReturnValue([
+      { embedding: '[1,0]', snippet: '', abstract_summary: 'AI research' }
+    ]) }
+    const deps = {
+      scoreEmbeddingAgainst, embedKeywordList: vi.fn().mockResolvedValue([]),
+      extractKeywords, keywordOverlap, createReranker: vi.fn(),
+    }
+    const embProvider = { generateEmbedding: vi.fn().mockResolvedValue([0, 1]) } // orthogonal to ref [1,0]
+
+    const { report } = await selectCandidates(candidates, { db, deps, settings: { ...SETTINGS }, embProvider, similarityThreshold: 0.6 })
+
+    expect(report).toHaveLength(1)
+    expect(report[0]).toMatchObject({ id: PAPER.id, title: PAPER.title, authors: PAPER.authors, decision: 'rejected', stage: 'selection' })
+    expect(report[0].selection).toMatchObject({ passed: false })
+    expect(report[0].reason).toMatch(/embSimRef/)
+  })
+
+  it('marks all candidates as pending with a "no interest signal" reason when nothing is configured', async () => {
+    const candidates = [{ ...PAPER }]
+    const db = { getReferencePapers: vi.fn().mockReturnValue([]) }
+    const deps = { scoreEmbeddingAgainst, embedKeywordList: vi.fn().mockResolvedValue([]), extractKeywords, keywordOverlap, createReranker: vi.fn() }
+
+    const { report } = await selectCandidates(candidates, { db, deps, settings: { ...SETTINGS, keywordList: '' }, embProvider: null, similarityThreshold: 0.6 })
+
+    expect(report[0].decision).toBe('pending')
+    expect(report[0].reason).toMatch(/sin/i)
+  })
+
+  it('marks candidates that pass the interest filter but fall outside PRERANK_CAP as rejected at rerank_cap', async () => {
+    const candidates = Array.from({ length: 20 }, (_, i) => ({ ...PAPER, id: `p${i}`, abstract: `abstract ${i} about ai` }))
+    const db = { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[1,0]', snippet: '', abstract_summary: 'profile' }]) }
+    const deps = {
+      scoreEmbeddingAgainst, embedKeywordList: vi.fn().mockResolvedValue([]), extractKeywords, keywordOverlap,
+      createReranker: vi.fn().mockReturnValue({
+        rerank: vi.fn().mockImplementation(async (_q, docs) => docs.map((_, index) => ({ index, score: 1 - index * 0.01 }))),
+      }),
+    }
+    const embProvider = { generateEmbedding: vi.fn().mockResolvedValue([1, 0]) }
+
+    const { report } = await selectCandidates(candidates, { db, deps, settings: { ...SETTINGS }, embProvider, similarityThreshold: 0.6 })
+
+    const cutOff = report.filter(e => e.stage === 'rerank_cap')
+    expect(cutOff).toHaveLength(20 - PRERANK_CAP)
+    expect(cutOff[0].decision).toBe('rejected')
+  })
+
+  it('fills rerank rank/score for survivors', async () => {
+    const candidates = [0, 1, 2].map(i => ({ ...PAPER, id: `p${i}`, abstract: `abstract ${i} about ai` }))
+    const db = { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[1,0]', snippet: '', abstract_summary: 'profile' }]) }
+    const rerankSpy = vi.fn().mockResolvedValue([{ index: 2, score: 0.9 }, { index: 0, score: 0.5 }, { index: 1, score: 0.1 }])
+    const deps = {
+      scoreEmbeddingAgainst, embedKeywordList: vi.fn().mockResolvedValue([]), extractKeywords, keywordOverlap,
+      createReranker: vi.fn().mockReturnValue({ rerank: rerankSpy }),
+    }
+    const embProvider = { generateEmbedding: vi.fn().mockResolvedValue([1, 0]) }
+
+    const { report } = await selectCandidates(candidates, { db, deps, settings: { ...SETTINGS }, embProvider, similarityThreshold: 0.6 })
+
+    expect(report.find(e => e.id === 'p2').rerank).toMatchObject({ rank: 1, score: 0.9 })
+    expect(report.find(e => e.id === 'p1').rerank).toMatchObject({ rank: 3, score: 0.1 })
+  })
+})
+
+// ─── runFetch — fetch log (deps.writeFetchLog) ────────────────────────────────
+
+describe('runFetch — fetch log', () => {
+  it('calls deps.writeFetchLog with per-paper diagnostics and overall stats', async () => {
+    const { db, deps, mainWindow } = makeCtx()
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(deps.writeFetchLog).toHaveBeenCalledOnce()
+    const report = deps.writeFetchLog.mock.calls[0][0]
+    expect(report.stats).toEqual({ totalCandidates: 1, selected: 1, saved: 1 })
+    expect(report.entries).toHaveLength(1)
+    expect(report.entries[0]).toMatchObject({ id: '2401.00001', decision: 'saved', stage: 'saved' })
+  })
+
+  it('does not throw when deps.writeFetchLog is not provided', async () => {
+    const { db, deps, mainWindow } = makeCtx({ deps: { writeFetchLog: undefined } })
+
+    await expect(runFetch({ db, deps, mainWindow })).resolves.toBeDefined()
+  })
+
+  it('marks the entry for a paper whose PDF download fails', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      deps: { downloadPdf: vi.fn().mockResolvedValue({ success: false, error: 'timeout' }) }
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    const report = deps.writeFetchLog.mock.calls[0][0]
+    expect(report.entries[0]).toMatchObject({ decision: 'rejected', stage: 'download' })
+    expect(report.entries[0].reason).toContain('timeout')
+  })
+
+  it('marks the entry for a paper rejected by the org filter, including the AI-detected affiliation, when another candidate is saved instead', async () => {
+    const papers = [{ ...PAPER, id: 'p1' }, { ...PAPER, id: 'p2' }]
+    const { db, deps, mainWindow } = makeCtx({
+      deps: {
+        fetchPapers: vi.fn().mockResolvedValue(papers),
+        downloadPdf: vi.fn().mockImplementation((id) => Promise.resolve({ success: true, path: `/tmp/${id}.pdf` })),
+      },
+      llm: {
+        extractAffiliationsWithAI: vi.fn()
+          .mockResolvedValueOnce(['Harvard'])
+          .mockResolvedValueOnce(['Stanford University']),
+      },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    const report = deps.writeFetchLog.mock.calls[0][0]
+    const rejected = report.entries.find(e => e.id === 'p1')
+    expect(rejected).toMatchObject({ decision: 'rejected', stage: 'org_filter' })
+    expect(rejected.university).toContain('Harvard')
+  })
+
+  it('marks a fallback-saved entry with a reason mentioning the fallback', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      llm: { extractAffiliationsWithAI: vi.fn().mockResolvedValue(['Harvard']) },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    const report = deps.writeFetchLog.mock.calls[0][0]
+    expect(report.entries[0]).toMatchObject({ decision: 'saved', stage: 'saved' })
+    expect(report.entries[0].reason).toMatch(/fallback/i)
+  })
+
+  it('marks survivors beyond maxPapers as rejected at the maxpapers_cutoff stage', async () => {
+    const papers = [
+      { ...PAPER, id: 'p1', abstract: 'A paper about ai systems.' },
+      { ...PAPER, id: 'p2', abstract: 'Another paper about ai systems.' },
+    ]
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { maxPapers: '1', keywordList: 'ai' },
+      deps: { fetchPapers: vi.fn().mockResolvedValue(papers) },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    const report = deps.writeFetchLog.mock.calls[0][0]
+    const overflow = report.entries.find(e => e.id === 'p2')
+    expect(overflow).toMatchObject({ decision: 'rejected', stage: 'maxpapers_cutoff' })
   })
 })

@@ -18,6 +18,30 @@ function isoWeek(date) {
   return 1 + Math.round(((d - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7)
 }
 
+export function isoWeekMonday(year, week) {
+  const jan4     = new Date(year, 0, 4)
+  const jan4Day  = (jan4.getDay() + 6) % 7 // days since Monday (0=Monday)
+  const week1Monday = new Date(jan4)
+  week1Monday.setDate(jan4.getDate() - jan4Day)
+  const monday = new Date(week1Monday)
+  monday.setDate(week1Monday.getDate() + (week - 1) * 7)
+  return monday
+}
+
+function formatDDMMYYYY(date) {
+  const dd = String(date.getDate()).padStart(2, '0')
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  return `${dd}/${mm}/${date.getFullYear()}`
+}
+
+export function weekDateRange(year, weekKey) {
+  const week   = parseInt(weekKey.replace('week-', ''), 10)
+  const monday = isoWeekMonday(Number(year), week)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  return `${formatDDMMYYYY(monday)} - ${formatDDMMYYYY(sunday)}`
+}
+
 function paperSlot(p) {
   const d = new Date(p.published_date || p.created_at || Date.now())
   const week = isoWeek(d)
@@ -81,11 +105,12 @@ export function renderVault() {
       for (const weekKey of weeks) {
         const wKey       = `w-${year}-${weekKey}`
         const isWeekOpen = state.expandedNodes.has(wKey)
-        const weekLabel  = weekKey.replace('week-', 'W')
+        const weekRange  = weekDateRange(year, weekKey)
+        const weekLabel  = `${weekKey.replace('week-', 'W')} (${weekRange})`
 
         const weekEl = document.createElement('div')
         weekEl.className = 'tree-week' + (isWeekOpen ? ' open' : '')
-        weekEl.innerHTML = `<span class="tree-arrow">${isWeekOpen ? '▾' : '▸'}</span><span class="tree-label">${weekLabel}</span>`
+        weekEl.innerHTML = `<span class="tree-arrow">${isWeekOpen ? '▾' : '▸'}</span><span class="tree-label" title="${weekRange}">${weekLabel}</span>`
         weekEl.addEventListener('click', () => toggleNode(wKey))
         list.appendChild(weekEl)
 

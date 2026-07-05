@@ -8,6 +8,22 @@ const PRERANK_CAP = 15 // candidates handed to the cross-encoder rerank per fetc
 // evaluated with hybrid search (embedding similarity + literal keyword
 // match). A candidate survives if ANY of the 4 signals clears its bar — see
 // INGESTA.md "v2 — Rediseño" for the full rationale.
+function makeReportEntry(paper) {
+  return {
+    id: paper.id,
+    title: paper.title,
+    authors: paper.authors,
+    university: null,
+    selection: null,
+    rerank: null,
+    download: null,
+    orgFilter: null,
+    stage: 'selection',
+    decision: 'pending',
+    reason: '',
+  }
+}
+
 async function selectCandidates(candidates, { db, deps, settings, embProvider, similarityThreshold }) {
   const { scoreEmbeddingAgainst, embedKeywordList, extractKeywords, keywordOverlap, createReranker } = deps
 
@@ -19,11 +35,20 @@ async function selectCandidates(candidates, { db, deps, settings, embProvider, s
   const declaredKeywords = (settings.keywordList || '').split('\n').map(s => s.trim()).filter(Boolean)
   const keywordEmbeddings = embProvider ? await embedKeywordList(settings.keywordList, embProvider) : []
 
+  const report = candidates.map(makeReportEntry)
+  const entryById = new Map(report.map(e => [e.id, e]))
+
   const hasInterestSignal = refRows.length > 0 || declaredKeywords.length > 0
-  if (!hasInterestSignal) return { survivors: candidates, rerankQuery: '' }
+  if (!hasInterestSignal) {
+    for (const entry of report) {
+      entry.reason = 'Sin colección de referencia ni keywordList configurados — pasa sin filtrar'
+    }
+    return { survivors: candidates, rerankQuery: '', report }
+  }
 
   const scored = []
   for (const paper of candidates) {
+    const entry = entryById.get(paper.id)
     let embSimRef = 0, embSimInterest = 0
 
     const needsEmbedding = embProvider && (refEmbeddings.length > 0 || keywordEmbeddings.length > 0)
@@ -39,22 +64,46 @@ async function selectCandidates(candidates, { db, deps, settings, embProvider, s
     const passes = embSimRef >= similarityThreshold || kwRef ||
                    embSimInterest >= similarityThreshold || kwInterest
 
-    if (!passes) continue
+    entry.selection = { embSimRef, embSimInterest, kwRef, kwInterest, threshold: similarityThreshold, passed: passes }
+
+    if (!passes) {
+      entry.decision = 'rejected'
+      entry.reason = `No superó ningún filtro de interés (embSimRef=${embSimRef.toFixed(3)}, embSimInterest=${embSimInterest.toFixed(3)}, umbral=${similarityThreshold}, kwRef=${kwRef}, kwInterest=${kwInterest})`
+      continue
+    }
 
     const rankScore = Math.max(embSimRef, embSimInterest) + (kwRef || kwInterest ? 0.1 : 0)
-    scored.push({ paper, rankScore })
+    scored.push({ paper, rankScore, entry })
   }
 
-  const preRanked = scored.sort((a, b) => b.rankScore - a.rankScore).slice(0, PRERANK_CAP)
+  const sortedScored = scored.sort((a, b) => b.rankScore - a.rankScore)
+  const preRanked = sortedScored.slice(0, PRERANK_CAP)
+  const cutOff    = sortedScored.slice(PRERANK_CAP)
+
+  for (const { entry, rankScore } of cutOff) {
+    entry.stage = 'rerank_cap'
+    entry.decision = 'rejected'
+    entry.reason = `Pasó el filtro de interés (rankScore=${rankScore.toFixed(3)}) pero quedó fuera del top ${PRERANK_CAP} antes del rerank`
+  }
+
   const rerankQuery = [...refSummaries, ...declaredKeywords].join('. ')
 
   if (preRanked.length === 0 || !rerankQuery) {
-    return { survivors: preRanked.map(s => s.paper), rerankQuery }
+    for (const { entry } of preRanked) {
+      entry.reason = 'Pasó el filtro de interés; sin rerank (no hay rerankQuery)'
+    }
+    return { survivors: preRanked.map(s => s.paper), rerankQuery, report }
   }
 
   const reranker = createReranker()
   const ranked = await reranker.rerank(rerankQuery, preRanked.map(s => s.paper.abstract))
-  return { survivors: ranked.map(r => preRanked[r.index].paper), rerankQuery }
+  ranked.forEach((r, i) => {
+    const { entry } = preRanked[r.index]
+    entry.rerank = { rank: i + 1, score: r.score }
+    entry.reason = `Pasó el filtro de interés y el rerank (posición ${i + 1}, score=${r.score.toFixed(3)})`
+  })
+
+  return { survivors: ranked.map(r => preRanked[r.index].paper), rerankQuery, report }
 }
 
 async function runFetch({ db, deps, mainWindow }) {
@@ -63,7 +112,7 @@ async function runFetch({ db, deps, mainWindow }) {
     fetchPapers, getAffiliations,
     downloadPdf, extractText, extractFirstPage,
     matchesUniversityInText,
-    httpClient, pdfParse, vault
+    httpClient, pdfParse, vault, writeFetchLog
   } = deps
 
   const settings             = db.getAllSettings()
@@ -80,65 +129,42 @@ async function runFetch({ db, deps, mainWindow }) {
 
   console.log(`[fetch] ${result.length} candidates from ArXiv.`)
 
-  let selected
+  let selected, report
   try {
-    const { survivors } = await selectCandidates(result, { db, deps, settings, embProvider, similarityThreshold })
-    selected = survivors.slice(0, maxPapers)
+    const selection = await selectCandidates(result, { db, deps, settings, embProvider, similarityThreshold })
+    selected = selection.survivors.slice(0, maxPapers)
+    report   = selection.report
   } catch (embErr) {
     console.error(`[fetch]   Selection phase error: ${embErr.message}`)
     return { error: `Error al filtrar candidatos: ${embErr.message}. Si el problema persiste, revisá tu API key de OpenAI en Configuración.` }
   }
 
+  const entryById = new Map(report.map(e => [e.id, e]))
+
+  const overflow = report.filter(e =>
+    e.decision === 'pending' && !selected.some(p => p.id === e.id)
+  )
+  for (const entry of overflow) {
+    entry.stage = 'maxpapers_cutoff'
+    entry.decision = 'rejected'
+    entry.reason = `Sobrevivió selección/rerank pero no entró en el cupo de maxPapers=${maxPapers}`
+  }
+
   console.log(`[fetch] ${selected.length} candidates selected after filter + rerank. Processing up to ${maxPapers}.`)
 
   const saved = []
-  for (const paper of selected) {
-    console.log(`\n[fetch] ── Paper: "${paper.title}" (${paper.id})`)
+  // Best-ranked-first: candidates that got downloaded and whose affiliation
+  // didn't match universityList/researchCenterList. Kept (not deleted yet) in
+  // case nothing else survives — see the fallback block after the loop.
+  const orgRejects = []
 
-    vault.ensureDirs(paper)
-    const dl = await downloadPdf(paper.id, paper.pdf_url, httpClient, path.dirname(vault.pdfPath(paper)))
-    if (!dl.success) {
-      console.log(`[fetch]   PDF download FAILED: ${dl.error}`)
-      continue
-    }
-    console.log(`[fetch]   PDF downloaded OK`)
-
-    const buf       = fs.readFileSync(dl.path)
-    const firstPage = await extractFirstPage(buf, pdfParse)
-    let aiAffiliations = null
-
-    if (firstPage.success) {
-      if (llm) {
-        aiAffiliations = await llm.extractAffiliationsWithAI(firstPage.text)
-        console.log(`[fetch]   AI affiliations: ${JSON.stringify(aiAffiliations)}`)
-      }
-
-      if (orgFilter.length > 0) {
-        const passes = aiAffiliations
-          ? aiAffiliations.some(a => {
-              const segments = a.split(',').map(s => s.trim().toLowerCase())
-              return orgFilter.some(u => {
-                const ul = u.toLowerCase()
-                return segments.some(seg => seg.includes(ul) || ul.includes(seg))
-              })
-            })
-          : matchesUniversityInText(firstPage.text, orgFilter)
-        console.log(`[fetch]   Org match: ${passes ? 'PASS' : 'REJECTED'}`)
-        if (!passes) {
-          fs.unlinkSync(dl.path)
-          continue
-        }
-      }
-    } else if (orgFilter.length > 0) {
-      console.log(`[fetch]   First-page extract FAILED: ${firstPage.error} → REJECTED`)
-      fs.unlinkSync(dl.path)
-      continue
-    }
-
+  async function finalizeSave(paper, entry, buf, aiAffiliations, isFallback) {
     const ssAffiliations = await getAffiliations(paper.id, httpClient, settings.semanticScholarApiKey)
     let affiliationsJson = null
     if (ssAffiliations && ssAffiliations.length > 0) {
       affiliationsJson = JSON.stringify(ssAffiliations)
+      const ssUniversities = ssAffiliations.flatMap(a => a.affiliations || []).filter(Boolean)
+      if (ssUniversities.length > 0) entry.university = ssUniversities.join('; ')
     } else if (aiAffiliations && aiAffiliations.length > 0) {
       affiliationsJson = JSON.stringify(aiAffiliations.map(a => ({ name: '', affiliations: [a] })))
     }
@@ -153,7 +179,101 @@ async function runFetch({ db, deps, mainWindow }) {
     }
     db.savePaper(finalPaper)
     saved.push(finalPaper)
-    console.log(`[fetch]   SAVED (status: ${finalPaper.status})`)
+    entry.stage = 'saved'
+    entry.decision = 'saved'
+    entry.reason = isFallback
+      ? `Guardado como fallback: ningún candidato coincidió con universidades/centros configurados (status: ${finalPaper.status})`
+      : `Guardado (status: ${finalPaper.status})`
+    console.log(`[fetch]   SAVED${isFallback ? ' — fallback, sin match de universidad' : ''} (status: ${finalPaper.status})`)
+  }
+
+  for (const paper of selected) {
+    const entry = entryById.get(paper.id)
+    console.log(`\n[fetch] ── Paper: "${paper.title}" (${paper.id})`)
+
+    vault.ensureDirs(paper)
+    const dl = await downloadPdf(paper.id, paper.pdf_url, httpClient, path.dirname(vault.pdfPath(paper)))
+    entry.download = { success: dl.success, error: dl.success ? null : dl.error }
+    if (!dl.success) {
+      console.log(`[fetch]   PDF download FAILED: ${dl.error}`)
+      entry.stage = 'download'
+      entry.decision = 'rejected'
+      entry.reason = `Falló la descarga del PDF: ${dl.error}`
+      continue
+    }
+    console.log(`[fetch]   PDF downloaded OK`)
+
+    const buf       = fs.readFileSync(dl.path)
+    const firstPage = await extractFirstPage(buf, pdfParse)
+    let aiAffiliations = null
+
+    if (firstPage.success) {
+      if (llm) {
+        aiAffiliations = await llm.extractAffiliationsWithAI(firstPage.text)
+        console.log(`[fetch]   AI affiliations: ${JSON.stringify(aiAffiliations)}`)
+      }
+      if (aiAffiliations && aiAffiliations.length > 0) entry.university = aiAffiliations.join('; ')
+
+      if (orgFilter.length > 0) {
+        const passes = aiAffiliations
+          ? aiAffiliations.some(a => {
+              const segments = a.split(',').map(s => s.trim().toLowerCase())
+              return orgFilter.some(u => {
+                const ul = u.toLowerCase()
+                return segments.some(seg => seg.includes(ul) || ul.includes(seg))
+              })
+            })
+          : matchesUniversityInText(firstPage.text, orgFilter)
+        console.log(`[fetch]   Org match: ${passes ? 'PASS' : 'REJECTED'}`)
+        entry.orgFilter = { applied: true, affiliations: aiAffiliations, passed: passes }
+        if (!passes) {
+          entry.stage = 'org_filter'
+          entry.decision = 'rejected'
+          entry.reason = `No coincide con universidades/centros configurados (${orgFilter.join(', ')})`
+          orgRejects.push({ paper, entry, dl, buf, aiAffiliations })
+          continue
+        }
+      } else {
+        entry.orgFilter = { applied: false }
+      }
+    } else if (orgFilter.length > 0) {
+      console.log(`[fetch]   First-page extract FAILED: ${firstPage.error} → REJECTED`)
+      entry.stage = 'first_page'
+      entry.decision = 'rejected'
+      entry.reason = `Falló la extracción de la primera página: ${firstPage.error}`
+      entry.orgFilter = { applied: true, error: firstPage.error, passed: false }
+      fs.unlinkSync(dl.path)
+      continue
+    } else {
+      entry.orgFilter = { applied: false, error: firstPage.error }
+    }
+
+    await finalizeSave(paper, entry, buf, aiAffiliations, false)
+  }
+
+  // Nobody passed the org filter — rather than end the week with zero papers,
+  // keep the best-ranked candidate that was rejected only for its affiliation.
+  if (saved.length === 0 && orgRejects.length > 0) {
+    const fb = orgRejects[0]
+    console.log(`[fetch]   No candidate matched universities/centers — saving best-ranked as fallback: "${fb.paper.title}"`)
+    await finalizeSave(fb.paper, fb.entry, fb.buf, fb.aiAffiliations, true)
+  }
+
+  for (const rej of orgRejects) {
+    if (!saved.some(p => p.id === rej.paper.id)) fs.unlinkSync(rej.dl.path)
+  }
+
+  if (writeFetchLog) {
+    const fetchReport = {
+      generatedAt: new Date().toISOString(),
+      stats: { totalCandidates: result.length, selected: selected.length, saved: saved.length },
+      entries: report,
+    }
+    try {
+      writeFetchLog(fetchReport)
+    } catch (logErr) {
+      console.error(`[fetch]   Failed to write fetch log: ${logErr.message}`)
+    }
   }
 
   if (mainWindow && saved.length > 0) {
