@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webFrame } = require('electron')
 
 contextBridge.exposeInMainWorld('api', {
   getPapers:       ()         => ipcRenderer.invoke('get-papers'),
@@ -52,6 +52,9 @@ contextBridge.exposeInMainWorld('api', {
   onStreamDebug: (cb) => ipcRenderer.on('class-stream-debug', (_e, msg)  => cb(msg)),
   classGetHint:         (data)      => ipcRenderer.invoke('class-get-hint', data),
   classAssistantMessage:(data)      => ipcRenderer.invoke('class-assistant-message', data),
+
+  setZoomFactor:   (f)        => webFrame.setZoomFactor(f),
+  getZoomFactor:   ()         => webFrame.getZoomFactor(),
 
   minimizeWindow:  ()         => ipcRenderer.send('window-minimize'),
   maximizeWindow:  ()         => ipcRenderer.send('window-maximize'),

@@ -53,6 +53,12 @@ function createWindow() {
   mainWindow.maximize()
   mainWindow.loadFile('renderer/index.html')
 
+  // El renderer aplica y persiste su propio zoom (webFrame). Aquí solo
+  // desactivamos el pinch-zoom para que no se descontrole por accidente.
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.setVisualZoomLevelLimits(1, 1)
+  })
+
   ipcMain.on('renderer-log', (_e, msg) => console.log('[renderer]', msg))
   ipcMain.on('window-minimize', () => mainWindow.minimize())
   ipcMain.on('window-maximize', () => {

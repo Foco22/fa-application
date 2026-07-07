@@ -179,6 +179,36 @@ function wireListeners() {
     applyZoom(zoomLevel + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP))
   }, { passive: false })
 
+  // --- Zoom de toda la interfaz (barra izquierda + chat + lectura) ---
+  // Usa el zoom real del navegador (webFrame): reajusta el layout y siempre
+  // llena la ventana (responsive, sin fondo negro). Persistente.
+  const UI_ZOOM_MIN = 0.6
+  const UI_ZOOM_MAX = 1.6
+  const UI_ZOOM_STEP = 0.05
+  let uiZoom = parseFloat(localStorage.getItem('uiZoom') || '1')
+
+  function applyUiZoom(z) {
+    uiZoom = Math.min(UI_ZOOM_MAX, Math.max(UI_ZOOM_MIN, Math.round(z * 100) / 100))
+    window.api.setZoomFactor(uiZoom)
+    localStorage.setItem('uiZoom', uiZoom)
+  }
+  applyUiZoom(uiZoom)
+
+  // Ctrl + rueda del mouse fuera del panel de lectura ajusta la interfaz.
+  window.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey || contentScroll.contains(e.target)) return
+    e.preventDefault()
+    applyUiZoom(uiZoom + (e.deltaY < 0 ? UI_ZOOM_STEP : -UI_ZOOM_STEP))
+  }, { passive: false, capture: true })
+
+  // Atajos de teclado: Ctrl +  /  Ctrl -  /  Ctrl 0 (restablecer)
+  window.addEventListener('keydown', (e) => {
+    if (!e.ctrlKey) return
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); applyUiZoom(uiZoom + UI_ZOOM_STEP) }
+    else if (e.key === '-')             { e.preventDefault(); applyUiZoom(uiZoom - UI_ZOOM_STEP) }
+    else if (e.key === '0')             { e.preventDefault(); applyUiZoom(1) }
+  })
+
   document.getElementById('btn-open-vault').addEventListener('click', () => window.api.openVaultFolder())
   document.getElementById('act-chat').addEventListener('click', () => {
     document.getElementById('chat-panel').classList.toggle('collapsed')
