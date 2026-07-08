@@ -90,11 +90,43 @@ function parseFeed(xml) {
 const FETCH_PAGE_SIZE = 100  // candidates per ArXiv request
 const FETCH_POOL_CAP  = 300  // defensive cap on total candidates per run (not a design target)
 
+const MAX_RETRIES        = 3     // total attempts per page request
+const RETRY_BASE_DELAY_MS = 1000 // 1s, 2s, ... (linear backoff)
+
+function defaultSleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// ArXiv's search backend is flaky/slow on submittedDate-range queries and
+// intermittently answers with a 503 under load. Bare network errors (no
+// `response`, e.g. timeouts/ECONNRESET) are just as transient. 4xx errors
+// mean the query itself is wrong — retrying won't help.
+function isRetryable(err) {
+  if (!err.response) return true
+  return err.response.status >= 500
+}
+
+// Turns a raw axios/network error into a message that tells the user WHERE
+// the failure is (ArXiv's service, not their settings) and whether it's
+// worth retrying — instead of surfacing axios' generic "Request failed
+// with status code 503".
+function describeFetchError(err, attempts) {
+  if (err.response && err.response.status < 500) {
+    return `ArXiv rechazó la consulta (${err.response.status}): ${err.message}`
+  }
+  if (err.response) {
+    return `El servicio de ArXiv respondió con error ${err.response.status} tras ${attempts} intento(s). ` +
+      `Parece un problema temporal / caída del lado de ArXiv, no de tu configuración — probá de nuevo en unos minutos.`
+  }
+  return `No se pudo conectar con ArXiv tras ${attempts} intento(s) (${err.message}). ` +
+    `Puede ser un problema de conexión/red o que el servicio esté no disponible — probá de nuevo en unos minutos.`
+}
+
 // Paginates through ArXiv results for the whole weekly window instead of
 // cutting at a fixed number — sorting by submittedDate desc + a fixed
 // max_results would systematically drop early-week papers once a broad
 // category selection exceeds one page.
-async function fetchPapers(settings, httpClient, today = new Date()) {
+async function fetchPapers(settings, httpClient, today = new Date(), sleepFn = defaultSleep) {
   const { categoryList, authorList } = settings
 
   let query
@@ -112,8 +144,22 @@ async function fetchPapers(settings, httpClient, today = new Date()) {
     while (all.length < FETCH_POOL_CAP) {
       const pageSize = Math.min(FETCH_PAGE_SIZE, FETCH_POOL_CAP - all.length)
       const url = `${ARXIV_API}?search_query=${encodeURIComponent(query)}&sortBy=submittedDate&sortOrder=descending&start=${start}&max_results=${pageSize}`
-      const response = await httpClient.get(url)
-      const page = parseFeed(response.data)
+
+      let page
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const response = await httpClient.get(url)
+          page = parseFeed(response.data)
+          break
+        } catch (err) {
+          if (!isRetryable(err) || attempt === MAX_RETRIES) {
+            throw new Error(describeFetchError(err, attempt))
+          }
+          console.warn(`[arxiv] request failed (attempt ${attempt}/${MAX_RETRIES}): ${err.message}. Retrying...`)
+          await sleepFn(RETRY_BASE_DELAY_MS * attempt)
+        }
+      }
+
       all.push(...page)
       if (page.length < pageSize) break // fewer than requested → window exhausted
       start += pageSize
@@ -125,4 +171,4 @@ async function fetchPapers(settings, httpClient, today = new Date()) {
   return all
 }
 
-module.exports = { calculateDateWindow, buildQuery, parseFeed, fetchPapers, FETCH_PAGE_SIZE, FETCH_POOL_CAP }
+module.exports = { calculateDateWindow, buildQuery, parseFeed, fetchPapers, FETCH_PAGE_SIZE, FETCH_POOL_CAP, MAX_RETRIES }
