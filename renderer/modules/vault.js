@@ -106,11 +106,12 @@ export function renderVault() {
         const wKey       = `w-${year}-${weekKey}`
         const isWeekOpen = state.expandedNodes.has(wKey)
         const weekRange  = weekDateRange(year, weekKey)
-        const weekLabel  = `${weekKey.replace('week-', 'W')} (${weekRange})`
+        const weekLabel  = weekKey.replace('week-', 'W')
 
         const weekEl = document.createElement('div')
         weekEl.className = 'tree-week' + (isWeekOpen ? ' open' : '')
-        weekEl.innerHTML = `<span class="tree-arrow">${isWeekOpen ? '▾' : '▸'}</span><span class="tree-label" title="${weekRange}">${weekLabel}</span>`
+        weekEl.dataset.tooltip = weekRange
+        weekEl.innerHTML = `<span class="tree-arrow">${isWeekOpen ? '▾' : '▸'}</span><span class="tree-label">${weekLabel}</span>`
         weekEl.addEventListener('click', () => toggleNode(wKey))
         list.appendChild(weekEl)
 
