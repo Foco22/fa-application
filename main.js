@@ -73,6 +73,33 @@ app.whenReady().then(() => {
 
   db = openDatabase(DB_PATH)
 
+  // Layout del vault: mover/renombrar cada carpeta de paper a su ubicación
+  // canónica (nombrada por título; los ref-… van a reference/), y garantizar
+  // que todo paper de la DB tenga su carpeta aunque aún no tenga contenido.
+  const allPapers  = db.getPapers()
+  const folderMig  = vaultMod.migratePaperFolders(VAULT_DIR, allPapers)
+  if (folderMig.moved > 0) {
+    console.log(`[startup] vault: ${folderMig.moved} carpeta(s) movida(s)/renombrada(s)`)
+  }
+  for (const p of allPapers) vaultMod.ensureDirs(VAULT_DIR, p)
+
+  // raw/ debe tener siempre el PDF. Los papers de referencia tienen su PDF en
+  // una ruta local (pdf_url) que no se copió al vault — copiarlo ahora si falta.
+  for (const p of allPapers) {
+    if (p.pdf_url && !/^https?:/i.test(p.pdf_url) && fs.existsSync(p.pdf_url)
+        && !fs.existsSync(vaultMod.pdfPath(VAULT_DIR, p))) {
+      try { vaultMod.copyPdfToRaw(VAULT_DIR, p, p.pdf_url) }
+      catch (err) { console.error(`[startup] no se pudo copiar PDF de ${p.id} al vault: ${err.message}`) }
+    }
+  }
+
+  // Backfill: cualquier carpeta de paper que aún no tenga slides/ (ej. huérfanas
+  // sin fila en la DB) la recibe ahora.
+  const slidesBackfill = vaultMod.backfillSlideDirs(VAULT_DIR)
+  if (slidesBackfill.created > 0) {
+    console.log(`[startup] slides/ backfill: ${slidesBackfill.created} carpeta(s) creada(s)`)
+  }
+
   createWindow()
 
   const vault = {
@@ -81,6 +108,9 @@ app.whenReady().then(() => {
     pdfPath:      (paper)       => vaultMod.pdfPath(VAULT_DIR, paper),
     writeSummary:    (paper, text) => vaultMod.writeSummary(VAULT_DIR, paper, text),
     writeQuiz:       (paper, quiz) => vaultMod.writeQuiz(VAULT_DIR, paper, quiz),
+    copyPdfToRaw: (paper, src)     => vaultMod.copyPdfToRaw(VAULT_DIR, paper, src),
+    slidesDir:       (paper)       => vaultMod.slidesDir(VAULT_DIR, paper),
+    writeSlide:   (paper, filename, buf) => vaultMod.writeSlide(VAULT_DIR, paper, filename, buf),
     deletePaperDir:  (paper)       => vaultMod.deletePaperDir(VAULT_DIR, paper),
   }
 

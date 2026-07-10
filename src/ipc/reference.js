@@ -89,6 +89,20 @@ function registerReferenceHandlers({ ipcMain, db, deps }) {
           })
         }
 
+        // Copiar el PDF al vault (raw/) para que raw/ siempre tenga el PDF y el
+        // vault sea autocontenido, aunque el archivo original se mueva/borre.
+        if (vault && vault.copyPdfToRaw) {
+          const paper = db.getPaper(paperId)
+          if (paper && !fs.existsSync(vault.pdfPath(paper))) {
+            try {
+              vault.ensureDirs(paper)
+              vault.copyPdfToRaw(paper, filePath)
+            } catch (err) {
+              console.error(`[index-files] no se pudo copiar el PDF al vault: ${err.message}`)
+            }
+          }
+        }
+
         if (!db.getReferencePaper(filePath)) {
           const embedding = await embProvider.generateEmbedding(snippet)
           const abstractSummary = await llm.summarizeAbstract(abstract || snippet)

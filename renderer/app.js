@@ -92,8 +92,11 @@ async function triggerFetch() {
   try {
     const result = await window.api.fetchPapers()
     if (result && result.error) {
-      toast('Error: ' + result.error, 'error')
-      status.textContent = '⚠ ' + result.error
+      // El detalle completo va al toast (abajo); la barra superior solo lleva
+      // un rótulo corto para no romper el layout del topbar con texto largo.
+      toast('Error en la ingesta: ' + result.error, 'error')
+      status.textContent = '⚠ Error en la ingesta'
+      setTimeout(() => { status.textContent = '' }, 4000)
     } else if (Array.isArray(result)) {
       state.papers = await window.api.getPapers()
       autoExpandRecent()
