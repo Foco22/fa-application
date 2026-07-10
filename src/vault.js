@@ -83,6 +83,15 @@ function writeQuiz(vaultDir, paper, quiz) {
   fs.writeFileSync(path.join(dir, 'quiz.json'), JSON.stringify(quiz, null, 2), 'utf8')
 }
 
+// Copia un PDF de origen (ej. la carpeta Downloads del usuario) a raw/<id>.pdf
+// del paper, para que el vault sea autocontenido y raw/ siempre tenga el PDF.
+function copyPdfToRaw(vaultDir, paper, srcPath) {
+  const dest = pdfPath(vaultDir, paper)
+  fs.mkdirSync(path.dirname(dest), { recursive: true })
+  fs.copyFileSync(srcPath, dest)
+  return dest
+}
+
 function slidesDir(vaultDir, paper) {
   return path.join(paperDir(vaultDir, paper), 'slides')
 }
@@ -197,6 +206,6 @@ module.exports = {
   DEFAULT_VAULT_DIR,
   isoWeek, paperSlot, paperDir,
   isReferencePaper, sanitizeFolderName, paperFolderName, referenceFolderName,
-  ensureDirs, pdfPath, writeSummary, writeQuiz, slidesDir, writeSlide,
+  ensureDirs, pdfPath, copyPdfToRaw, writeSummary, writeQuiz, slidesDir, writeSlide,
   backfillSlideDirs, migratePaperFolders, deletePaperDir
 }

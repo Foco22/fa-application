@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import os   from 'os'
 import path from 'path'
 import fs   from 'fs'
-import { isoWeek, paperSlot, paperDir, ensureDirs, pdfPath, writeSummary, writeQuiz, slidesDir, writeSlide, backfillSlideDirs, migratePaperFolders, paperFolderName, sanitizeFolderName } from '../../src/vault.js'
+import { isoWeek, paperSlot, paperDir, ensureDirs, pdfPath, copyPdfToRaw, writeSummary, writeQuiz, slidesDir, writeSlide, backfillSlideDirs, migratePaperFolders, paperFolderName, sanitizeFolderName } from '../../src/vault.js'
 
 let tmpDir
 
@@ -152,6 +152,27 @@ describe('writeQuiz', () => {
     const parsed = JSON.parse(fs.readFileSync(p, 'utf8'))
     expect(parsed.questions).toHaveLength(1)
     expect(parsed.questions[0].question).toBe('Q1')
+  })
+})
+
+// ─── copyPdfToRaw ────────────────────────────────────────────────────────────
+
+describe('copyPdfToRaw', () => {
+  it('copies the source pdf into raw/<id>.pdf and returns its path', () => {
+    const src = path.join(tmpDir, 'source-download.pdf')
+    fs.writeFileSync(src, 'PDF-BYTES')
+    const p = { id: 'ref-1706.03762v7', title: 'Attention Is All You Need' }
+    const dest = copyPdfToRaw(tmpDir, p, src)
+    expect(dest).toBe(pdfPath(tmpDir, p))
+    expect(fs.existsSync(dest)).toBe(true)
+    expect(fs.readFileSync(dest, 'utf8')).toBe('PDF-BYTES')
+  })
+  it('creates the raw/ directory if missing', () => {
+    const src = path.join(tmpDir, 'src2.pdf')
+    fs.writeFileSync(src, 'x')
+    const p = { id: 'ref-new', title: 'Fresh Ref' }
+    const dest = copyPdfToRaw(tmpDir, p, src)
+    expect(fs.existsSync(dest)).toBe(true)
   })
 })
 

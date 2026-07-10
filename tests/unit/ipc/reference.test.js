@@ -192,6 +192,23 @@ describe('index-files', () => {
     expect(result.errors).toBe(1)
     expect(result.indexed).toBe(0)
   })
+
+  it('copies the source PDF into the vault raw/ folder', async () => {
+    const vault = {
+      dir: '/vault',
+      pdfPath:      vi.fn().mockReturnValue('/vault/reference/T/raw/ref-paper.pdf'),
+      ensureDirs:   vi.fn(),
+      copyPdfToRaw: vi.fn(),
+    }
+    const paper = { id: 'ref-paper', title: 'T', pdf_url: '/docs/paper.pdf' }
+    const { invoke } = setup(
+      { getPaper: vi.fn().mockReturnValue(paper) },
+      { vault }
+    )
+    await invoke('index-files', ['/docs/paper.pdf'])
+    expect(vault.ensureDirs).toHaveBeenCalledWith(paper)
+    expect(vault.copyPdfToRaw).toHaveBeenCalledWith(paper, '/docs/paper.pdf')
+  })
 })
 
 // ─── get-reference-list ───────────────────────────────────────────────────────

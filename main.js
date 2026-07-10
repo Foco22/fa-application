@@ -83,6 +83,16 @@ app.whenReady().then(() => {
   }
   for (const p of allPapers) vaultMod.ensureDirs(VAULT_DIR, p)
 
+  // raw/ debe tener siempre el PDF. Los papers de referencia tienen su PDF en
+  // una ruta local (pdf_url) que no se copió al vault — copiarlo ahora si falta.
+  for (const p of allPapers) {
+    if (p.pdf_url && !/^https?:/i.test(p.pdf_url) && fs.existsSync(p.pdf_url)
+        && !fs.existsSync(vaultMod.pdfPath(VAULT_DIR, p))) {
+      try { vaultMod.copyPdfToRaw(VAULT_DIR, p, p.pdf_url) }
+      catch (err) { console.error(`[startup] no se pudo copiar PDF de ${p.id} al vault: ${err.message}`) }
+    }
+  }
+
   // Backfill: cualquier carpeta de paper que aún no tenga slides/ (ej. huérfanas
   // sin fila en la DB) la recibe ahora.
   const slidesBackfill = vaultMod.backfillSlideDirs(VAULT_DIR)
@@ -98,6 +108,7 @@ app.whenReady().then(() => {
     pdfPath:      (paper)       => vaultMod.pdfPath(VAULT_DIR, paper),
     writeSummary:    (paper, text) => vaultMod.writeSummary(VAULT_DIR, paper, text),
     writeQuiz:       (paper, quiz) => vaultMod.writeQuiz(VAULT_DIR, paper, quiz),
+    copyPdfToRaw: (paper, src)     => vaultMod.copyPdfToRaw(VAULT_DIR, paper, src),
     slidesDir:       (paper)       => vaultMod.slidesDir(VAULT_DIR, paper),
     writeSlide:   (paper, filename, buf) => vaultMod.writeSlide(VAULT_DIR, paper, filename, buf),
     deletePaperDir:  (paper)       => vaultMod.deletePaperDir(VAULT_DIR, paper),
