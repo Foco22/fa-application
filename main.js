@@ -73,18 +73,18 @@ app.whenReady().then(() => {
 
   db = openDatabase(DB_PATH)
 
-  // Migración: mover papers de referencia viejos (ref-…) desde <año>/<semana>/
-  // hacia reference/, renombrando cada carpeta al título del paper (el nombre
-  // de carpeta ref-<slug> coincide con el id en la tabla papers).
-  const refMigration = vaultMod.migrateReferencePapers(VAULT_DIR, (dirName) => {
-    const p = db.getPaper(dirName)
-    return p ? vaultMod.referenceFolderName(p) : dirName
-  })
-  if (refMigration.moved > 0) {
-    console.log(`[startup] reference/ migración: ${refMigration.moved} paper(s) movido(s)`)
+  // Layout del vault: mover/renombrar cada carpeta de paper a su ubicación
+  // canónica (nombrada por título; los ref-… van a reference/), y garantizar
+  // que todo paper de la DB tenga su carpeta aunque aún no tenga contenido.
+  const allPapers  = db.getPapers()
+  const folderMig  = vaultMod.migratePaperFolders(VAULT_DIR, allPapers)
+  if (folderMig.moved > 0) {
+    console.log(`[startup] vault: ${folderMig.moved} carpeta(s) movida(s)/renombrada(s)`)
   }
+  for (const p of allPapers) vaultMod.ensureDirs(VAULT_DIR, p)
 
-  // Backfill: los papers viejos del vault no tienen slides/ — crearla ahora.
+  // Backfill: cualquier carpeta de paper que aún no tenga slides/ (ej. huérfanas
+  // sin fila en la DB) la recibe ahora.
   const slidesBackfill = vaultMod.backfillSlideDirs(VAULT_DIR)
   if (slidesBackfill.created > 0) {
     console.log(`[startup] slides/ backfill: ${slidesBackfill.created} carpeta(s) creada(s)`)

@@ -41,19 +41,22 @@ function sanitizeFolderName(name) {
   return cleaned || 'untitled'
 }
 
-// Nombre de carpeta para un paper de referencia: el título legible del paper,
-// con fallback al id (ref-…) si todavía no tiene título.
-function referenceFolderName(paper) {
+// Nombre de carpeta de un paper: su título legible, con fallback al id si aún
+// no tiene título. Se usa tanto para papers de ingesta como de referencia.
+function paperFolderName(paper) {
   const title = paper && paper.title && paper.title.trim()
   return title ? sanitizeFolderName(title) : (paper && paper.id) || 'untitled'
 }
+// Alias histórico.
+const referenceFolderName = paperFolderName
 
 function paperDir(vaultDir, paper) {
+  const name = paperFolderName(paper)
   if (isReferencePaper(paper)) {
-    return path.join(vaultDir, 'reference', referenceFolderName(paper))
+    return path.join(vaultDir, 'reference', name)
   }
   const { year, weekKey } = paperSlot(paper)
-  return path.join(vaultDir, year, weekKey, paper.id)
+  return path.join(vaultDir, year, weekKey, name)
 }
 
 function ensureDirs(vaultDir, paper) {
@@ -125,65 +128,62 @@ function backfillSlideDirs(vaultDir) {
   return { created: created.length, dirs: created }
 }
 
-// Migración: lleva los papers de referencia (ref-…) a la carpeta reference/
-// dedicada y los renombra al título legible del paper. `resolveName(dirName)`
-// mapea el nombre de carpeta actual (ej. "ref-1706.03762v7") al nombre destino
-// (ej. "Attention Is All You Need"); por defecto conserva el nombre. Cubre dos
-// casos: ref-… sueltos en <año>/<semana>/ y ref-… ya dentro de reference/.
-// Idempotente: no toca carpetas que ya están en su destino.
-function migrateReferencePapers(vaultDir, resolveName = (n) => n) {
-  const moved = []
-  if (!fs.existsSync(vaultDir)) return { moved: 0, dirs: moved }
-
-  const referenceRoot = path.join(vaultDir, 'reference')
-
-  // Sube por los directorios padres borrando los que hayan quedado vacíos tras
-  // mover un paper (la semana, y luego el año), sin pasar de vaultDir.
-  const pruneEmptyParents = (startDir) => {
-    let dir = startDir
-    while (dir !== vaultDir && dir.startsWith(vaultDir + path.sep)) {
-      try {
-        if (fs.readdirSync(dir).length > 0) break
-        fs.rmdirSync(dir)
-      } catch { break }
-      dir = path.dirname(dir)
-    }
+// Sube por los directorios padres borrando los que hayan quedado vacíos tras
+// mover una carpeta (la semana, luego el año), sin pasar de vaultDir.
+function pruneEmptyParents(vaultDir, startDir) {
+  let dir = startDir
+  while (dir !== vaultDir && dir.startsWith(vaultDir + path.sep)) {
+    try {
+      if (fs.readdirSync(dir).length > 0) break
+      fs.rmdirSync(dir)
+    } catch { break }
+    dir = path.dirname(dir)
   }
+}
 
-  const relocate = (currentPath, dirName) => {
-    const targetName = sanitizeFolderName(resolveName(dirName) || dirName)
-    const dest = path.join(referenceRoot, targetName)
-    if (currentPath === dest) return          // ya está en su destino
-    if (fs.existsSync(dest)) return           // no pisar una carpeta existente
-    fs.mkdirSync(referenceRoot, { recursive: true })
-    fs.renameSync(currentPath, dest)
-    moved.push(dest)
-    pruneEmptyParents(path.dirname(currentPath))
-  }
-
-  // 1) ref-… que viven fuera de reference/ (típicamente en <año>/<semana>/)
+// Indexa todas las carpetas de paper existentes (las que tienen raw/ o assets/)
+// por su basename, para poder localizar la carpeta vieja de un paper aunque esté
+// nombrada por id o esté en otra semana. Ignora fetch-logs/.
+function indexPaperDirs(vaultDir) {
+  const index = new Map()
   const walk = (dir) => {
+    if (fs.existsSync(path.join(dir, 'raw')) || fs.existsSync(path.join(dir, 'assets'))) {
+      index.set(path.basename(dir), dir)
+      return // no descender dentro de un paper dir
+    }
     let entries
     try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return }
     for (const e of entries) {
-      if (!e.isDirectory()) continue
-      const full = path.join(dir, e.name)
-      if (full === referenceRoot) continue     // reference/ se maneja aparte (paso 2)
-      if (e.name.startsWith('ref-')) { relocate(full, e.name); continue }
-      if (e.name !== 'fetch-logs') walk(full)
+      if (e.isDirectory() && e.name !== 'fetch-logs') walk(path.join(dir, e.name))
     }
   }
   walk(vaultDir)
+  return index
+}
 
-  // 2) ref-… que ya están dentro de reference/ pero con el id como nombre →
-  //    renombrarlos al título.
-  try {
-    for (const e of fs.readdirSync(referenceRoot, { withFileTypes: true })) {
-      if (e.isDirectory() && e.name.startsWith('ref-')) {
-        relocate(path.join(referenceRoot, e.name), e.name)
-      }
-    }
-  } catch { /* reference/ no existe todavía */ }
+// Migración DB-driven: para cada paper conocido, mueve/renombra su carpeta a la
+// ubicación canónica que dicta paperDir (ahora nombrada por título). Cubre en un
+// solo paso: renombrar carpetas de ingesta id→título, y mover papers de
+// referencia (ref-…) desde <año>/<semana>/ o reference/<id> hacia
+// reference/<título>. Idempotente: no toca las que ya están en su destino, ni
+// las carpetas huérfanas (sin fila en la DB). Limpia semanas/años que queden
+// vacíos tras un movimiento.
+function migratePaperFolders(vaultDir, papers) {
+  const moved = []
+  if (!fs.existsSync(vaultDir)) return { moved: 0, dirs: moved }
+
+  const index = indexPaperDirs(vaultDir)
+
+  for (const paper of papers) {
+    const src = index.get(paper.id) // carpeta vieja nombrada por id
+    if (!src) continue
+    const target = paperDir(vaultDir, paper)
+    if (src === target || fs.existsSync(target)) continue
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.renameSync(src, target)
+    moved.push(target)
+    pruneEmptyParents(vaultDir, path.dirname(src))
+  }
 
   return { moved: moved.length, dirs: moved }
 }
@@ -196,7 +196,7 @@ function deletePaperDir(vaultDir, paper) {
 module.exports = {
   DEFAULT_VAULT_DIR,
   isoWeek, paperSlot, paperDir,
-  isReferencePaper, sanitizeFolderName, referenceFolderName,
+  isReferencePaper, sanitizeFolderName, paperFolderName, referenceFolderName,
   ensureDirs, pdfPath, writeSummary, writeQuiz, slidesDir, writeSlide,
-  backfillSlideDirs, migrateReferencePapers, deletePaperDir
+  backfillSlideDirs, migratePaperFolders, deletePaperDir
 }

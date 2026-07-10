@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import os   from 'os'
 import path from 'path'
 import fs   from 'fs'
-import { isoWeek, paperSlot, paperDir, ensureDirs, pdfPath, writeSummary, writeQuiz, slidesDir, writeSlide, backfillSlideDirs, migrateReferencePapers, referenceFolderName, sanitizeFolderName } from '../../src/vault.js'
+import { isoWeek, paperSlot, paperDir, ensureDirs, pdfPath, writeSummary, writeQuiz, slidesDir, writeSlide, backfillSlideDirs, migratePaperFolders, paperFolderName, sanitizeFolderName } from '../../src/vault.js'
 
 let tmpDir
 
@@ -56,9 +56,15 @@ describe('paperSlot', () => {
 // ─── paperDir ────────────────────────────────────────────────────────────────
 
 describe('paperDir', () => {
-  it('returns vault/year/weekKey/id', () => {
+  it('returns vault/year/weekKey/id when the paper has no title', () => {
     const dir = paperDir(tmpDir, paper)
-    expect(dir).toBe(path.join(tmpDir, '2024', 'week-02', '2401.12345'))
+    const { year, weekKey } = paperSlot(paper)
+    expect(dir).toBe(path.join(tmpDir, year, weekKey, '2401.12345'))
+  })
+  it('names ingesta papers by their title', () => {
+    const dir = paperDir(tmpDir, { ...paper, title: 'A Great Paper' })
+    const { year, weekKey } = paperSlot(paper)
+    expect(dir).toBe(path.join(tmpDir, year, weekKey, 'A Great Paper'))
   })
   it('routes reference papers by their title into vault/reference/<title>', () => {
     const dir = paperDir(tmpDir, { id: 'ref-1706.03762v7', title: 'Attention Is All You Need' })
@@ -84,12 +90,12 @@ describe('sanitizeFolderName', () => {
   })
 })
 
-describe('referenceFolderName', () => {
+describe('paperFolderName', () => {
   it('returns the sanitized title when present', () => {
-    expect(referenceFolderName({ id: 'ref-x', title: 'Deep Learning: A Review' })).toBe('Deep Learning A Review')
+    expect(paperFolderName({ id: 'ref-x', title: 'Deep Learning: A Review' })).toBe('Deep Learning A Review')
   })
   it('falls back to the id when there is no title', () => {
-    expect(referenceFolderName({ id: 'ref-x', title: '  ' })).toBe('ref-x')
+    expect(paperFolderName({ id: 'ref-x', title: '  ' })).toBe('ref-x')
   })
 })
 
@@ -222,87 +228,74 @@ describe('backfillSlideDirs', () => {
   })
 })
 
-// ─── migrateReferencePapers ──────────────────────────────────────────────────
+// ─── migratePaperFolders ─────────────────────────────────────────────────────
 
-describe('migrateReferencePapers', () => {
+describe('migratePaperFolders', () => {
   let root
   beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'vault-migrate-')) })
   afterEach(() => { fs.rmSync(root, { recursive: true, force: true }) })
 
-  it('moves a ref- dir out of the week folder into reference/', () => {
-    const from = path.join(root, '2026', 'week-28', 'ref-2507.11181v2')
+  const ingesta = { id: '2607.03964', title: 'Worldscape MoE', published_date: '2026-07-01' }
+  const attention = { id: 'ref-1706.03762v7', title: 'Attention Is All You Need' }
+  const moe = { id: 'ref-2507.11181v2', title: 'Mixture of Experts in Large Language Models' }
+
+  it('renames an ingesta folder from its id to its title, in place', () => {
+    const from = paperDir(root, { id: ingesta.id, published_date: ingesta.published_date }) // id-named
     fs.mkdirSync(path.join(from, 'assets'), { recursive: true })
     fs.writeFileSync(path.join(from, 'assets', 'quiz.json'), '{}')
 
-    const res = migrateReferencePapers(root)
+    const res = migratePaperFolders(root, [ingesta])
 
-    const to = path.join(root, 'reference', 'ref-2507.11181v2')
+    const to = paperDir(root, ingesta) // title-named, same week
     expect(fs.existsSync(from)).toBe(false)
     expect(fs.existsSync(path.join(to, 'assets', 'quiz.json'))).toBe(true)
     expect(res.moved).toBe(1)
   })
 
-  it('removes the week/year folder left empty after moving the ref paper', () => {
+  it('moves a ref- dir from a week folder into reference/<title>', () => {
     const from = path.join(root, '2026', 'week-28', 'ref-2507.11181v2')
     fs.mkdirSync(path.join(from, 'assets'), { recursive: true })
+    fs.writeFileSync(path.join(from, 'assets', 'quiz.json'), '{}')
 
-    migrateReferencePapers(root)
+    const res = migratePaperFolders(root, [moe])
 
+    const to = path.join(root, 'reference', 'Mixture of Experts in Large Language Models')
+    expect(fs.existsSync(from)).toBe(false)
+    expect(fs.existsSync(path.join(to, 'assets', 'quiz.json'))).toBe(true)
+    expect(res.moved).toBe(1)
+  })
+
+  it('renames a ref- dir already under reference/ to its title', () => {
+    fs.mkdirSync(path.join(root, 'reference', 'ref-2507.11181v2', 'assets'), { recursive: true })
+    const res = migratePaperFolders(root, [moe])
+    expect(fs.existsSync(path.join(root, 'reference', 'Mixture of Experts in Large Language Models'))).toBe(true)
+    expect(fs.existsSync(path.join(root, 'reference', 'ref-2507.11181v2'))).toBe(false)
+    expect(res.moved).toBe(1)
+  })
+
+  it('removes the week/year folder left empty after moving a ref paper out', () => {
+    fs.mkdirSync(path.join(root, '2026', 'week-28', 'ref-2507.11181v2', 'assets'), { recursive: true })
+    migratePaperFolders(root, [moe])
     expect(fs.existsSync(path.join(root, '2026', 'week-28'))).toBe(false)
     expect(fs.existsSync(path.join(root, '2026'))).toBe(false)
   })
 
-  it('keeps the week folder if other papers still live in it', () => {
-    fs.mkdirSync(path.join(root, '2026', 'week-28', 'ref-abc', 'assets'), { recursive: true })
-    fs.mkdirSync(path.join(root, '2026', 'week-28', '2607.99999', 'raw'), { recursive: true })
-
-    migrateReferencePapers(root)
-
-    expect(fs.existsSync(path.join(root, '2026', 'week-28', '2607.99999'))).toBe(true)
-    expect(fs.existsSync(path.join(root, 'reference', 'ref-abc'))).toBe(true)
-  })
-
-  it('leaves non-reference papers where they are', () => {
-    const paperDir = path.join(root, '2026', 'week-27', '2607.03738')
-    fs.mkdirSync(path.join(paperDir, 'raw'), { recursive: true })
-    const res = migrateReferencePapers(root)
-    expect(fs.existsSync(paperDir)).toBe(true)
+  it('leaves orphan folders (no DB paper) untouched', () => {
+    const orphan = path.join(root, '2026', 'week-27', '2607.03738')
+    fs.mkdirSync(path.join(orphan, 'raw'), { recursive: true })
+    const res = migratePaperFolders(root, []) // not in DB
+    expect(fs.existsSync(orphan)).toBe(true)
     expect(res.moved).toBe(0)
   })
 
-  it('does not touch ref- dirs already under reference/', () => {
-    const already = path.join(root, 'reference', 'ref-abc')
-    fs.mkdirSync(path.join(already, 'assets'), { recursive: true })
-    const res = migrateReferencePapers(root)
+  it('is idempotent — leaves already-title-named folders in place', () => {
+    fs.mkdirSync(path.join(root, 'reference', 'Attention Is All You Need', 'assets'), { recursive: true })
+    const res = migratePaperFolders(root, [attention])
     expect(res.moved).toBe(0)
-    expect(fs.existsSync(already)).toBe(true)
   })
 
   it('returns moved 0 when the vault dir does not exist', () => {
-    const res = migrateReferencePapers(path.join(root, 'nope'))
-    expect(res.moved).toBe(0)
-  })
-
-  it('renames folders to the resolved title, moving from week folders and renaming those already in reference/', () => {
-    // one still in a week folder, one already under reference/ with the ref- id
-    fs.mkdirSync(path.join(root, '2026', 'week-27', 'ref-1706.03762v7', 'assets'), { recursive: true })
-    fs.mkdirSync(path.join(root, 'reference', 'ref-2507.11181v2', 'assets'), { recursive: true })
-
-    const titles = {
-      'ref-1706.03762v7': 'Attention Is All You Need',
-      'ref-2507.11181v2': 'Mixture of Experts in Large Language Models',
-    }
-    const res = migrateReferencePapers(root, (dirName) => titles[dirName] || dirName)
-
-    expect(fs.existsSync(path.join(root, 'reference', 'Attention Is All You Need'))).toBe(true)
-    expect(fs.existsSync(path.join(root, 'reference', 'Mixture of Experts in Large Language Models'))).toBe(true)
-    expect(fs.existsSync(path.join(root, 'reference', 'ref-2507.11181v2'))).toBe(false)
-    expect(res.moved).toBe(2)
-  })
-
-  it('leaves an already-title-named folder in place (idempotent)', () => {
-    fs.mkdirSync(path.join(root, 'reference', 'Attention Is All You Need', 'assets'), { recursive: true })
-    const res = migrateReferencePapers(root, () => 'Attention Is All You Need')
+    const res = migratePaperFolders(path.join(root, 'nope'), [moe])
     expect(res.moved).toBe(0)
   })
 })
