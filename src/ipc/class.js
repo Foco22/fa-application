@@ -3,7 +3,7 @@ const fs   = require('fs')
 const { canHaveClass, STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, evaluatePresentation, generateHint, assistantChat } = require('../class')
 
 function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
-  const { createLLM, createTranscription, createWhisperStream, whisperStreamBin, whisperModelsDir } = deps
+  const { createLLM, createTranscription, createWhisperStream, whisperStreamBin, whisperModelsDir, vault } = deps
 
   let _whisperStream = null
 
@@ -26,6 +26,7 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
   ipcMain.handle('class-upload-slides', (_e, { paperId, duration, slides }) => {
     const session = db.createClassSession({ paper_id: paperId, duration })
     const sessionId = session.id
+    const paper = db.getPaper(paperId)
     const slideIds = slides.map((s, i) => {
       const autoLabel = i === 0 ? 'intro' : i === slides.length - 1 ? 'conclusion' : 'desarrollo'
       const slide = db.saveClassSlide({
@@ -35,6 +36,18 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
         mime_type: s.mimeType || 'image/jpeg',
         label: s.label || autoLabel
       })
+      // Además de la DB, persistir la imagen en <paper>/slides/ del vault, junto
+      // al PDF (raw/) y los assets generados. Un fallo de disco no debe romper
+      // la subida: la DB sigue siendo la fuente de verdad para la Clase.
+      if (vault && vault.writeSlide && paper && s.imageData) {
+        try {
+          const ext = (s.mimeType || 'image/jpeg').includes('png') ? 'png' : 'jpg'
+          const filename = `slide-${String(i + 1).padStart(2, '0')}.${ext}`
+          vault.writeSlide(paper, filename, Buffer.from(s.imageData, 'base64'))
+        } catch (err) {
+          console.error('[class-upload-slides] no se pudo escribir la slide al vault:', err.message)
+        }
+      }
       return slide.id
     })
     return { sessionId, slideIds }

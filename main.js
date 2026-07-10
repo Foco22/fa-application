@@ -73,6 +73,23 @@ app.whenReady().then(() => {
 
   db = openDatabase(DB_PATH)
 
+  // Migración: mover papers de referencia viejos (ref-…) desde <año>/<semana>/
+  // hacia reference/, renombrando cada carpeta al título del paper (el nombre
+  // de carpeta ref-<slug> coincide con el id en la tabla papers).
+  const refMigration = vaultMod.migrateReferencePapers(VAULT_DIR, (dirName) => {
+    const p = db.getPaper(dirName)
+    return p ? vaultMod.referenceFolderName(p) : dirName
+  })
+  if (refMigration.moved > 0) {
+    console.log(`[startup] reference/ migración: ${refMigration.moved} paper(s) movido(s)`)
+  }
+
+  // Backfill: los papers viejos del vault no tienen slides/ — crearla ahora.
+  const slidesBackfill = vaultMod.backfillSlideDirs(VAULT_DIR)
+  if (slidesBackfill.created > 0) {
+    console.log(`[startup] slides/ backfill: ${slidesBackfill.created} carpeta(s) creada(s)`)
+  }
+
   createWindow()
 
   const vault = {
@@ -81,6 +98,8 @@ app.whenReady().then(() => {
     pdfPath:      (paper)       => vaultMod.pdfPath(VAULT_DIR, paper),
     writeSummary:    (paper, text) => vaultMod.writeSummary(VAULT_DIR, paper, text),
     writeQuiz:       (paper, quiz) => vaultMod.writeQuiz(VAULT_DIR, paper, quiz),
+    slidesDir:       (paper)       => vaultMod.slidesDir(VAULT_DIR, paper),
+    writeSlide:   (paper, filename, buf) => vaultMod.writeSlide(VAULT_DIR, paper, filename, buf),
     deletePaperDir:  (paper)       => vaultMod.deletePaperDir(VAULT_DIR, paper),
   }
 

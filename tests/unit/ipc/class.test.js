@@ -261,3 +261,76 @@ describe('class-transcribe-audio', () => {
     expect(result.text).toBeNull()
   })
 })
+
+// ─── class-upload-slides ──────────────────────────────────────────────────────
+
+describe('class-upload-slides', () => {
+  function makeSlidesDb() {
+    let sid = 0
+    return makeDb({
+      getPaper:           vi.fn().mockReturnValue({ id: '2401.99999' }),
+      createClassSession: vi.fn().mockReturnValue({ id: 'sess-1' }),
+      saveClassSlide:     vi.fn().mockImplementation(() => ({ id: ++sid })),
+    })
+  }
+
+  it('persists each uploaded slide to the vault via deps.vault.writeSlide', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const vault = { writeSlide: vi.fn() }
+    const deps = {
+      createLLM: vi.fn(), createTranscription: vi.fn(), createWhisperStream: vi.fn(),
+      whisperStreamBin: null, whisperModelsDir: null, vault,
+    }
+    const db = makeSlidesDb()
+    registerClassHandlers({ ipcMain, db, deps, mainWindow: makeMainWindow() })
+
+    const jpg = Buffer.from('one').toString('base64')
+    const png = Buffer.from('two').toString('base64')
+    const result = await invoke('class-upload-slides', {
+      paperId: '2401.99999', duration: 10,
+      slides: [
+        { imageData: jpg, mimeType: 'image/jpeg' },
+        { imageData: png, mimeType: 'image/png' },
+      ],
+    })
+
+    expect(result.sessionId).toBe('sess-1')
+    expect(result.slideIds).toEqual([1, 2])
+    expect(vault.writeSlide).toHaveBeenCalledTimes(2)
+    expect(vault.writeSlide).toHaveBeenNthCalledWith(1, { id: '2401.99999' }, 'slide-01.jpg', Buffer.from('one'))
+    expect(vault.writeSlide).toHaveBeenNthCalledWith(2, { id: '2401.99999' }, 'slide-02.png', Buffer.from('two'))
+  })
+
+  it('still saves to the DB when the vault write fails', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const vault = { writeSlide: vi.fn(() => { throw new Error('disk full') }) }
+    const deps = {
+      createLLM: vi.fn(), createTranscription: vi.fn(), createWhisperStream: vi.fn(),
+      whisperStreamBin: null, whisperModelsDir: null, vault,
+    }
+    const db = makeSlidesDb()
+    registerClassHandlers({ ipcMain, db, deps, mainWindow: makeMainWindow() })
+
+    const result = await invoke('class-upload-slides', {
+      paperId: '2401.99999', duration: 10,
+      slides: [{ imageData: Buffer.from('x').toString('base64'), mimeType: 'image/jpeg' }],
+    })
+    expect(result.slideIds).toEqual([1])
+    expect(db.saveClassSlide).toHaveBeenCalledOnce()
+  })
+
+  it('does not throw when deps.vault is not provided', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const deps = {
+      createLLM: vi.fn(), createTranscription: vi.fn(), createWhisperStream: vi.fn(),
+      whisperStreamBin: null, whisperModelsDir: null,
+    }
+    const db = makeSlidesDb()
+    registerClassHandlers({ ipcMain, db, deps, mainWindow: makeMainWindow() })
+    const result = await invoke('class-upload-slides', {
+      paperId: '2401.99999', duration: 10,
+      slides: [{ imageData: Buffer.from('x').toString('base64'), mimeType: 'image/jpeg' }],
+    })
+    expect(result.slideIds).toEqual([1])
+  })
+})
