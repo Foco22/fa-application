@@ -1,5 +1,26 @@
 const Database = require('better-sqlite3')
 
+// Same "days since Monday" idiom as src/ingestion/arxiv.js / src/vault.js: 0=Sun..6=Sat.
+function isoDate(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function mondayOf(date) {
+  const d = new Date(date)
+  const daysBack = (d.getDay() + 6) % 7
+  d.setDate(d.getDate() - daysBack)
+  return isoDate(d)
+}
+
+function addDays(dateStr, days) {
+  const d = new Date(`${dateStr}T00:00:00`)
+  d.setDate(d.getDate() + days)
+  return isoDate(d)
+}
+
 function openDatabase(path) {
   const db = new Database(path)
   db.pragma('journal_mode = WAL')
@@ -113,13 +134,56 @@ function openDatabase(path) {
   const getAllSettings = db.prepare('SELECT key, value FROM settings')
 
   const saveQuizResult = db.prepare(`
-    INSERT INTO quiz_results (paper_id, score, total, answers)
-    VALUES (@paper_id, @score, @total, @answers)
+    INSERT INTO quiz_results (paper_id, score, total, answers, taken_at)
+    VALUES (@paper_id, @score, @total, @answers, COALESCE(@taken_at, datetime('now')))
   `)
 
   const getQuizResults = db.prepare(
     'SELECT * FROM quiz_results WHERE paper_id = ? ORDER BY taken_at DESC, id DESC'
   )
+
+  // "week_start" = Monday of the week a timestamp falls in, same (dayOfWeek + 6) % 7
+  // idiom used in src/ingestion/arxiv.js and src/vault.js, expressed in SQL.
+  const weekStartExpr = (col) =>
+    `date(${col}, '-' || ((CAST(strftime('%w', ${col}) AS INTEGER) + 6) % 7) || ' days')`
+
+  // Dashboard charts only ever count finished classes (clarity_score set by
+  // class-end-session) — abandoned/incomplete sessions are excluded entirely,
+  // not just from performance averages.
+  const getClassSessionsByWeek = db.prepare(`
+    SELECT ${weekStartExpr('created_at')} AS week_start, COUNT(*) AS count
+    FROM class_sessions
+    WHERE clarity_score IS NOT NULL
+      AND (@from IS NULL OR date(created_at) >= @from) AND (@to IS NULL OR date(created_at) <= @to)
+    GROUP BY week_start
+    ORDER BY week_start
+  `)
+
+  const getClassPerformanceTrend = db.prepare(`
+    SELECT ${weekStartExpr('created_at')} AS week_start,
+           AVG(clarity_score) AS avg_clarity,
+           AVG(CASE WHEN json_valid(feedback) THEN json_extract(feedback, '$.presentationScore') END) AS avg_presentation,
+           AVG(CASE WHEN json_valid(feedback) THEN json_extract(feedback, '$.qaScore') END) AS avg_qa
+    FROM class_sessions
+    WHERE clarity_score IS NOT NULL
+      AND (@from IS NULL OR date(created_at) >= @from) AND (@to IS NULL OR date(created_at) <= @to)
+    GROUP BY week_start
+    ORDER BY week_start
+  `)
+
+  const getQuizPerformanceTrend = db.prepare(`
+    SELECT ${weekStartExpr('taken_at')} AS week_start,
+           AVG(CAST(score AS REAL) / total * 100) AS avg_pct
+    FROM quiz_results
+    WHERE (@from IS NULL OR date(taken_at) >= @from) AND (@to IS NULL OR date(taken_at) <= @to)
+    GROUP BY week_start
+    ORDER BY week_start
+  `)
+
+  const getClassWeeks = db.prepare(`
+    SELECT DISTINCT ${weekStartExpr('created_at')} AS week_start FROM class_sessions
+    WHERE clarity_score IS NOT NULL
+  `)
 
   const saveReferencePaper = db.prepare(`
     INSERT OR IGNORE INTO reference_papers (path, snippet, embedding, abstract_summary)
@@ -142,8 +206,33 @@ function openDatabase(path) {
       const rows = getAllSettings.all()
       return Object.fromEntries(rows.map(r => [r.key, r.value]))
     },
-    saveQuizResult:    (result) => saveQuizResult.run(result),
+    saveQuizResult:    (result) => saveQuizResult.run({ taken_at: null, ...result }),
     getQuizResults:    (paperId) => getQuizResults.all(paperId),
+    getClassSessionsByWeek:  (from = null, to = null) => getClassSessionsByWeek.all({ from, to }),
+    getClassPerformanceTrend: (from = null, to = null) => getClassPerformanceTrend.all({ from, to }),
+    getQuizPerformanceTrend:  (from = null, to = null) => getQuizPerformanceTrend.all({ from, to }),
+    getWeeklyStreak: (referenceDate = new Date()) => {
+      const weeksWithClass = new Set(getClassWeeks.all().map(r => r.week_start))
+      if (weeksWithClass.size === 0) return { current: 0, best: 0 }
+
+      const thisWeek = mondayOf(referenceDate)
+      let cursor = weeksWithClass.has(thisWeek) ? thisWeek : addDays(thisWeek, -7)
+      let current = 0
+      while (weeksWithClass.has(cursor)) {
+        current++
+        cursor = addDays(cursor, -7)
+      }
+
+      const sorted = [...weeksWithClass].sort()
+      let best = 0, run = 0, prev = null
+      for (const week of sorted) {
+        run = (prev !== null && addDays(prev, 7) === week) ? run + 1 : 1
+        best = Math.max(best, run)
+        prev = week
+      }
+
+      return { current, best }
+    },
     saveNotes:           (id, notes)      => saveNotes.run(notes, id),
     saveHighlights:      (id, highlights) => saveHighlights.run(highlights, id),
     deletePaper:         (id) => deletePaper.run(id),
