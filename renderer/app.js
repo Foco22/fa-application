@@ -13,6 +13,7 @@ import { generateQuiz } from './modules/quiz.js'
 import { sendChat, clearChat } from './modules/chat.js'
 import { openSettings, saveSettings } from './modules/settings.js'
 import { enterClassMode, exitClassMode, initClass } from './modules/class.js'
+import { openLearningDashboard, closeLearningDashboard, initLearningDashboard } from './modules/learning-dashboard.js'
 
 /* ── PDF expand ─────────────────────────────────────────────────────────── */
 
@@ -72,13 +73,19 @@ document.getElementById('class-confirm-ok').addEventListener('click', () => {
 
 /* ── Dependency injection ───────────────────────────────────────────────── */
 
-initVault({ openPaper, showContextMenu })
+function openPaperFromLearning(id) {
+  closeLearningDashboard()
+  return openPaper(id)
+}
+
+initVault({ openPaper: openPaperFromLearning, showContextMenu })
 initPaperView({ renderVault, switchTab, setPdfExpanded })
-initContextMenu({ openPaper, renderVault })
+initContextMenu({ openPaper: openPaperFromLearning, renderVault })
 
 /* ── Fetch ──────────────────────────────────────────────────────────────── */
 
 async function triggerFetch() {
+  closeLearningDashboard()
   const actBtn   = document.getElementById('act-fetch')
   const status   = document.getElementById('fetch-status')
   const overlay  = document.getElementById('fetch-overlay')
@@ -140,6 +147,8 @@ initOnboarding({ showApp })
 
 function wireListeners() {
   initClass()
+  initLearningDashboard()
+  document.getElementById('act-learning').addEventListener('click', openLearningDashboard)
   document.getElementById('btn-win-min').addEventListener('click', () => window.api.minimizeWindow())
   document.getElementById('btn-win-max').addEventListener('click', () => window.api.maximizeWindow())
   document.getElementById('btn-win-close').addEventListener('click', () => window.api.closeWindow())

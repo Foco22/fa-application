@@ -196,3 +196,213 @@ describe('saveReferencePaper / getReferencePapers', () => {
     expect(rows[0].abstract_summary).toBe('first')
   })
 })
+
+// ─── learning dashboard aggregation ───────────────────────────────────────────
+
+function makePaper(id) {
+  return {
+    id, title: 'T', authors: '', abstract: '', pdf_url: '', published_date: '',
+    affiliations: '[]', pdf_text: null, summary: null, quiz: null, pdf_error: null, status: 'ready'
+  }
+}
+
+function makeClassSession(db, paperId, { created_at, clarity_score = null, feedback = null }) {
+  const { id } = db.createClassSession({ paper_id: paperId, duration: 60 })
+  db.updateClassSession(id, { created_at, clarity_score, feedback })
+  return id
+}
+
+describe('getClassSessionsByWeek', () => {
+  it('groups finished session counts by the Monday of their week', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', { created_at: '2024-01-02 10:00:00', clarity_score: 80 }) // week of 2024-01-01 (Mon)
+    makeClassSession(db, 'p1', { created_at: '2024-01-03 10:00:00', clarity_score: 70 }) // same week
+    makeClassSession(db, 'p1', { created_at: '2024-01-10 10:00:00', clarity_score: 90 }) // week of 2024-01-08 (Mon)
+
+    const rows = db.getClassSessionsByWeek()
+
+    expect(rows).toEqual([
+      { week_start: '2024-01-01', count: 2 },
+      { week_start: '2024-01-08', count: 1 },
+    ])
+  })
+
+  it('excludes a session with null clarity_score (abandoned/incomplete session)', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', { created_at: '2024-01-02 10:00:00', clarity_score: null })
+
+    const rows = db.getClassSessionsByWeek()
+    expect(rows).toEqual([])
+  })
+
+  it('counts a week with a mix of finished and abandoned sessions using only the finished ones', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', { created_at: '2024-01-02 10:00:00', clarity_score: 80 })
+    makeClassSession(db, 'p1', { created_at: '2024-01-03 10:00:00', clarity_score: null })
+
+    const rows = db.getClassSessionsByWeek()
+    expect(rows).toEqual([{ week_start: '2024-01-01', count: 1 }])
+  })
+
+  it('filters by from/to date range', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', { created_at: '2024-01-02 10:00:00', clarity_score: 80 })
+    makeClassSession(db, 'p1', { created_at: '2024-01-10 10:00:00', clarity_score: 80 })
+    makeClassSession(db, 'p1', { created_at: '2024-02-01 10:00:00', clarity_score: 80 })
+
+    const rows = db.getClassSessionsByWeek('2024-01-08', '2024-01-31')
+    expect(rows).toEqual([{ week_start: '2024-01-08', count: 1 }])
+  })
+
+  it('returns an empty array when there are no sessions', () => {
+    expect(db.getClassSessionsByWeek()).toEqual([])
+  })
+})
+
+describe('getClassPerformanceTrend', () => {
+  it('averages clarity_score, presentationScore and qaScore per week', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', {
+      created_at: '2024-01-02 10:00:00', clarity_score: 80,
+      feedback: JSON.stringify({ presentationScore: 70, qaScore: 60 }),
+    })
+    makeClassSession(db, 'p1', {
+      created_at: '2024-01-03 10:00:00', clarity_score: 90,
+      feedback: JSON.stringify({ presentationScore: 90, qaScore: 80 }),
+    })
+
+    const rows = db.getClassPerformanceTrend()
+
+    expect(rows).toEqual([
+      { week_start: '2024-01-01', avg_clarity: 85, avg_presentation: 80, avg_qa: 70 },
+    ])
+  })
+
+  it('excludes an abandoned session (null clarity_score) but keeps the week if another session finished', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', { created_at: '2024-01-02 10:00:00', clarity_score: 80 })
+    makeClassSession(db, 'p1', { created_at: '2024-01-03 10:00:00', clarity_score: null })
+
+    const rows = db.getClassPerformanceTrend()
+    expect(rows).toEqual([{ week_start: '2024-01-01', avg_clarity: 80, avg_presentation: null, avg_qa: null }])
+  })
+
+  it('excludes a week entirely when every session in it was abandoned', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', { created_at: '2024-01-02 10:00:00', clarity_score: null })
+
+    const rows = db.getClassPerformanceTrend()
+    expect(rows).toEqual([])
+  })
+
+  it('does not throw and excludes the row when feedback JSON is malformed or absent', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', { created_at: '2024-01-02 10:00:00', clarity_score: 60, feedback: 'not-json{' })
+    makeClassSession(db, 'p1', { created_at: '2024-01-03 10:00:00', clarity_score: 80, feedback: null })
+
+    const rows = db.getClassPerformanceTrend()
+    expect(rows).toEqual([{ week_start: '2024-01-01', avg_clarity: 70, avg_presentation: null, avg_qa: null }])
+  })
+
+  it('returns an empty array when there are no sessions', () => {
+    expect(db.getClassPerformanceTrend()).toEqual([])
+  })
+})
+
+describe('getQuizPerformanceTrend', () => {
+  it('averages the accuracy percentage per week', () => {
+    db.savePaper(makePaper('p1'))
+    db.saveQuizResult({ paper_id: 'p1', score: 4, total: 5, answers: '[]', taken_at: '2024-01-02 10:00:00' })
+    db.saveQuizResult({ paper_id: 'p1', score: 5, total: 5, answers: '[]', taken_at: '2024-01-03 10:00:00' })
+
+    const rows = db.getQuizPerformanceTrend()
+    expect(rows).toEqual([{ week_start: '2024-01-01', avg_pct: 90 }])
+  })
+
+  it('averages multiple attempts within the same week into a single point', () => {
+    db.savePaper(makePaper('p1'))
+    db.savePaper(makePaper('p2'))
+    db.saveQuizResult({ paper_id: 'p1', score: 2, total: 5, answers: '[]', taken_at: '2024-01-02 10:00:00' })
+    db.saveQuizResult({ paper_id: 'p2', score: 5, total: 5, answers: '[]', taken_at: '2024-01-04 10:00:00' })
+
+    const rows = db.getQuizPerformanceTrend()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].avg_pct).toBe(70)
+  })
+
+  it('filters by from/to date range', () => {
+    db.savePaper(makePaper('p1'))
+    db.saveQuizResult({ paper_id: 'p1', score: 1, total: 5, answers: '[]', taken_at: '2024-01-02 10:00:00' })
+    db.saveQuizResult({ paper_id: 'p1', score: 5, total: 5, answers: '[]', taken_at: '2024-02-01 10:00:00' })
+
+    const rows = db.getQuizPerformanceTrend('2024-01-25', '2024-02-05')
+    expect(rows).toEqual([{ week_start: '2024-01-29', avg_pct: 100 }])
+  })
+
+  it('returns an empty array when there are no quiz results', () => {
+    expect(db.getQuizPerformanceTrend()).toEqual([])
+  })
+})
+
+describe('getWeeklyStreak', () => {
+  it('returns 0/0 when there are no class sessions', () => {
+    expect(db.getWeeklyStreak()).toEqual({ current: 0, best: 0 })
+  })
+
+  it('counts consecutive completed weeks backward, stopping at the first gap', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', { created_at: '2024-01-08 10:00:00', clarity_score: 80 }) // week 2024-01-08
+    makeClassSession(db, 'p1', { created_at: '2024-01-15 10:00:00', clarity_score: 80 }) // week 2024-01-15
+    // week 2024-01-01 has no class -> gap before that
+
+    const result = db.getWeeklyStreak(new Date('2024-01-22T12:00:00')) // reference: week 2024-01-22, no class yet
+    expect(result).toEqual({ current: 2, best: 2 })
+  })
+
+  it('counts the current week toward the streak once it already has a class', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', { created_at: '2024-01-08 10:00:00', clarity_score: 80 })
+    makeClassSession(db, 'p1', { created_at: '2024-01-15 10:00:00', clarity_score: 80 })
+    makeClassSession(db, 'p1', { created_at: '2024-01-22 10:00:00', clarity_score: 80 })
+
+    const result = db.getWeeklyStreak(new Date('2024-01-22T12:00:00'))
+    expect(result).toEqual({ current: 3, best: 3 })
+  })
+
+  it('does not break the streak just because the in-progress current week has no class yet', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', { created_at: '2024-01-15 10:00:00', clarity_score: 80 })
+
+    const result = db.getWeeklyStreak(new Date('2024-01-22T09:00:00')) // Monday, week just started
+    expect(result.current).toBe(1)
+  })
+
+  it('resets current streak to 0 once a completed week without a class has passed', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', { created_at: '2024-01-08 10:00:00', clarity_score: 80 })
+    // 2024-01-15 has no class, and is now a fully completed week relative to reference
+
+    const result = db.getWeeklyStreak(new Date('2024-01-22T12:00:00'))
+    expect(result.current).toBe(0)
+  })
+
+  it('tracks the best historical streak separately from the current one', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', { created_at: '2024-01-01 10:00:00', clarity_score: 80 })
+    makeClassSession(db, 'p1', { created_at: '2024-01-08 10:00:00', clarity_score: 80 })
+    makeClassSession(db, 'p1', { created_at: '2024-01-15 10:00:00', clarity_score: 80 })
+    // gap at 2024-01-22
+    makeClassSession(db, 'p1', { created_at: '2024-01-29 10:00:00', clarity_score: 80 })
+
+    const result = db.getWeeklyStreak(new Date('2024-02-01T12:00:00')) // reference: week 2024-01-29
+    expect(result).toEqual({ current: 1, best: 3 })
+  })
+
+  it('does not count a week whose only session was abandoned (null clarity_score)', () => {
+    db.savePaper(makePaper('p1'))
+    makeClassSession(db, 'p1', { created_at: '2024-01-15 10:00:00', clarity_score: null })
+
+    const result = db.getWeeklyStreak(new Date('2024-01-22T12:00:00'))
+    expect(result).toEqual({ current: 0, best: 0 })
+  })
+})

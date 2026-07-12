@@ -53,6 +53,11 @@ contextBridge.exposeInMainWorld('api', {
   classGetHint:         (data)      => ipcRenderer.invoke('class-get-hint', data),
   classAssistantMessage:(data)      => ipcRenderer.invoke('class-assistant-message', data),
 
+  getWeeklyClassCounts:      (range) => ipcRenderer.invoke('get-weekly-class-counts', range),
+  getClassPerformanceTrend:  (range) => ipcRenderer.invoke('get-class-performance-trend', range),
+  getQuizPerformanceTrend:   (range) => ipcRenderer.invoke('get-quiz-performance-trend', range),
+  getWeeklyStreak:           ()      => ipcRenderer.invoke('get-weekly-streak'),
+
   setZoomFactor:   (f)        => webFrame.setZoomFactor(f),
   getZoomFactor:   ()         => webFrame.getZoomFactor(),
 

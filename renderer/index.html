@@ -142,6 +142,11 @@
               <path d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z"/>
             </svg>
           </button>
+          <button class="activity-btn" id="act-learning" title="Evolución del conocimiento">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 3v16.5a1.5 1.5 0 0 0 1.5 1.5H21M7 16.5l4.5-5.25 3 3.375L20.25 7"/>
+            </svg>
+          </button>
         </div>
         <div class="activity-bottom">
           <button class="activity-btn" id="act-settings" title="Configuración">
@@ -339,6 +344,75 @@
           </div>
         </div>
       </aside>
+
+      <!-- Learning dashboard: replaces content+chat, vault stays visible -->
+      <section id="learning-panel" class="learning-panel hidden">
+        <div class="learning-header">
+          <button id="btn-close-learning" class="btn-ghost">← Volver</button>
+          <span class="learning-title">Evolución del conocimiento</span>
+        </div>
+        <div class="learning-body">
+          <div id="ld-empty" class="ld-empty hidden">
+            <div class="empty-glyph">∅</div>
+            <p>Aún no diste ninguna clase ni resolviste un quiz.<br>Da tu primera clase o resuelve un quiz desde la vista de un paper para empezar a ver tu progreso aquí.</p>
+          </div>
+          <div id="ld-content">
+            <div class="ld-stat-row">
+              <div class="ld-stat-card">
+                <span class="ld-stat-label">Clases dadas</span>
+                <span class="ld-stat-value" id="ld-total-classes">—</span>
+              </div>
+              <div class="ld-stat-card" id="ld-week-status-card">
+                <span class="ld-stat-label">Esta semana (clases/meta)</span>
+                <span class="ld-stat-value" id="ld-week-pct">—</span>
+              </div>
+              <div class="ld-stat-card">
+                <span class="ld-stat-label">Rendimiento (últimas 4 semanas)</span>
+                <span class="ld-stat-value" id="ld-avg-4w">—</span>
+              </div>
+            </div>
+
+            <section class="ld-chart-section">
+              <div class="section-header">
+                <div class="section-label">Clases por semana</div>
+                <div class="range-selector" id="ld-range-selector">
+                  <button class="range-btn active" data-range="8w">8 semanas</button>
+                  <button class="range-btn" data-range="3m">3 meses</button>
+                  <button class="range-btn" data-range="all">Todo</button>
+                </div>
+              </div>
+              <div class="ld-chart-row">
+                <div class="ld-chart-col">
+                  <div class="ld-chart-sublabel">Clases</div>
+                  <div class="ld-chart-wrap"><canvas id="ld-chart-weekly"></canvas></div>
+                </div>
+                <div class="ld-chart-col">
+                  <div class="ld-chart-sublabel">Cumplimiento de meta (%)</div>
+                  <div class="ld-chart-wrap"><canvas id="ld-chart-weekly-pct"></canvas></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="ld-chart-section">
+              <div class="section-header"><div class="section-label">Rendimiento en clases</div></div>
+              <div class="ld-avg-row">
+                <span class="ld-avg-chip">Claridad <b id="ld-avg-clarity">—</b></span>
+                <span class="ld-avg-chip">Exposición <b id="ld-avg-presentation">—</b></span>
+                <span class="ld-avg-chip">Q&amp;A <b id="ld-avg-qa">—</b></span>
+              </div>
+              <div class="ld-chart-wrap"><canvas id="ld-chart-class-perf"></canvas></div>
+            </section>
+
+            <section class="ld-chart-section">
+              <div class="section-header"><div class="section-label">Rendimiento en quizzes</div></div>
+              <div class="ld-avg-row">
+                <span class="ld-avg-chip">Acierto promedio <b id="ld-avg-quiz">—</b></span>
+              </div>
+              <div class="ld-chart-wrap"><canvas id="ld-chart-quiz-perf"></canvas></div>
+            </section>
+          </div>
+        </div>
+      </section>
 
     </div><!-- /panels -->
   </div><!-- /app -->
@@ -897,6 +971,7 @@
   </div>
 
   <script src="../node_modules/pdfjs-dist/build/pdf.min.js"></script>
+  <script src="../node_modules/chart.js/dist/chart.umd.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
