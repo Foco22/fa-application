@@ -83,3 +83,24 @@ export const LLM_PROVIDERS = {
   anthropic: { label: 'Anthropic API Key', placeholder: 'sk-ant-...', models: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'] },
   deepseek:  { label: 'DeepSeek API Key',  placeholder: 'sk-...',   models: ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner'] },
 }
+
+export const EMBEDDING_PROVIDERS = {
+  openai: { label: 'OpenAI API Key', placeholder: 'sk-...', models: ['text-embedding-3-small', 'text-embedding-3-large'] },
+}
+
+// Web Speech API se eliminó de las opciones: es transcripción nativa del navegador,
+// sin llamada medible de nuestro lado, fuera del set de proveedores trackeables.
+export const STT_PROVIDERS = {
+  groq:   { name: 'Groq Whisper (recomendado — rápido, multilingual)', label: 'Groq API Key', placeholder: 'gsk_...', models: ['whisper-large-v3-turbo'], needsKey: true },
+  openai: { name: 'OpenAI (preciso)', label: 'OpenAI API Key', placeholder: 'sk-...', models: ['gpt-4o-mini-transcribe', 'whisper-1'], needsKey: true },
+  'whisper-local': { name: 'Whisper local / whisper.cpp (gratis, sin internet)', label: null, placeholder: null, models: [], needsKey: false },
+}
+
+export const SETTINGS_CATEGORIES = [
+  { id: 'general',    label: 'General',              icon: '⚙' },
+  { id: 'llm',        label: 'LLM',                  icon: '🧠' },
+  { id: 'embedding',  label: 'Embedding',             icon: '🔗' },
+  { id: 'stt',        label: 'Speech to Text',        icon: '🎙' },
+  { id: 'ingesta',    label: 'Ingesta',               icon: '📥' },
+  { id: 'reference',  label: 'Papers de referencia',  icon: '📚' },
+]

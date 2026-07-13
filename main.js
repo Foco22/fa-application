@@ -126,6 +126,7 @@ app.whenReady().then(() => {
       extractKeywords, keywordOverlap, createReranker,
       createTranscription,
       createWhisperStream,
+      getAppVersion: () => app.getVersion(),
       whisperStreamBin:  fs.existsSync(WHISPER_STREAM_BIN) ? WHISPER_STREAM_BIN : null,
       whisperModelsDir:  fs.existsSync(WHISPER_MODELS_DIR) ? WHISPER_MODELS_DIR : null,
       shell, dialog,

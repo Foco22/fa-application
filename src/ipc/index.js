@@ -6,7 +6,7 @@ const { registerClassHandlers } = require('./class')
 const { registerLearningStatsHandlers } = require('./learning-stats')
 
 function registerHandlers({ ipcMain, db, deps, mainWindow }) {
-  registerSettingsHandlers({ ipcMain, db })
+  registerSettingsHandlers({ ipcMain, db, deps })
   registerPapersHandlers({ ipcMain, db, deps, mainWindow })
   registerLearningHandlers({ ipcMain, db, deps, mainWindow })
   registerReferenceHandlers({ ipcMain, db, deps })

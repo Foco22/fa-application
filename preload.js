@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('api', {
   getQuizResults:  (paperId)  => ipcRenderer.invoke('get-quiz-results', paperId),
   getSettings:     ()         => ipcRenderer.invoke('get-settings'),
   saveSettings:    (payload)  => ipcRenderer.invoke('save-settings', payload),
+  getAppVersion:   ()         => ipcRenderer.invoke('get-app-version'),
   checkOnboarding: ()         => ipcRenderer.invoke('check-onboarding'),
   completeOnboarding: (s)     => ipcRenderer.invoke('complete-onboarding', s),
 
