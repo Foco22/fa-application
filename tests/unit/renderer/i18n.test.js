@@ -84,7 +84,7 @@ describe('applyLanguage', () => {
     expect(document.querySelector('[data-i18n="guardar"]').textContent).toBe('Save')
     expect(document.querySelector('[data-i18n="costos"]').textContent).toBe('Costs')
     expect(document.querySelector('input').placeholder).toBe('Type your question...')
-    expect(document.querySelector('[data-i18n-title]').title).toBe('Expand PDF')
+    expect(document.querySelector('[data-i18n-title]').title).toBe('Expand file')
   })
 
   it('vuelve al español sin dejar texto en el idioma anterior', () => {

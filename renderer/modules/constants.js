@@ -68,12 +68,14 @@ export const DEFAULT_RESEARCH_CENTERS = [
   'xAI',
 ]
 
-export const STATUS_LABELS = {
-  new:         'Nuevo',
-  downloading: 'Descargando…',
-  ready:       'Listo',
-  pdf_error:   '⚠ PDF no disp.',
-  error:       'Error',
+// Claves del diccionario, no texto: el badge de estado del paper se traduce
+// como el resto de la UI (ver renderer/i18n.js).
+export const STATUS_KEYS = {
+  new:         'estado-nuevo',
+  downloading: 'estado-descargando',
+  ready:       'estado-listo',
+  pdf_error:   'estado-archivo-error',
+  error:       'estado-error',
 }
 
 export const TABS = ['pdf', 'abstract', 'resumen', 'notas', 'quiz']

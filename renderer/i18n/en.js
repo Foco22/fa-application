@@ -2,6 +2,12 @@
 // Must hold exactly the same key set as es.js — a unit test compares both.
 // Proper nouns, provider names and model ids stay untranslated on purpose.
 export default {
+  'estado-nuevo': 'New',
+  'estado-descargando': 'Downloading…',
+  'estado-listo': 'Ready',
+  'estado-archivo-error': '⚠ File unavailable',
+  'estado-error': 'Error',
+  'tab-archivo': 'File',
   'referencias': 'References',
   'desde': 'From',
   'hasta': 'To',
@@ -79,7 +85,7 @@ export default {
   'alejar': 'Zoom out',
   'ampliar': '⤢ Expand',
   'ampliar-ctrl': 'Zoom in (Ctrl +)',
-  'ampliar-pdf': 'Expand PDF',
+  'ampliar-pdf': 'Expand file',
   'anadir-a-notas': 'Add to notes',
   'analisis-ia': 'AI analysis',
   'anterior': 'Previous (←)',
@@ -216,7 +222,7 @@ export default {
   'papers-indexados': '— papers indexed',
   'participantes': 'Participants',
   'pdf': 'PDF',
-  'pdf-no-disponible-para-este-paper': 'No PDF available for this paper',
+  'pdf-no-disponible-para-este-paper': 'No file available for this paper',
   'pdfs-de-papers-que-ya-encontraste-interesantes-n': 'PDFs of papers you already found interesting. New papers are filtered by semantic similarity against this collection.',
   'portugues': 'Português',
   'pregunta': 'Question',
