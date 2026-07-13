@@ -59,6 +59,11 @@ contextBridge.exposeInMainWorld('api', {
   getQuizPerformanceTrend:   (range) => ipcRenderer.invoke('get-quiz-performance-trend', range),
   getWeeklyStreak:           ()      => ipcRenderer.invoke('get-weekly-streak'),
 
+  getCostSummary:      (opts)   => ipcRenderer.invoke('get-cost-summary', opts),
+  getPricingStatus:    ()       => ipcRenderer.invoke('get-pricing-status'),
+  refreshPricing:      ()       => ipcRenderer.invoke('refresh-pricing'),
+  savePricingOverride: (data)   => ipcRenderer.invoke('save-pricing-override', data),
+
   setZoomFactor:   (f)        => webFrame.setZoomFactor(f),
   getZoomFactor:   ()         => webFrame.getZoomFactor(),
 

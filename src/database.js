@@ -267,18 +267,72 @@ function openDatabase(path) {
 
   const saveUsageEvent = db.prepare(`
     INSERT INTO usage_events
-      (action_type, provider, model, prompt_tokens, completion_tokens, audio_seconds,
+      (occurred_at, action_type, provider, model, prompt_tokens, completion_tokens, audio_seconds,
        units, prompt_price_per_token, completion_price_per_token, cost_micro_usd,
        paper_id, session_id)
     VALUES
-      (@action_type, @provider, @model, @prompt_tokens, @completion_tokens, @audio_seconds,
-       @units, @prompt_price_per_token, @completion_price_per_token, @cost_micro_usd,
-       @paper_id, @session_id)
+      (COALESCE(@occurred_at, datetime('now')), @action_type, @provider, @model, @prompt_tokens,
+       @completion_tokens, @audio_seconds, @units, @prompt_price_per_token,
+       @completion_price_per_token, @cost_micro_usd, @paper_id, @session_id)
   `)
 
   const getUsageEvents      = db.prepare('SELECT * FROM usage_events ORDER BY occurred_at DESC')
   const getTotalCost        = db.prepare('SELECT COALESCE(SUM(cost_micro_usd), 0) AS total FROM usage_events')
   const getUnknownCostCount = db.prepare('SELECT COUNT(*) AS n FROM usage_events WHERE cost_micro_usd IS NULL')
+
+  // Las agregaciones se hacen en SQL (no en JS) para que el dashboard siga
+  // respondiendo con miles de eventos acumulados. groupBy nunca se interpola:
+  // se resuelve contra este mapa, así una cadena arbitraria no puede entrar al SQL.
+  // La semana arranca el LUNES, igual que el resto de la app (vault, dashboard
+  // de aprendizaje) — no el domingo que asume strftime('%W').
+  const PERIOD_EXPR = {
+    day:   `date(occurred_at)`,
+    week:  weekStartExpr('occurred_at'),
+    month: `strftime('%Y-%m', occurred_at)`,
+  }
+
+  // El rango es inclusivo por día: `to` se compara contra la fecha, no contra el
+  // timestamp, para que un evento de las 10:00 del último día no quede afuera.
+  const RANGE_SQL = `
+    AND (@from IS NULL OR date(occurred_at) >= date(@from))
+    AND (@to   IS NULL OR date(occurred_at) <= date(@to))
+  `
+
+  const costBucketStmts = Object.fromEntries(Object.entries(PERIOD_EXPR).map(([key, expr]) => [
+    key,
+    db.prepare(`
+      SELECT ${expr} AS period, provider, SUM(cost_micro_usd) AS total_micro_usd
+      FROM usage_events
+      WHERE cost_micro_usd IS NOT NULL ${RANGE_SQL}
+      GROUP BY period, provider
+      ORDER BY period
+    `),
+  ]))
+
+  // Se agrupa también por modelo: "resumen con anthropic" sin saber el modelo no
+  // alcanza para decidir nada — Opus y Haiku difieren 5x en precio.
+  // SUM sin COALESCE a propósito: si el modelo no tenía precio, el total queda
+  // NULL y la UI lo muestra como "—" (desconocido). Un COALESCE(...,0) lo
+  // pintaría como gratis, que es justo lo que esconde gasto real.
+  const getCostByAction = db.prepare(`
+    SELECT action_type, provider, model, COUNT(*) AS events,
+           SUM(cost_micro_usd) AS total_micro_usd
+    FROM usage_events
+    WHERE 1 = 1 ${RANGE_SQL}
+    GROUP BY action_type, provider, model
+    ORDER BY total_micro_usd DESC
+  `)
+
+  const getRangeTotal = db.prepare(`
+    SELECT COALESCE(SUM(cost_micro_usd), 0) AS total
+    FROM usage_events
+    WHERE 1 = 1 ${RANGE_SQL}
+  `)
+
+  const getRangeUnknownCount = db.prepare(`
+    SELECT COUNT(*) AS n FROM usage_events
+    WHERE cost_micro_usd IS NULL ${RANGE_SQL}
+  `)
 
   const getReferencePaper  = db.prepare('SELECT id FROM reference_papers WHERE path = ?')
   const getReferencePapers     = db.prepare(`SELECT path, snippet, embedding, abstract_summary, ${embeddingModelExpr} AS embedding_model FROM reference_papers`)
@@ -342,6 +396,7 @@ function openDatabase(path) {
 
     saveUsageEvent: (e) => {
       const defaults = {
+        occurred_at: null,  // null → datetime('now')
         model: null, prompt_tokens: null, completion_tokens: null, audio_seconds: null,
         units: null, prompt_price_per_token: null, completion_price_per_token: null,
         cost_micro_usd: null, paper_id: null, session_id: null,
@@ -351,6 +406,15 @@ function openDatabase(path) {
     getUsageEvents:      () => getUsageEvents.all(),
     getTotalCostMicroUsd: () => getTotalCost.get().total,
     getUnknownCostCount:  () => getUnknownCostCount.get().n,
+
+    getCostBuckets: ({ groupBy, from = null, to = null }) => {
+      const stmt = costBucketStmts[groupBy]
+      if (!stmt) throw new Error(`Granularidad inválida: ${groupBy}`)
+      return stmt.all({ from, to })
+    },
+    getCostByAction:     ({ from = null, to = null } = {}) => getCostByAction.all({ from, to }),
+    getRangeCost:        ({ from = null, to = null } = {}) => getRangeTotal.get({ from, to }).total,
+    getRangeUnknownCount:({ from = null, to = null } = {}) => getRangeUnknownCount.get({ from, to }).n,
 
     saveReferencePaper:     (r)          => saveReferencePaper.run({ abstract_summary: null, embedding_model: null, ...r }),
     getReferencePaper:      (p)          => getReferencePaper.get(p),

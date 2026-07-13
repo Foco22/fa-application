@@ -55,4 +55,33 @@ function makeUsageRecorder(db) {
   return (event) => recordUsage(db, event)
 }
 
-module.exports = { recordUsage, makeUsageRecorder, computeCostMicroUsd, MICRO_PER_USD }
+// Los datos que consume el dashboard. Las sumas salen de SQL sobre enteros
+// micro-USD; la UI divide por 1e6 recién al mostrar.
+function getCostSummary(db, { groupBy = 'week', from = null, to = null } = {}) {
+  const rows = db.getCostBuckets({ groupBy, from, to })
+
+  // Una fila por (período, proveedor) → un bucket por período con el desglose,
+  // que es lo que necesita el gráfico de barras apiladas.
+  const byPeriod = new Map()
+  const byProvider = {}
+  for (const r of rows) {
+    if (!byPeriod.has(r.period)) byPeriod.set(r.period, { period: r.period, total_micro_usd: 0, by_provider: {} })
+    const bucket = byPeriod.get(r.period)
+    bucket.by_provider[r.provider] = (bucket.by_provider[r.provider] || 0) + r.total_micro_usd
+    bucket.total_micro_usd += r.total_micro_usd
+    byProvider[r.provider] = (byProvider[r.provider] || 0) + r.total_micro_usd
+  }
+
+  return {
+    buckets:            [...byPeriod.values()],
+    by_provider:        byProvider,
+    by_action:          db.getCostByAction({ from, to }),
+    total_micro_usd:    db.getRangeCost({ from, to }),
+    all_time_micro_usd: db.getTotalCostMicroUsd(),
+    // Eventos cuyo modelo no tenía precio: se muestran aparte en vez de contarse
+    // como gratis, que subestimaría el gasto real.
+    unknown_cost_events: db.getRangeUnknownCount({ from, to }),
+  }
+}
+
+module.exports = { recordUsage, makeUsageRecorder, computeCostMicroUsd, getCostSummary, MICRO_PER_USD }

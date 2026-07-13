@@ -2290,3 +2290,54 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
   background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 6px; color: var(--text); font-size: 13px;
 }
+
+/* ── Dashboard de costos ──────────────────────────────────────────────────── */
+
+/* Mismo layout que #ld-content: sin esto las secciones quedan pegadas y el
+   selector Día/Semana/Mes se monta sobre las tarjetas de arriba. */
+#ct-content { display: flex; flex-direction: column; gap: var(--sp-xl); }
+#ct-content.hidden, #ct-empty.hidden { display: none; }
+
+.ct-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.ct-filter-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.ct-filter-row input[type="date"] {
+  background: var(--surface-3);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.ct-filter-row input[type="date"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Las tablas anchas scrollean dentro de su caja; la página nunca scrollea en horizontal. */
+.ct-table-wrap { overflow-x: auto; }
+
+/* El punto de color acompaña al NOMBRE del proveedor, nunca lo reemplaza:
+   la identidad no puede depender solo del color. */
+.ct-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: middle;
+}

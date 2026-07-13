@@ -147,6 +147,11 @@
               <path d="M3 3v16.5a1.5 1.5 0 0 0 1.5 1.5H21M7 16.5l4.5-5.25 3 3.375L20.25 7"/>
             </svg>
           </button>
+          <button class="activity-btn" id="act-costs" title="Costos">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+            </svg>
+          </button>
         </div>
         <div class="activity-bottom">
           <button class="activity-btn" id="act-settings" title="Configuración">
@@ -409,6 +414,74 @@
                 <span class="ld-avg-chip">Acierto promedio <b id="ld-avg-quiz">—</b></span>
               </div>
               <div class="ld-chart-wrap"><canvas id="ld-chart-quiz-perf"></canvas></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <!-- Costos -->
+      <section id="costs-panel" class="learning-panel hidden">
+        <div class="learning-header">
+          <button id="btn-close-costs" class="btn-ghost">← Volver</button>
+          <span class="learning-title">Costos</span>
+        </div>
+        <div class="learning-body">
+          <div id="ct-empty" class="ld-empty hidden">
+            <div class="empty-glyph">$</div>
+            <p>Aún no hay uso registrado.<br>Genera un resumen, un quiz o da una clase y el gasto aparecerá acá.</p>
+          </div>
+
+          <div id="ct-content">
+            <div class="ld-stat-row">
+              <div class="ld-stat-card">
+                <span class="ld-stat-label">Gasto del período</span>
+                <span class="ld-stat-value" id="ct-range-total">—</span>
+              </div>
+              <div class="ld-stat-card">
+                <span class="ld-stat-label">Total histórico</span>
+                <span class="ld-stat-value" id="ct-alltime-total">—</span>
+              </div>
+              <div class="ld-stat-card" id="ct-unknown-card">
+                <span class="ld-stat-label">Eventos sin precio conocido</span>
+                <span class="ld-stat-value" id="ct-unknown">—</span>
+              </div>
+            </div>
+
+            <section class="ld-chart-section">
+              <div class="section-header">
+                <div class="section-label">Gasto por proveedor</div>
+                <div class="range-selector" id="ct-group-selector">
+                  <button class="range-btn" data-group="day">Día</button>
+                  <button class="range-btn active" data-group="week">Semana</button>
+                  <button class="range-btn" data-group="month">Mes</button>
+                </div>
+              </div>
+              <div class="ct-filter-row">
+                <label>Desde <input type="date" id="ct-from"></label>
+                <label>Hasta <input type="date" id="ct-to"></label>
+                <button id="ct-clear-range" class="btn-ghost">Todo el historial</button>
+              </div>
+              <div class="ld-chart-wrap"><canvas id="ct-chart"></canvas></div>
+            </section>
+
+            <section class="ld-chart-section">
+              <div class="section-header"><div class="section-label">Detalle por acción</div></div>
+              <div class="ct-table-wrap">
+                <table class="class-qa-table">
+                  <thead>
+                    <tr><th>Acción</th><th>Proveedor</th><th>Modelo</th><th>Eventos</th><th>Costo</th></tr>
+                  </thead>
+                  <tbody id="ct-action-table"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="ld-chart-section">
+              <div class="section-header"><div class="section-label">Tabla de precios</div></div>
+              <div class="ct-filter-row">
+                <span id="ct-pricing-status" class="settings-hint">—</span>
+                <button id="ct-refresh-pricing" class="ref-action-btn">↻ Actualizar precios</button>
+              </div>
             </section>
           </div>
         </div>

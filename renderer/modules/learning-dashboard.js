@@ -289,6 +289,11 @@ async function renderDashboard() {
 export async function openLearningDashboard() {
   document.getElementById('content-panel').classList.add('hidden')
   document.getElementById('chat-panel').classList.add('hidden')
+  // Los dashboards son excluyentes: entrar a Conocimiento cierra Costos, si no
+  // los dos paneles quedan visibles a la vez partiendo la pantalla.
+  document.getElementById('costs-panel').classList.add('hidden')
+  document.getElementById('act-costs').classList.remove('active')
+
   document.getElementById('learning-panel').classList.remove('hidden')
   document.getElementById('act-learning').classList.add('active')
   await renderDashboard()
