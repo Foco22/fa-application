@@ -17,6 +17,7 @@ const { createScheduler }     = require('./src/scheduler')
 const cron                    = require('node-cron')
 const { registerHandlers }    = require('./src/ipc')
 const { createEmbeddings, hasEmbeddingConfig, indexReferenceFolder, indexFiles, scoreEmbeddingAgainst, embedKeywordList } = require('./src/embeddings')
+const { refreshPricingIfStale } = require('./src/pricing')
 const { extractKeywords, keywordOverlap } = require('./src/ingestion/keywords')
 const { createReranker } = require('./src/rerank')
 const { createTranscription } = require('./src/transcription')
@@ -134,6 +135,16 @@ app.whenReady().then(() => {
       writeFetchLog: (report) => fetchLogMod.writeFetchLog(VAULT_DIR, report)
     }
   })
+
+  // Refresca la tabla de precios en segundo plano si la caché está vencida.
+  // No bloquea el arranque ni molesta al usuario si falla: sin internet se
+  // sigue usando la última tabla válida.
+  refreshPricingIfStale(db, axios)
+    .then(r => {
+      if (r.updated)    console.log(`[startup] Pricing: ${r.count} modelos actualizados`)
+      else if (r.error) console.error(`[startup] Pricing: ${r.error} — se usa la tabla cacheada`)
+    })
+    .catch(err => console.error('[startup] Pricing error:', err.message))
 
   // Auto-index reference folder on startup
   if (settings.referenceFolderPath && hasEmbeddingConfig(settings)) {
