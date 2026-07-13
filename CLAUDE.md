@@ -322,6 +322,9 @@ learning/
 │   ├── pricing/         # Tabla de precios por modelo (para el tracking de costos)
 │   │   └── index.js          # fetchPricingTable(), refreshPricingIfStale(), getPriceFor(), saveManualOverride()
 │   │
+│   ├── costs/           # Registro de uso y costo de cada llamada pagada
+│   │   └── index.js          # recordUsage(db, event), makeUsageRecorder(db), computeCostMicroUsd()
+│   │
 │   ├── chat/            # Lógica de chat con papers
 │   │   ├── index.js          # chatWithPaper(message, paper, history, llm)
 │   │   └── prompts.js        # buildSystemPrompt(paper)
@@ -468,6 +471,28 @@ registerHandlers({
 | `total` | INTEGER | Total preguntas |
 | `answers` | TEXT | JSON con respuestas del usuario |
 | `taken_at` | DATETIME | Fecha del intento |
+
+### Instrumentación de costos — dónde vive
+
+`main.js` construye **un solo** `onUsage = makeUsageRecorder(db)` y lo inyecta en las factories
+(`createLLM`, `createEmbeddings`, `createTranscription`) antes de pasarlas a `deps`. El registro
+ocurre **dentro de cada método del proveedor**, no en los IPC handlers: cualquier call site nuevo
+queda instrumentado sin tocarlo. Solo se registra en el camino feliz — una llamada fallida no se cobra.
+
+Métodos instrumentados: `streamSummary`, `generateQuiz`, `chat`, `extractAffiliationsWithAI`,
+`extractPaperMetadata`, `summarizeAbstract`, `interpretImage`, `generateEmbedding`, `transcribe`.
+
+Detalles que no son obvios y que rompen el tracking si se pierden:
+
+- **OpenAI en streaming no devuelve `usage` salvo que se pida `stream_options: { include_usage: true }`.**
+  Sin eso, los resúmenes —el flujo más caro— quedarían todos sin costo. El uso llega en un chunk final sin `choices`.
+- **Anthropic reporta el uso en `stream.finalMessage()`**, no en los chunks.
+- **La transcripción no tiene un único modelo de cobro:** Whisper (Groq, `whisper-1`) factura por
+  audio y necesita `response_format: 'verbose_json'` para que la API devuelva `duration`; los
+  `gpt-4o-*-transcribe` facturan por **tokens** y ni siquiera soportan `verbose_json`.
+- **`rerank` NO se instrumenta: es gratis.** Corre local con Transformers.js, no hay nada que cobrar.
+- Los proveedores locales (embeddings) se registran con costo **0**, no se omiten: el dashboard
+  debe mostrar "Local — $0" como su propia serie.
 
 ### Tabla `usage_events` (tracking de costos)
 Un evento por cada llamada pagada a IA.

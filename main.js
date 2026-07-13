@@ -18,6 +18,7 @@ const cron                    = require('node-cron')
 const { registerHandlers }    = require('./src/ipc')
 const { createEmbeddings, hasEmbeddingConfig, indexReferenceFolder, indexFiles, scoreEmbeddingAgainst, embedKeywordList } = require('./src/embeddings')
 const { refreshPricingIfStale } = require('./src/pricing')
+const { makeUsageRecorder } = require('./src/costs')
 const { extractKeywords, keywordOverlap } = require('./src/ingestion/keywords')
 const { createReranker } = require('./src/rerank')
 const { createTranscription } = require('./src/transcription')
@@ -116,16 +117,23 @@ app.whenReady().then(() => {
   }
 
   const settings = db.getAllSettings()
+
+  // El tracking de costos se inyecta UNA sola vez, acá: las factories que reciben
+  // los IPC handlers ya vienen instrumentadas, así que ningún handler (ni los que
+  // se agreguen mañana) necesita acordarse de registrar el uso.
+  const onUsage = makeUsageRecorder(db)
+
   const { runFetch } = registerHandlers({
     ipcMain, db, mainWindow,
     deps: {
-      createLLM,
+      createLLM:          (s)            => createLLM(s, onUsage),
       chatWithPaper, fetchPapers,
       getAffiliations, matchesUniversityList,
       downloadPdf, extractText, extractFirstPage, matchesUniversityInText,
-      createEmbeddings, hasEmbeddingConfig, scoreEmbeddingAgainst, embedKeywordList, indexReferenceFolder, indexFiles,
+      createEmbeddings:   (s)            => createEmbeddings(s, onUsage),
+      hasEmbeddingConfig, scoreEmbeddingAgainst, embedKeywordList, indexReferenceFolder, indexFiles,
       extractKeywords, keywordOverlap, createReranker,
-      createTranscription,
+      createTranscription: (key, opts, client) => createTranscription(key, opts, client, onUsage),
       createWhisperStream,
       getAppVersion: () => app.getVersion(),
       whisperStreamBin:  fs.existsSync(WHISPER_STREAM_BIN) ? WHISPER_STREAM_BIN : null,
@@ -148,8 +156,8 @@ app.whenReady().then(() => {
 
   // Auto-index reference folder on startup
   if (settings.referenceFolderPath && hasEmbeddingConfig(settings)) {
-    const embeddingProvider = createEmbeddings(settings)
-    const llm = settings.apiKey ? createLLM(settings) : null
+    const embeddingProvider = createEmbeddings(settings, onUsage)
+    const llm = settings.apiKey ? createLLM(settings, onUsage) : null
     indexReferenceFolder(settings.referenceFolderPath, db, embeddingProvider, pdfParse, llm)
       .then(r => console.log(`[startup] Reference index: +${r.indexed} indexed, ${r.errors} errors`))
       .catch(err => console.error('[startup] Reference index error:', err.message))

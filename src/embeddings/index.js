@@ -3,13 +3,13 @@ const path = require('path')
 const { createOpenAIEmbeddingProvider } = require('./providers/openai')
 const { createLocalEmbeddingProvider }  = require('./providers/local')
 
-function createEmbeddings(settings) {
+function createEmbeddings(settings, onUsage = null) {
   const provider = settings.embeddingProvider || 'openai'
   const apiKey   = settings.embeddingApiKey || settings.openaiApiKey || settings.apiKey
   const model    = settings.embeddingModel || undefined
   switch (provider) {
-    case 'local': return createLocalEmbeddingProvider(model ? { model } : {})
-    default:      return createOpenAIEmbeddingProvider(apiKey, model ? { model } : {})
+    case 'local': return createLocalEmbeddingProvider(model ? { model } : {}, null, undefined, onUsage)
+    default:      return createOpenAIEmbeddingProvider(apiKey, model ? { model } : {}, null, onUsage)
   }
 }
 
