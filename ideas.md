@@ -1,15 +1,13 @@
 
 
-
-Retrieval:
-- Hybrid Search
-- Rerank (free)
-- Soloy abstract
-- Keywords del usuario.
-
-
 Costs
 - Seccion costo, monitoreo todo.
+
+-Learinng
+Dashboard the learning
+
+-Setting
+
 
 
 Ideas para avanzar:

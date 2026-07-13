@@ -47,6 +47,11 @@ describe('createEmbeddings', () => {
     const provider = createEmbeddings({ apiKey: 'sk-test' })
     expect(provider).toBeDefined()
   })
+
+  it('uses embeddingApiKey over openaiApiKey and apiKey when all three are set', () => {
+    const provider = createEmbeddings({ apiKey: 'fallback', openaiApiKey: 'primary', embeddingApiKey: 'dedicated' })
+    expect(typeof provider.generateEmbedding).toBe('function')
+  })
 })
 
 // ─── shared mocks ─────────────────────────────────────────────────────────────

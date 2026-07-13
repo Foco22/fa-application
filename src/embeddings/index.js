@@ -4,7 +4,7 @@ const { createOpenAIEmbeddingProvider } = require('./providers/openai')
 
 function createEmbeddings(settings) {
   const provider = settings.embeddingProvider || 'openai'
-  const apiKey   = settings.openaiApiKey || settings.apiKey
+  const apiKey   = settings.embeddingApiKey || settings.openaiApiKey || settings.apiKey
   const model    = settings.embeddingModel || undefined
   switch (provider) {
     default: return createOpenAIEmbeddingProvider(apiKey, model ? { model } : {})

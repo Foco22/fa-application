@@ -791,142 +791,197 @@
 
   <!-- ── Settings panel ───────────────────────────────────────────────── -->
   <div id="settings-panel" class="fullscreen hidden">
-    <div class="settings-drawer">
-      <div class="settings-header">
-        <span>Configuración</span>
-        <button id="btn-close-settings" class="icon-btn">✕</button>
+    <div class="settings-modal">
+      <button id="btn-close-settings" class="icon-btn settings-modal-close">✕</button>
+
+      <div class="settings-sidebar" id="settings-sidebar">
+        <div class="settings-sidebar-title">Configuración</div>
+        <button class="settings-cat-btn active" data-category="general">General</button>
+        <button class="settings-cat-btn" data-category="llm">Large Language Model</button>
+        <button class="settings-cat-btn" data-category="embedding">Embedding</button>
+        <button class="settings-cat-btn" data-category="stt">Speech to Text</button>
+        <button class="settings-cat-btn" data-category="ingesta">Ingesta</button>
+        <button class="settings-cat-btn" data-category="reference">Papers de referencia</button>
       </div>
-      <div class="settings-body">
-        <div class="settings-section">
-          <h3>Proveedor de IA</h3>
-          <div class="form-group">
-            <label>Proveedor</label>
-            <div class="provider-selector" id="s-provider-selector">
-              <button class="provider-btn" data-provider="openai">OpenAI</button>
-              <button class="provider-btn" data-provider="anthropic">Anthropic</button>
-              <button class="provider-btn" data-provider="deepseek">DeepSeek</button>
-            </div>
-          </div>
-          <div class="form-group">
-            <label id="s-api-key-label">API Key</label>
-            <input type="password" id="s-api-key" placeholder="sk-...">
-          </div>
-          <div class="form-group">
-            <label>Modelo</label>
-            <select id="s-llm-model"></select>
-          </div>
-          <div class="form-group">
-            <label>Semantic Scholar API Key <span class="optional">(opcional)</span></label>
-            <input type="text" id="s-ss-key">
-          </div>
-        </div>
-        <div class="settings-section">
-          <h3>Programación</h3>
-          <div class="form-row">
+
+      <div class="settings-content">
+
+        <!-- General -->
+        <div class="settings-pane" id="settings-pane-general">
+          <h2 class="settings-pane-title">General</h2>
+          <div class="settings-section">
+            <h3>Idioma</h3>
             <div class="form-group">
-              <label>Día</label>
-              <select id="s-fetch-day">
-                <option value="monday">Lunes</option><option value="tuesday">Martes</option>
-                <option value="wednesday">Miércoles</option><option value="thursday">Jueves</option>
-                <option value="friday">Viernes</option><option value="saturday">Sábado</option>
-                <option value="sunday">Domingo</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Hora</label>
-              <input type="time" id="s-fetch-hour">
-            </div>
-            <div class="form-group">
-              <label>Máx.</label>
-              <select id="s-max-papers">
-                <option value="1">1</option><option value="2">2</option>
-                <option value="3">3</option><option value="5">5</option>
+              <label>Idioma de la interfaz</label>
+              <select id="s-language">
+                <option value="es">Español</option>
+                <option value="en">English</option>
               </select>
             </div>
           </div>
-        </div>
-        <div class="settings-section">
-          <h3>Categorías ArXiv</h3>
-          <div id="s-categories-grid" class="categories-grid"></div>
-        </div>
-        <div class="settings-section">
-          <h3>Universidades</h3>
-          <p class="settings-hint">Una por línea. Papers de estas instituciones pasan el filtro.</p>
-          <textarea id="s-universities" rows="5"></textarea>
-        </div>
-        <div class="settings-section">
-          <h3>Centros de Research / Frontier AI</h3>
-          <p class="settings-hint">Una por línea. Papers de Anthropic, OpenAI, DeepMind, Meta, etc. también pasan el filtro.</p>
-          <textarea id="s-research-centers" rows="5" placeholder="Anthropic&#10;OpenAI&#10;Google DeepMind&#10;Meta AI"></textarea>
-        </div>
-        <div class="settings-section">
-          <h3>Autores</h3>
-          <textarea id="s-authors" rows="4" placeholder="LeCun&#10;Bengio"></textarea>
-        </div>
-        <div class="settings-section">
-          <h3>Palabras clave</h3>
-          <p class="settings-hint">Una por línea. Temas que te interesan más allá de tu colección de referencia — amplían la búsqueda a cosas nuevas, no solo a lo que ya leíste.</p>
-          <textarea id="s-keywords" rows="4" placeholder="reinforcement learning&#10;diffusion models"></textarea>
-        </div>
-        <div class="settings-section">
-          <h3>Transcripción de voz</h3>
-          <div class="form-group">
-            <label>Proveedor</label>
-            <select id="s-transcription-provider">
-              <option value="groq">Groq Whisper (recomendado — rápido, multilingual)</option>
-              <option value="webspeech">Web Speech API (rápida, gratis)</option>
-              <option value="whisper">Whisper / OpenAI (precisa)</option>
-              <option value="whisper-local">Whisper local / whisper.cpp (gratis, sin internet)</option>
-            </select>
+          <div class="settings-section">
+            <h3>Versión</h3>
+            <p class="settings-hint" id="s-app-version">—</p>
           </div>
-          <div class="form-group" id="s-groq-key-group">
-            <label>Groq API Key <a href="https://console.groq.com/keys" target="_blank" style="font-size:11px;margin-left:6px">Obtener gratis →</a></label>
-            <input type="password" id="s-groq-api-key" placeholder="gsk_...">
-          </div>
-          <p class="settings-hint">Groq usa <code>whisper-large-v3-turbo</code> (español+inglés, más rápido que OpenAI). Web Speech usa Chromium directamente. Whisper local requiere compilar <code>tools/whisper.cpp/stream</code>.</p>
         </div>
-        <div class="settings-section">
-          <h3>Papers de Referencia</h3>
+
+        <!-- LLM -->
+        <div class="settings-pane hidden" id="settings-pane-llm">
+          <h2 class="settings-pane-title">Large Language Model</h2>
+          <p class="settings-hint">Proveedor y modelo usados en resúmenes, quiz, chat y los agentes del modo Clase.</p>
+          <div class="settings-section">
+            <div class="form-group">
+              <label>Proveedor</label>
+              <div class="provider-selector" id="s-provider-selector">
+                <button class="provider-btn" data-provider="openai">OpenAI</button>
+                <button class="provider-btn" data-provider="anthropic">Anthropic</button>
+                <button class="provider-btn" data-provider="deepseek">DeepSeek</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label id="s-api-key-label">API Key</label>
+              <input type="password" id="s-api-key" placeholder="sk-...">
+            </div>
+            <div class="form-group">
+              <label>Modelo</label>
+              <select id="s-llm-model"></select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Embedding -->
+        <div class="settings-pane hidden" id="settings-pane-embedding">
+          <h2 class="settings-pane-title">Embedding</h2>
+          <p class="settings-hint">Motor de similitud semántica usado para filtrar papers nuevos contra tu colección de referencia y palabras clave.</p>
+          <div class="settings-section">
+            <div class="form-group">
+              <label>Proveedor</label>
+              <div class="provider-selector" id="s-embedding-provider-selector">
+                <button class="embedding-provider-btn" data-provider="openai">OpenAI</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Modelo</label>
+              <select id="s-embedding-model"></select>
+            </div>
+            <div class="form-group">
+              <label>API Key <span class="optional">(opcional — si vacío, usa la del proveedor LLM)</span></label>
+              <input type="password" id="s-embedding-api-key" placeholder="sk-...">
+            </div>
+          </div>
+        </div>
+
+        <!-- Speech to Text -->
+        <div class="settings-pane hidden" id="settings-pane-stt">
+          <h2 class="settings-pane-title">Speech to Text</h2>
+          <div class="settings-section">
+            <div class="form-group">
+              <label>Proveedor</label>
+              <select id="s-transcription-provider">
+                <option value="groq">Groq Whisper (recomendado — rápido, multilingual)</option>
+                <option value="openai">OpenAI (preciso)</option>
+                <option value="whisper-local">Whisper local / whisper.cpp (gratis, sin internet)</option>
+              </select>
+            </div>
+            <div class="form-group" id="s-stt-model-group">
+              <label>Modelo</label>
+              <select id="s-stt-model"></select>
+            </div>
+            <div class="form-group" id="s-stt-key-group">
+              <label id="s-stt-key-label">API Key</label>
+              <input type="password" id="s-stt-api-key" placeholder="gsk_...">
+            </div>
+            <p class="settings-hint">Whisper local requiere compilar <code>tools/whisper.cpp/stream</code>.</p>
+          </div>
+        </div>
+
+        <!-- Ingesta -->
+        <div class="settings-pane hidden" id="settings-pane-ingesta">
+          <h2 class="settings-pane-title">Ingesta</h2>
+          <div class="settings-section">
+            <h3>Programación</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Día</label>
+                <select id="s-fetch-day">
+                  <option value="monday">Lunes</option><option value="tuesday">Martes</option>
+                  <option value="wednesday">Miércoles</option><option value="thursday">Jueves</option>
+                  <option value="friday">Viernes</option><option value="saturday">Sábado</option>
+                  <option value="sunday">Domingo</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Hora</label>
+                <input type="time" id="s-fetch-hour">
+              </div>
+              <div class="form-group">
+                <label>Máx.</label>
+                <select id="s-max-papers">
+                  <option value="1">1</option><option value="2">2</option>
+                  <option value="3">3</option><option value="5">5</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>Categorías ArXiv</h3>
+            <div id="s-categories-grid" class="categories-grid"></div>
+          </div>
+          <div class="settings-section">
+            <h3>Universidades</h3>
+            <p class="settings-hint">Una por línea. Papers de estas instituciones pasan el filtro.</p>
+            <textarea id="s-universities" rows="5"></textarea>
+          </div>
+          <div class="settings-section">
+            <h3>Centros de Research / Frontier AI</h3>
+            <p class="settings-hint">Una por línea. Papers de Anthropic, OpenAI, DeepMind, Meta, etc. también pasan el filtro.</p>
+            <textarea id="s-research-centers" rows="5" placeholder="Anthropic&#10;OpenAI&#10;Google DeepMind&#10;Meta AI"></textarea>
+          </div>
+          <div class="settings-section">
+            <h3>Autores</h3>
+            <textarea id="s-authors" rows="4" placeholder="LeCun&#10;Bengio"></textarea>
+          </div>
+          <div class="settings-section">
+            <h3>Palabras clave</h3>
+            <p class="settings-hint">Una por línea. Temas que te interesan más allá de tu colección de referencia — amplían la búsqueda a cosas nuevas, no solo a lo que ya leíste.</p>
+            <textarea id="s-keywords" rows="4" placeholder="reinforcement learning&#10;diffusion models"></textarea>
+          </div>
+          <div class="settings-section">
+            <h3>Semantic Scholar</h3>
+            <div class="form-group">
+              <label>API Key <span class="optional">(opcional)</span></label>
+              <input type="text" id="s-ss-key">
+            </div>
+          </div>
+        </div>
+
+        <!-- Papers de referencia -->
+        <div class="settings-pane hidden" id="settings-pane-reference">
+          <h2 class="settings-pane-title">Papers de referencia</h2>
           <p class="settings-hint">PDFs de papers que ya encontraste interesantes. Nuevos papers se filtran por similitud semántica contra esta colección.</p>
-          <div class="form-group">
-            <label>Carpeta</label>
-            <div class="folder-row">
-              <input type="text" id="s-ref-folder" readonly placeholder="Sin carpeta configurada">
-              <button id="btn-pick-ref-folder" class="btn-secondary">Explorar</button>
+          <div class="settings-section">
+            <div class="form-group">
+              <label>Carpeta</label>
+              <div class="folder-row">
+                <input type="text" id="s-ref-folder" readonly placeholder="Sin carpeta configurada">
+                <button id="btn-pick-ref-folder" class="btn-secondary">Explorar</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Umbral de similitud <span class="optional">(0.0 – 1.0)</span></label>
+              <input type="number" id="s-similarity-threshold" min="0" max="1" step="0.05" placeholder="0.72" class="input-narrow">
+            </div>
+            <div class="folder-row ref-stats-row">
+              <span id="s-ref-stats" class="ref-stats-label">— papers indexados</span>
+              <button id="btn-reindex" class="btn-secondary">Re-indexar</button>
             </div>
           </div>
-          <div class="form-group">
-            <label>Umbral de similitud <span class="optional">(0.0 – 1.0)</span></label>
-            <input type="number" id="s-similarity-threshold" min="0" max="1" step="0.05" placeholder="0.72" class="input-narrow">
-          </div>
-          <div class="folder-row ref-stats-row">
-            <span id="s-ref-stats" class="ref-stats-label">— papers indexados</span>
-            <button id="btn-reindex" class="btn-secondary">Re-indexar</button>
-          </div>
         </div>
-        <div class="settings-section">
-          <h3>Modelo para Class Mode</h3>
-          <p class="settings-hint">Proveedor y modelo usados para pistas, evaluaciones y Q&A. Por defecto DeepSeek (más rápido y barato para intercambios frecuentes).</p>
-          <div class="form-group">
-            <label>Proveedor</label>
-            <div class="provider-selector" id="s-class-provider-selector">
-              <button class="class-provider-btn" data-provider="openai">OpenAI</button>
-              <button class="class-provider-btn" data-provider="anthropic">Anthropic</button>
-              <button class="class-provider-btn" data-provider="deepseek">DeepSeek</button>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Modelo</label>
-            <select id="s-class-llm-model"></select>
-          </div>
-          <div class="form-group">
-            <label id="s-class-api-key-label">API Key <span class="optional">(opcional — si es distinta a la del proveedor principal)</span></label>
-            <input type="password" id="s-class-api-key" placeholder="sk-...">
-          </div>
-        </div>
-        <div class="settings-footer">
-          <button id="btn-save-settings" class="btn-primary">Guardar</button>
-        </div>
+
+      </div>
+
+      <div class="settings-footer">
+        <button id="btn-save-settings" class="btn-primary">Guardar</button>
       </div>
     </div>
   </div>

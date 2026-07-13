@@ -11,7 +11,7 @@ import { hideAnnotationPopup, setupAnnotationPopup, toggleHighlightsPanel, rebui
 import { startSummary } from './modules/summary.js'
 import { generateQuiz } from './modules/quiz.js'
 import { sendChat, clearChat } from './modules/chat.js'
-import { openSettings, saveSettings } from './modules/settings.js'
+import { openSettings, saveSettings, switchSettingsCategory } from './modules/settings.js'
 import { enterClassMode, exitClassMode, initClass } from './modules/class.js'
 import { openLearningDashboard, closeLearningDashboard, initLearningDashboard } from './modules/learning-dashboard.js'
 
@@ -230,6 +230,10 @@ function wireListeners() {
     document.getElementById('settings-panel').classList.add('hidden')
   })
   document.getElementById('btn-save-settings').addEventListener('click', saveSettings)
+
+  document.querySelectorAll('.settings-cat-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchSettingsCategory(btn.dataset.category))
+  })
 
   document.getElementById('btn-pick-ref-folder').addEventListener('click', async () => {
     const folder = await window.api.selectFolder()

@@ -262,6 +262,54 @@ describe('class-transcribe-audio', () => {
   })
 })
 
+// ─── createClassLLM consolidation (settings-redesign: Clase usa el LLM principal) ─
+
+describe('createClassLLM (Class mode uses the main LLM config, no per-Class override)', () => {
+  it('calls createLLM with the settings object unchanged, ignoring classLlmProvider/classLlmModel/classApiKey', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const mockLlm = { chat: vi.fn().mockResolvedValue('respuesta') }
+    const deps = {
+      createLLM: vi.fn().mockReturnValue(mockLlm),
+      createTranscription: vi.fn(), createWhisperStream: vi.fn(),
+      whisperStreamBin: null, whisperModelsDir: null,
+    }
+    const settings = {
+      llmProvider: 'anthropic', llmModel: 'claude-opus-4-8', apiKey: 'sk-main',
+      classLlmProvider: 'deepseek', classLlmModel: 'deepseek-v4-flash', classApiKey: 'sk-class',
+    }
+    const db = makeDb({ getAllSettings: vi.fn().mockReturnValue(settings) })
+    registerClassHandlers({ ipcMain, db, deps, mainWindow: makeMainWindow() })
+
+    await invoke('class-assistant-message', {
+      question: '¿Qué es un transformer?', missing: null, excerpts: [], history: [],
+      canRevealAnswer: false, llmProvider: 'openai', llmModel: 'gpt-4o',
+    })
+
+    expect(deps.createLLM).toHaveBeenCalledWith(settings)
+  })
+
+  it('ignores llmProvider/llmModel passed in the IPC payload (no per-request override)', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const mockLlm = { chat: vi.fn().mockResolvedValue('ok') }
+    const deps = {
+      createLLM: vi.fn().mockReturnValue(mockLlm),
+      createTranscription: vi.fn(), createWhisperStream: vi.fn(),
+      whisperStreamBin: null, whisperModelsDir: null,
+    }
+    const settings = { llmProvider: 'openai', llmModel: 'gpt-4o', apiKey: 'sk-main' }
+    const db = makeDb({ getAllSettings: vi.fn().mockReturnValue(settings) })
+    registerClassHandlers({ ipcMain, db, deps, mainWindow: makeMainWindow() })
+
+    await invoke('class-assistant-message', {
+      question: 'q', missing: null, excerpts: [], history: [], canRevealAnswer: false,
+      llmProvider: 'deepseek', llmModel: 'deepseek-v4-flash',
+    })
+
+    expect(deps.createLLM).toHaveBeenCalledWith(settings)
+    expect(deps.createLLM).not.toHaveBeenCalledWith(expect.objectContaining({ llmProvider: 'deepseek' }))
+  })
+})
+
 // ─── class-upload-slides ──────────────────────────────────────────────────────
 
 describe('class-upload-slides', () => {
