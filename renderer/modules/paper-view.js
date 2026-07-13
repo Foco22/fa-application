@@ -1,10 +1,11 @@
 import { state } from './state.js'
-import { STATUS_LABELS } from './constants.js'
+import { STATUS_KEYS } from './constants.js'
 import { renderSummarySection } from './summary.js'
 import { renderQuizSection } from './quiz.js'
 import { renderNotesSection } from './notes.js'
 import { syncNotesFromHighlights, renderHighlightsPanel } from './highlights.js'
 import { updateChatContext } from './chat.js'
+import { t } from './language.js'
 
 let _renderVault   = () => {}
 let _switchTab     = () => {}
@@ -37,7 +38,7 @@ export function renderPaperView() {
   document.getElementById('paper-view').classList.remove('hidden')
 
   const badge = document.getElementById('pv-status')
-  badge.textContent = STATUS_LABELS[p.status] || p.status
+  badge.textContent = STATUS_KEYS[p.status] ? t(STATUS_KEYS[p.status]) : p.status
   badge.className = `status-badge badge-${p.status}`
 
   document.getElementById('pv-title').textContent    = p.title || p.id

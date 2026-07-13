@@ -3,6 +3,12 @@
 // en Electron, asi que un import estatico es la via confiable sin bundler.
 // Cada clave debe existir tambien en en.js — hay un test que compara ambos sets.
 export default {
+  'estado-nuevo': 'Nuevo',
+  'estado-descargando': 'Descargando…',
+  'estado-listo': 'Listo',
+  'estado-archivo-error': '⚠ Archivo no disp.',
+  'estado-error': 'Error',
+  'tab-archivo': 'Archivo',
   'referencias': 'Referencias',
   'desde': 'Desde',
   'hasta': 'Hasta',
@@ -80,7 +86,7 @@ export default {
   'alejar': 'Alejar',
   'ampliar': '⤢ Ampliar',
   'ampliar-ctrl': 'Ampliar (Ctrl +)',
-  'ampliar-pdf': 'Ampliar PDF',
+  'ampliar-pdf': 'Ampliar archivo',
   'anadir-a-notas': 'Añadir a notas',
   'analisis-ia': 'Análisis IA',
   'anterior': 'Anterior (←)',
@@ -217,7 +223,7 @@ export default {
   'papers-indexados': '— papers indexados',
   'participantes': 'Participantes',
   'pdf': 'PDF',
-  'pdf-no-disponible-para-este-paper': 'PDF no disponible para este paper',
+  'pdf-no-disponible-para-este-paper': 'Archivo no disponible para este paper',
   'pdfs-de-papers-que-ya-encontraste-interesantes-n': 'PDFs de papers que ya encontraste interesantes. Nuevos papers se filtran por similitud semántica contra esta colección.',
   'portugues': 'Português',
   'pregunta': 'Pregunta',
