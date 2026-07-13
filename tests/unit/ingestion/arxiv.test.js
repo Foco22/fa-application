@@ -51,43 +51,48 @@ const FEED_TWO = `<?xml version="1.0" encoding="UTF-8"?>
 
 // ─── calculateDateWindow ──────────────────────────────────────────────────────
 
+// Las fechas se construyen con new Date(y, m, d) —fecha LOCAL— y no con
+// new Date('2025-06-16'), que JS parsea como medianoche UTC: en una zona
+// negativa (Chile, UTC−4) eso es el día anterior y el test decía "lunes"
+// mientras le pasaba un domingo. En producción la función recibe new Date(),
+// que ya es local, así que el bug era del test, no del código.
 describe('calculateDateWindow', () => {
   it('returns last Mon→Sun when today is Monday', () => {
     // Monday 2025-06-16
-    const { from, to } = calculateDateWindow(new Date('2025-06-16'))
+    const { from, to } = calculateDateWindow(new Date(2025, 5, 16))
     expect(from).toBe('20250609')
     expect(to).toBe('20250615')
   })
 
   it('returns last Mon→Sun when today is Wednesday (mid-week)', () => {
     // Wednesday 2025-06-18
-    const { from, to } = calculateDateWindow(new Date('2025-06-18'))
+    const { from, to } = calculateDateWindow(new Date(2025, 5, 18))
     expect(from).toBe('20250609')
     expect(to).toBe('20250615')
   })
 
   it('returns last Mon→Sun when today is Sunday', () => {
     // Sunday 2025-06-22
-    const { from, to } = calculateDateWindow(new Date('2025-06-22'))
+    const { from, to } = calculateDateWindow(new Date(2025, 5, 22))
     expect(from).toBe('20250609')
     expect(to).toBe('20250615')
   })
 
   it('returns last Mon→Sun when today is Saturday', () => {
     // Saturday 2025-06-21
-    const { from, to } = calculateDateWindow(new Date('2025-06-21'))
+    const { from, to } = calculateDateWindow(new Date(2025, 5, 21))
     expect(from).toBe('20250609')
     expect(to).toBe('20250615')
   })
 
   it('output strings are exactly 8 digits (YYYYMMDD)', () => {
-    const { from, to } = calculateDateWindow(new Date('2025-06-16'))
+    const { from, to } = calculateDateWindow(new Date(2025, 5, 16))
     expect(from).toMatch(/^\d{8}$/)
     expect(to).toMatch(/^\d{8}$/)
   })
 
   it('from is always 6 days before to', () => {
-    const { from, to } = calculateDateWindow(new Date('2025-06-16'))
+    const { from, to } = calculateDateWindow(new Date(2025, 5, 16))
     const fromDate = new Date(`${from.slice(0,4)}-${from.slice(4,6)}-${from.slice(6,8)}`)
     const toDate   = new Date(`${to.slice(0,4)}-${to.slice(4,6)}-${to.slice(6,8)}`)
     const diffDays = (toDate - fromDate) / (1000 * 60 * 60 * 24)
