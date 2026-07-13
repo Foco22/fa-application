@@ -1,4 +1,15 @@
-function buildSummaryPrompt(paper) {
+// El idioma cambia SOLO el contenido que genera el LLM, nunca el esquema JSON:
+// el parseo del resumen y del quiz depende de las mismas claves en ambos idiomas.
+const LANGUAGES = {
+  es: { in: 'en español', write: 'Escribe TODO el contenido en español.' },
+  en: { in: 'in English', write: 'Write ALL the content in English.' },
+}
+
+function lang(language) {
+  return LANGUAGES[language] || LANGUAGES.es
+}
+
+function buildSummaryPrompt(paper, language = 'es') {
   return `Título: ${paper.title}
 Autores: ${paper.authors}
 
@@ -10,7 +21,7 @@ ${paper.pdf_text || '(no disponible)'}
 
 ---
 
-Analiza este paper en español. Escribe como un periodista científico explicando
+Analiza este paper ${lang(language).in}. Escribe como un periodista científico explicando
 a un colega inteligente que no leyó el paper: directo, fluido, concreto.
 Evita el tono pasivo y burocrático. Empieza cada sección con una oración que
 engancha, luego desarrolla con detalle (mínimo 4-6 oraciones por sección).
@@ -40,10 +51,12 @@ Responde ÚNICAMENTE con un objeto JSON con exactamente estas 5 claves.
 Sin markdown, sin texto adicional antes ni después del JSON.
 El valor de cada clave es el análisis completo de esa sección, en texto plano.
 
-{"1": "...", "2": "...", "3": "...", "4": "...", "5": "..."}`
+{"1": "...", "2": "...", "3": "...", "4": "...", "5": "..."}
+
+${lang(language).write}`
 }
 
-function buildQuizPrompt(paper) {
+function buildQuizPrompt(paper, language = 'es') {
   return `Título: ${paper.title}
 Autores: ${paper.authors}
 
@@ -55,11 +68,13 @@ ${paper.pdf_text || '(no disponible)'}
 
 ---
 
-Genera exactamente 5 preguntas de opción múltiple en español sobre este paper.
+Genera exactamente 5 preguntas de opción múltiple ${lang(language).in} sobre este paper.
 Cada pregunta tiene 4 alternativas (A, B, C, D). Una sola respuesta correcta.
 Las preguntas deben evaluar comprensión profunda, no trivia.
 Responde ÚNICAMENTE con un JSON con esta estructura:
-{"questions": [{"question": "...", "options": ["A...", "B...", "C...", "D..."], "correct": 0, "explanation": "..."}]}`
+{"questions": [{"question": "...", "options": ["A...", "B...", "C...", "D..."], "correct": 0, "explanation": "..."}]}
+
+${lang(language).write}`
 }
 
 function buildAffiliationsPrompt(context) {

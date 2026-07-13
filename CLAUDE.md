@@ -325,6 +325,8 @@ learning/
 │   ├── costs/           # Registro de uso y costo de cada llamada pagada
 │   │   └── index.js          # recordUsage(db, event), makeUsageRecorder(db), computeCostMicroUsd()
 │   │
+│   ├── notifications.js # Texto de las notificaciones del proceso main (es/en)
+│   │
 │   ├── chat/            # Lógica de chat con papers
 │   │   ├── index.js          # chatWithPaper(message, paper, history, llm)
 │   │   └── prompts.js        # buildSystemPrompt(paper)
@@ -337,6 +339,10 @@ learning/
 │       └── reference.js      # index-reference-folder, index-files, get-reference-list, delete-reference, rename-reference
 │
 └── renderer/
+    ├── i18n.js          # t(key), applyLanguage(lang) — diccionario de la UI
+    ├── i18n/
+    │   ├── es.js            # idioma de fábrica
+    │   └── en.js            # mismo set de claves (un test lo verifica)
     ├── index.html       # UI principal
     ├── app.js           # Lógica del frontend (vanilla JS)
     └── styles.css       # Estilos
@@ -628,6 +634,17 @@ async function chatWithPaper(message, paper, history, llm) {
 - **OpenAI / DeepSeek**: pasa `messages` directamente (OpenAI soporta rol `system` dentro del array)
 
 ---
+
+## Internacionalización (es / en)
+
+El setting `language` gobierna **la interfaz y el contenido que genera la IA**, para que no queden mezclados.
+
+- **Interfaz:** el texto estático de `index.html` va marcado con `data-i18n` (`data-i18n-placeholder`, `data-i18n-title`) y `applyLanguage(lang)` lo reescribe. Los strings que arma el JS (ej. el botón "Generar"/"Regenerar" del resumen) **no los toca `applyLanguage`** — usan `t('clave')` y se refrescan porque al cambiar de idioma se vuelve a correr el render de la vista activa (`refreshActiveView()` en `app.js`).
+- **Diccionarios:** `renderer/i18n/es.js` y `en.js` se cargan como **módulos ES, no como `.json`** — `fetch()` sobre `file://` está bloqueado en Electron. Un test compara que ambos tengan exactamente el mismo set de claves: si falta una, el texto saldría sin traducir.
+- **Contenido de IA:** `src/llm/prompts.js` y `src/chat/prompts.js` reciben `language`; `createLLM(settings)` lo propaga desde `settings.language`. **El idioma cambia el contenido, nunca el esquema JSON** del resumen ni del quiz.
+- **Lo ya generado no se retraduce:** un resumen escrito en español sigue en español al pasar a inglés. Solo cambia la interfaz alrededor.
+- **Notificaciones:** corren en el proceso main, fuera del renderer, así que leen `db.getSetting('language')` (`src/notifications.js`) — el valor persistido, nunca uno pendiente en el formulario.
+- **Onboarding:** siempre en español, porque corre antes de que exista el setting.
 
 ## Seguridad Electron
 

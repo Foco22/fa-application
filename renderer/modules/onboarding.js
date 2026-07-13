@@ -1,5 +1,6 @@
 import { DEFAULT_UNIVERSITIES, DEFAULT_RESEARCH_CENTERS } from './constants.js'
 import { buildCategoriesGrid, getSelectedCategories } from './settings.js'
+import { t } from './language.js'
 
 let _showApp = () => {}
 
@@ -65,10 +66,10 @@ export async function finishOnboarding() {
   }
 
   const btn = document.getElementById('step4-finish')
-  btn.disabled = true; btn.textContent = 'Configurando…'
+  btn.disabled = true; btn.textContent = t('configurando')
   await window.api.completeOnboarding(settings)
   await _showApp()
-  btn.disabled = false; btn.textContent = '✓ Comenzar'
+  btn.disabled = false; btn.textContent = t('comenzar')
 }
 
 // Onboarding step navigation wiring (ejecutado al cargar el módulo, DOM ya listo por defer de módulos ES)

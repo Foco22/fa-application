@@ -1,5 +1,6 @@
 import { CATEGORIES, CATEGORY_LABELS, DEFAULT_UNIVERSITIES, DEFAULT_RESEARCH_CENTERS, LLM_PROVIDERS, EMBEDDING_PROVIDERS, STT_PROVIDERS } from './constants.js'
 import { toast } from './toast.js'
+import { changeLanguage, t } from './language.js'
 
 export function buildCategoriesGrid(containerId, selectedList) {
   const container = document.getElementById(containerId)
@@ -119,7 +120,7 @@ function loadSttApiKeyForProvider(provider, settings) {
 /* ── Navegación por categorías del sidebar ─────────────────────────────────
    Cambiar de categoría solo alterna qué panel se muestra — no se pierde
    ningún valor editado en otras categorías (todo vive en el DOM hasta
-   "Guardar" o hasta cerrar el modal). */
+   t('guardar') o hasta cerrar el modal). */
 export function switchSettingsCategory(categoryId) {
   document.querySelectorAll('.settings-cat-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.category === categoryId)
@@ -137,9 +138,9 @@ export async function openSettings() {
   // General
   document.getElementById('s-language').value = s.language || 'es'
   window.api.getAppVersion().then(v => {
-    document.getElementById('s-app-version').textContent = v ? `Versión ${v}` : 'Versión no disponible'
+    document.getElementById('s-app-version').textContent = v ? `Versión ${v}` : t('version-no-disponible')
   }).catch(() => {
-    document.getElementById('s-app-version').textContent = 'Versión no disponible'
+    document.getElementById('s-app-version').textContent = t('version-no-disponible')
   })
 
   // LLM
@@ -244,5 +245,11 @@ export async function saveSettings() {
 
   await window.api.saveSettings(settings)
   document.getElementById('settings-panel').classList.add('hidden')
-  toast('Configuración guardada', 'success')
+
+  // Se aplica después de guardar, no al tocar el selector: el idioma efectivo es
+  // siempre el que quedó persistido — el mismo que leen las notificaciones del
+  // proceso main —, nunca un valor pendiente en el formulario.
+  await changeLanguage(settings.language)
+
+  toast(t('configuracion-guardada'), 'success')
 }

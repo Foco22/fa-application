@@ -19,6 +19,7 @@ const { registerHandlers }    = require('./src/ipc')
 const { createEmbeddings, hasEmbeddingConfig, indexReferenceFolder, indexFiles, scoreEmbeddingAgainst, embedKeywordList } = require('./src/embeddings')
 const { refreshPricingIfStale } = require('./src/pricing')
 const { makeUsageRecorder } = require('./src/costs')
+const { newPapersMessage } = require('./src/notifications')
 const { extractKeywords, keywordOverlap } = require('./src/ingestion/keywords')
 const { createReranker } = require('./src/rerank')
 const { createTranscription } = require('./src/transcription')
@@ -166,9 +167,11 @@ app.whenReady().then(() => {
   scheduler = createScheduler(settings, async () => {
     const result = await runFetch()
     if (Array.isArray(result) && result.length > 0) {
+      // El idioma se relee de la DB en cada notificación: el scheduler puede
+      // dispararse horas después de que el usuario cambió el idioma.
       new Notification({
         title: 'Paper Learning',
-        body: `${result.length} paper${result.length > 1 ? 's' : ''} nuevo${result.length > 1 ? 's' : ''} listo${result.length > 1 ? 's' : ''}`
+        body: newPapersMessage(result.length, db.getSetting('language'))
       }).show()
     }
   }, cron)

@@ -9,7 +9,7 @@ const {
   parseJSONResponse,
 } = require('../prompts')
 
-function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = false, supportsVision = true, providerName = 'openai' } = {}, _client = null, onUsage = null) {
+function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = false, supportsVision = true, providerName = 'openai', language = 'es' } = {}, _client = null, onUsage = null) {
   const client = _client || new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) })
   const MODEL = model || 'gpt-4o'
 
@@ -35,7 +35,7 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
         // Sin include_usage, OpenAI NO devuelve uso en streaming y el resumen
         // (el flujo mas caro de la app) quedaria sin costo.
         stream_options: { include_usage: true },
-        messages: [{ role: 'user', content: buildSummaryPrompt(paper) }],
+        messages: [{ role: 'user', content: buildSummaryPrompt(paper, language) }],
       }
       if (jsonMode) params.response_format = { type: 'json_object' }
       const stream = await client.chat.completions.create(params)
@@ -58,7 +58,7 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
       const response = await client.chat.completions.create({
         model: MODEL,
         response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content: buildQuizPrompt(paper) }],
+        messages: [{ role: 'user', content: buildQuizPrompt(paper, language) }],
       })
       record('quiz', response.usage)
       return parseJSONResponse(response.choices[0].message.content)
@@ -137,8 +137,8 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
   }
 }
 
-function createOpenAIProvider(apiKey, model = null, _client = null, onUsage = null) {
-  return createOpenAICompatibleProvider(apiKey, { model: model || 'gpt-4o', jsonMode: true, providerName: 'openai' }, _client, onUsage)
+function createOpenAIProvider(apiKey, model = null, _client = null, onUsage = null, language = 'es') {
+  return createOpenAICompatibleProvider(apiKey, { model: model || 'gpt-4o', jsonMode: true, providerName: 'openai', language }, _client, onUsage)
 }
 
 module.exports = { createOpenAIProvider, createOpenAICompatibleProvider }

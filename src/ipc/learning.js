@@ -38,7 +38,7 @@ function registerLearningHandlers({ ipcMain, db, deps, mainWindow }) {
     const settings = db.getAllSettings()
     const llm      = createLLM(settings)
     const paper    = paperId ? db.getPaper(paperId) : null
-    return chatWithPaper(message, paper, history || [], llm)
+    return chatWithPaper(message, paper, history || [], llm, settings.language)
   })
 }
 

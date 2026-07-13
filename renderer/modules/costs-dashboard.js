@@ -1,3 +1,4 @@
+import { t, getLanguage } from './language.js'
 let chart = null
 let groupBy = 'week'
 let range = { from: null, to: null }
@@ -32,21 +33,27 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
-const ACTION_LABELS = {
-  summary: 'Resumen', quiz: 'Quiz', chat: 'Chat', embedding: 'Embedding',
-  transcription: 'Transcripción', vision: 'Diapositiva (visión)',
-  affiliations: 'Afiliaciones', metadata: 'Metadatos', abstract_summary: 'Resumen de abstract',
+// Las acciones son claves del diccionario, no texto fijo: la tabla de detalle
+// también tiene que hablar el idioma de la app.
+const ACTION_KEYS = {
+  summary: 'accion-summary', quiz: 'accion-quiz', chat: 'accion-chat',
+  embedding: 'accion-embedding', transcription: 'accion-transcription',
+  vision: 'accion-vision', affiliations: 'accion-affiliations',
+  metadata: 'accion-metadata', abstract_summary: 'accion-abstract-summary',
 }
 
 // Etiquetas del eje: la semana se muestra como "sem. 2 mar", no como fecha cruda.
+// El locale sale del idioma activo: con la UI en inglés, el eje no puede seguir
+// diciendo "sem. 15 jun".
 function periodLabel(period) {
+  const locale = getLanguage()
   if (groupBy === 'month') {
     const [y, m] = period.split('-')
-    return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('es', { month: 'short', year: '2-digit' })
+    return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString(locale, { month: 'short', year: '2-digit' })
   }
   const d = new Date(`${period}T00:00:00`)
-  const short = d.toLocaleDateString('es', { day: 'numeric', month: 'short' })
-  return groupBy === 'week' ? `sem. ${short}` : short
+  const short = d.toLocaleDateString(locale, { day: 'numeric', month: 'short' })
+  return groupBy === 'week' ? `${t('semana-abrev')} ${short}` : short
 }
 
 function renderChart(summary) {
@@ -118,7 +125,7 @@ function renderActionTable(summary) {
   for (const row of summary.by_action) {
     const tr = document.createElement('tr')
     const cells = [
-      ACTION_LABELS[row.action_type] || row.action_type,
+      ACTION_KEYS[row.action_type] ? t(ACTION_KEYS[row.action_type]) : row.action_type,
       row.provider,
       // El modelo es lo que fija el precio: sin él, "resumen con anthropic" no
       // dice si gastaste en Opus o en Haiku, que difieren 5x.
@@ -224,10 +231,10 @@ export function initCostsDashboard() {
   document.getElementById('ct-refresh-pricing').addEventListener('click', async (e) => {
     const btn = e.currentTarget
     btn.disabled = true
-    btn.textContent = 'Actualizando…'
+    btn.textContent = t('actualizando')
     await window.api.refreshPricing()
     btn.disabled = false
-    btn.textContent = '↻ Actualizar precios'
+    btn.textContent = t('actualizar-precios')
     await renderPricingStatus()
   })
 
