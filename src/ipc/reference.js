@@ -4,7 +4,7 @@ const path = require('path')
 function registerReferenceHandlers({ ipcMain, db, deps }) {
   const {
     shell, dialog,
-    createLLM, createEmbeddings,
+    createLLM, createEmbeddings, hasEmbeddingConfig,
     indexReferenceFolder, extractFirstPage, extractText,
     pdfParse, vault
   } = deps
@@ -28,15 +28,26 @@ function registerReferenceHandlers({ ipcMain, db, deps }) {
     shell.openPath(filePath)
   })
 
-  ipcMain.handle('get-reference-stats', () => ({ total: db.getReferenceCount() }))
+  // `stale` = referencias indexadas con otro modelo de embeddings. Sus vectores
+  // no son comparables con los del modelo activo, así que no cuentan para el
+  // filtro hasta que se reindexen.
+  ipcMain.handle('get-reference-stats', () => {
+    const settings = db.getAllSettings()
+    const total    = db.getReferenceCount()
+    if (!hasEmbeddingConfig(settings)) return { total, usable: 0, stale: total }
+    const usable = db.getReferenceCount(createEmbeddings(settings).id)
+    return { total, usable, stale: total - usable }
+  })
 
   ipcMain.handle('index-reference-folder', async () => {
     const settings = db.getAllSettings()
-    if (!settings.apiKey || !settings.referenceFolderPath) {
+    if (!hasEmbeddingConfig(settings) || !settings.referenceFolderPath) {
       return { indexed: 0, errors: 0, total: db.getReferenceCount() }
     }
     const embProvider = createEmbeddings(settings)
-    const llm         = createLLM(settings)
+    // El resumen del abstract es opcional: sin key de LLM se indexa igual, sólo
+    // que sin `abstract_summary` (el proveedor local no necesita ninguna key).
+    const llm = settings.apiKey ? createLLM(settings) : null
     const res = await indexReferenceFolder(settings.referenceFolderPath, db, embProvider, pdfParse, llm)
     return { ...res, total: db.getReferenceCount() }
   })
@@ -106,7 +117,10 @@ function registerReferenceHandlers({ ipcMain, db, deps }) {
         if (!db.getReferencePaper(filePath)) {
           const embedding = await embProvider.generateEmbedding(snippet)
           const abstractSummary = await llm.summarizeAbstract(abstract || snippet)
-          db.saveReferencePaper({ path: filePath, snippet, embedding: JSON.stringify(embedding), abstract_summary: abstractSummary })
+          db.saveReferencePaper({
+            path: filePath, snippet, embedding: JSON.stringify(embedding),
+            abstract_summary: abstractSummary, embedding_model: embProvider.id,
+          })
         }
 
         indexed++

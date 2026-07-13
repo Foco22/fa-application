@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
-import { cosineSimilarity, indexReferenceFolder, indexFiles, scoreAbstractAgainst, scoreEmbeddingAgainst, embedKeywordList, createEmbeddings } from '../../../src/embeddings/index.js'
+import { cosineSimilarity, indexReferenceFolder, indexFiles, scoreAbstractAgainst, scoreEmbeddingAgainst, embedKeywordList, createEmbeddings, hasEmbeddingConfig } from '../../../src/embeddings/index.js'
 
 // ─── cosineSimilarity ─────────────────────────────────────────────────────────
 
@@ -52,12 +52,52 @@ describe('createEmbeddings', () => {
     const provider = createEmbeddings({ apiKey: 'fallback', openaiApiKey: 'primary', embeddingApiKey: 'dedicated' })
     expect(typeof provider.generateEmbedding).toBe('function')
   })
+
+  it('tags the openai provider with an id that names the model', () => {
+    const provider = createEmbeddings({ apiKey: 'sk-test' })
+    expect(provider.id).toBe('openai:text-embedding-3-small')
+  })
+
+  it('honours embeddingModel in the openai provider id', () => {
+    const provider = createEmbeddings({ apiKey: 'sk-test', embeddingModel: 'text-embedding-3-large' })
+    expect(provider.id).toBe('openai:text-embedding-3-large')
+  })
+
+  it('returns the local provider when embeddingProvider is "local", with no apiKey at all', () => {
+    const provider = createEmbeddings({ embeddingProvider: 'local' })
+    expect(typeof provider.generateEmbedding).toBe('function')
+    expect(provider.id).toBe('local:Xenova/all-MiniLM-L6-v2')
+  })
+
+  it('honours embeddingModel for the local provider', () => {
+    const provider = createEmbeddings({ embeddingProvider: 'local', embeddingModel: 'Xenova/bge-small-en-v1.5' })
+    expect(provider.id).toBe('local:Xenova/bge-small-en-v1.5')
+  })
+})
+
+// ─── hasEmbeddingConfig ───────────────────────────────────────────────────────
+
+describe('hasEmbeddingConfig', () => {
+  it('is false for openai without any key — nothing to embed with', () => {
+    expect(hasEmbeddingConfig({ embeddingProvider: 'openai' })).toBe(false)
+    expect(hasEmbeddingConfig({})).toBe(false)
+  })
+
+  it('is true for openai as soon as any usable key is present', () => {
+    expect(hasEmbeddingConfig({ apiKey: 'sk-test' })).toBe(true)
+    expect(hasEmbeddingConfig({ openaiApiKey: 'sk-test' })).toBe(true)
+    expect(hasEmbeddingConfig({ embeddingApiKey: 'sk-test' })).toBe(true)
+  })
+
+  it('is true for the local provider even with no keys — it runs offline', () => {
+    expect(hasEmbeddingConfig({ embeddingProvider: 'local' })).toBe(true)
+  })
 })
 
 // ─── shared mocks ─────────────────────────────────────────────────────────────
 
 function makeProvider(embedding = [0.1, 0.2, 0.3]) {
-  return { generateEmbedding: vi.fn().mockResolvedValue(embedding) }
+  return { id: 'openai:text-embedding-3-small', generateEmbedding: vi.fn().mockResolvedValue(embedding) }
 }
 
 function makePdfParse(text = 'extracted text from pdf') {
@@ -109,6 +149,18 @@ describe('indexReferenceFolder', () => {
     const provider = makeProvider()
     await indexReferenceFolder('/refs', db, provider, makePdfParse())
     expect(db.saveReferencePaper).not.toHaveBeenCalled()
+  })
+
+  // Vectores de modelos distintos no son comparables (ni siquiera comparten
+  // dimensión), así que cada referencia guarda con qué proveedor:modelo se
+  // generó — es lo que permite descartar el índice viejo al cambiar de motor.
+  it('stamps each stored reference with the provider id that embedded it', async () => {
+    const db       = makeDb()
+    const provider = { id: 'local:Xenova/all-MiniLM-L6-v2', generateEmbedding: vi.fn().mockResolvedValue([0.1]) }
+    await indexReferenceFolder('/refs', db, provider, makePdfParse())
+    expect(db.saveReferencePaper).toHaveBeenCalledWith(
+      expect.objectContaining({ embedding_model: 'local:Xenova/all-MiniLM-L6-v2' })
+    )
   })
 
   it('calls provider.generateEmbedding for each new PDF', async () => {
@@ -164,6 +216,15 @@ describe('indexReferenceFolder', () => {
 // ─── indexFiles ───────────────────────────────────────────────────────────────
 
 describe('indexFiles', () => {
+  it('stamps each stored reference with the provider id that embedded it', async () => {
+    const db       = makeDb()
+    const provider = { id: 'local:Xenova/all-MiniLM-L6-v2', generateEmbedding: vi.fn().mockResolvedValue([0.1]) }
+    await indexFiles(['/docs/paper.pdf'], db, provider, makePdfParse())
+    expect(db.saveReferencePaper).toHaveBeenCalledWith(
+      expect.objectContaining({ embedding_model: 'local:Xenova/all-MiniLM-L6-v2' })
+    )
+  })
+
   it('skips non-PDF files', async () => {
     const db = makeDb()
     await indexFiles(['/docs/notes.txt', '/docs/image.png'], db, makeProvider(), makePdfParse())

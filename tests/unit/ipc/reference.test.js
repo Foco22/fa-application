@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
+import { hasEmbeddingConfig } from '../../../src/embeddings/index.js'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -44,8 +45,10 @@ function makeDeps(overrides = {}) {
       summarizeAbstract:         vi.fn().mockResolvedValue('A short summary.'),
     }),
     createEmbeddings: vi.fn().mockReturnValue({
+      id: 'openai:text-embedding-3-small',
       generateEmbedding: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
     }),
+    hasEmbeddingConfig,
     indexReferenceFolder: vi.fn().mockResolvedValue({ indexed: 2, errors: 0 }),
     extractFirstPage: vi.fn().mockResolvedValue({ success: true, text: 'first page' }),
     extractText:      vi.fn().mockResolvedValue({ success: true, text: 'full text' }),
@@ -77,10 +80,29 @@ function setup(dbOverrides = {}, depsOverrides = {}) {
 // ─── get-reference-stats ──────────────────────────────────────────────────────
 
 describe('get-reference-stats', () => {
-  it('returns total count from db', async () => {
-    const { invoke, db } = setup({ getReferenceCount: vi.fn().mockReturnValue(7) })
+  it('reports every reference as usable when they all match the active model', async () => {
+    const { invoke } = setup({ getReferenceCount: vi.fn().mockReturnValue(7) })
     const result = await invoke('get-reference-stats')
-    expect(result).toEqual({ total: 7 })
+    expect(result).toEqual({ total: 7, usable: 7, stale: 0 })
+  })
+
+  // Al cambiar de proveedor, el índice viejo sigue en la DB pero no sirve para
+  // comparar: se reporta como stale para que la UI pida reindexar.
+  it('reports references embedded with another model as stale', async () => {
+    const { invoke } = setup({
+      // total = 7, pero sólo 2 llevan el sello del modelo activo
+      getReferenceCount: vi.fn().mockImplementation(model => (model ? 2 : 7)),
+    })
+    const result = await invoke('get-reference-stats')
+    expect(result).toEqual({ total: 7, usable: 2, stale: 5 })
+  })
+
+  it('reports nothing as usable when no embedding provider is configured', async () => {
+    const { invoke } = setup(
+      { getReferenceCount: vi.fn().mockReturnValue(7), getAllSettings: vi.fn().mockReturnValue({}) },
+    )
+    const result = await invoke('get-reference-stats')
+    expect(result).toEqual({ total: 7, usable: 0, stale: 7 })
   })
 })
 

@@ -43,6 +43,23 @@ export function setActiveProvider(provider) {
   sel.innerHTML = cfg.models.map(m => `<option value="${m}">${m}</option>`).join('')
 }
 
+// Estado del índice de referencia tal como estaba al abrir Settings: sirve para
+// avisar que hay que reindexar si el usuario cambia de motor de embeddings.
+let indexedEmbeddingId = null
+let referenceTotal     = 0
+
+function currentEmbeddingId() {
+  const provider = document.querySelector('.embedding-provider-btn.active')?.dataset.provider || 'openai'
+  return `${provider}:${document.getElementById('s-embedding-model').value}`
+}
+
+// Los vectores de dos modelos distintos no comparten ni dimensión ni espacio:
+// el índice viejo deja de servir para comparar en cuanto se cambia de motor.
+function updateReindexWarning() {
+  const stale = referenceTotal > 0 && indexedEmbeddingId !== null && currentEmbeddingId() !== indexedEmbeddingId
+  document.getElementById('s-embedding-reindex-warning').classList.toggle('hidden', !stale)
+}
+
 export function setActiveEmbeddingProvider(provider) {
   const cfg = EMBEDDING_PROVIDERS[provider] || EMBEDDING_PROVIDERS.openai
   document.querySelectorAll('.embedding-provider-btn').forEach(b => {
@@ -50,6 +67,18 @@ export function setActiveEmbeddingProvider(provider) {
   })
   const sel = document.getElementById('s-embedding-model')
   sel.innerHTML = cfg.models.map(m => `<option value="${m}">${m}</option>`).join('')
+
+  // El proveedor local no usa API key — el campo se oculta en vez de quedar
+  // pidiendo algo que no hace falta.
+  document.getElementById('s-embedding-key-group').classList.toggle('hidden', !cfg.needsKey)
+  document.getElementById('s-embedding-local-hint').classList.toggle('hidden', cfg.needsKey)
+
+  // El umbral no se traslada entre motores: con el de OpenAI (0.6) el modelo
+  // local rechazaría todos los papers.
+  document.getElementById('s-threshold-hint').textContent =
+    `Con este motor, un valor razonable es ~${cfg.suggestedThreshold}. La escala depende del modelo: no reutilices el umbral de otro proveedor.`
+
+  updateReindexWarning()
 }
 
 // Cambiar de proveedor de Speech to Text siempre deja el modelo y el campo de
@@ -124,12 +153,15 @@ export async function openSettings() {
 
   // Embedding
   const embeddingProvider = s.embeddingProvider || 'openai'
+  const embeddingModel    = s.embeddingModel || EMBEDDING_PROVIDERS[embeddingProvider]?.models[0] || ''
+  indexedEmbeddingId = `${embeddingProvider}:${embeddingModel}`
   setActiveEmbeddingProvider(embeddingProvider)
-  document.getElementById('s-embedding-model').value = s.embeddingModel || EMBEDDING_PROVIDERS[embeddingProvider]?.models[0] || ''
+  document.getElementById('s-embedding-model').value = embeddingModel
   document.getElementById('s-embedding-api-key').value = s.embeddingApiKey || ''
   document.querySelectorAll('.embedding-provider-btn').forEach(btn => {
     btn.onclick = () => setActiveEmbeddingProvider(btn.dataset.provider)
   })
+  document.getElementById('s-embedding-model').onchange = updateReindexWarning
 
   // Speech to Text — "webspeech" ya no existe como opción: si el usuario lo
   // tenía guardado de antes, cae a Groq sin key precargada (ver PRD, edge case).
@@ -160,8 +192,15 @@ export async function openSettings() {
   // Papers de referencia
   document.getElementById('s-ref-folder').value            = s.referenceFolderPath || ''
   document.getElementById('s-similarity-threshold').value  = s.similarityThreshold || '0.6'
-  window.api.getReferenceStats().then(({ total }) => {
-    document.getElementById('s-ref-stats').textContent = `${total} paper${total !== 1 ? 's' : ''} indexado${total !== 1 ? 's' : ''}`
+  window.api.getReferenceStats().then(({ total, stale }) => {
+    referenceTotal = total
+    const base = `${total} paper${total !== 1 ? 's' : ''} indexado${total !== 1 ? 's' : ''}`
+    // `stale` = indexados con otro motor de embeddings; no cuentan para el filtro
+    // de similitud hasta que se reindexen.
+    document.getElementById('s-ref-stats').textContent = stale > 0
+      ? `${base} — ${stale} con un motor de embeddings distinto (reindexar para usarlos)`
+      : base
+    updateReindexWarning()
   })
 
   document.getElementById('settings-panel').classList.remove('hidden')

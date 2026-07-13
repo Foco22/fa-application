@@ -16,7 +16,7 @@ const { chatWithPaper }               = require('./src/chat')
 const { createScheduler }     = require('./src/scheduler')
 const cron                    = require('node-cron')
 const { registerHandlers }    = require('./src/ipc')
-const { createEmbeddings, indexReferenceFolder, indexFiles, scoreEmbeddingAgainst, embedKeywordList } = require('./src/embeddings')
+const { createEmbeddings, hasEmbeddingConfig, indexReferenceFolder, indexFiles, scoreEmbeddingAgainst, embedKeywordList } = require('./src/embeddings')
 const { extractKeywords, keywordOverlap } = require('./src/ingestion/keywords')
 const { createReranker } = require('./src/rerank')
 const { createTranscription } = require('./src/transcription')
@@ -122,7 +122,7 @@ app.whenReady().then(() => {
       chatWithPaper, fetchPapers,
       getAffiliations, matchesUniversityList,
       downloadPdf, extractText, extractFirstPage, matchesUniversityInText,
-      createEmbeddings, scoreEmbeddingAgainst, embedKeywordList, indexReferenceFolder, indexFiles,
+      createEmbeddings, hasEmbeddingConfig, scoreEmbeddingAgainst, embedKeywordList, indexReferenceFolder, indexFiles,
       extractKeywords, keywordOverlap, createReranker,
       createTranscription,
       createWhisperStream,
@@ -136,9 +136,9 @@ app.whenReady().then(() => {
   })
 
   // Auto-index reference folder on startup
-  if (settings.referenceFolderPath && settings.apiKey) {
+  if (settings.referenceFolderPath && hasEmbeddingConfig(settings)) {
     const embeddingProvider = createEmbeddings(settings)
-    const llm = createLLM(settings)
+    const llm = settings.apiKey ? createLLM(settings) : null
     indexReferenceFolder(settings.referenceFolderPath, db, embeddingProvider, pdfParse, llm)
       .then(r => console.log(`[startup] Reference index: +${r.indexed} indexed, ${r.errors} errors`))
       .catch(err => console.error('[startup] Reference index error:', err.message))
