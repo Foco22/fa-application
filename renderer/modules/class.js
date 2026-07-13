@@ -1,5 +1,6 @@
 import { toast } from './toast.js'
 import { LLM_PROVIDERS } from './constants.js'
+import { t } from './language.js'
 
 // ── Module state ─────────────────────────────────────────────────────────────
 let _paper = null
@@ -541,7 +542,7 @@ async function startClass() {
     await setupActiveView(slides)
     showView('active')
   } catch (err) {
-    toast('Error al iniciar la clase: ' + err.message, 'error')
+    toast(t('error-al-iniciar-la-clase') + err.message, 'error')
     showView('prep')
   }
 }
@@ -931,7 +932,7 @@ function showAssistantButton() {
   const btn = document.createElement('button')
   btn.className = 'class-hint-assistant-overlay'
   btn.id = 'class-hint-assistant-overlay'
-  btn.title = 'Abrir asistente'
+  btn.title = t('abrir-asistente')
   btn.innerHTML = ASSISTANT_SVG
   spotlight.appendChild(btn)
   btn.addEventListener('click', () => {
@@ -986,7 +987,7 @@ function showBellHint(missing) {
   const btn = document.createElement('button')
   btn.className = 'class-hint-bell-overlay'
   btn.id = 'class-hint-bell-overlay'
-  btn.title = '¿Necesitas ayuda? Ver fragmentos del paper'
+  btn.title = t('necesitas-ayuda')
 
   const icon = document.createElement('span')
   icon.className = 'class-hint-bell-icon'
@@ -1386,7 +1387,7 @@ async function finishQA() {
   _qaActive = false
   highlightParticipant(-1, false)
   setSpotlight(null)
-  document.getElementById('class-qa-progress').textContent = 'Calculando resultados…'
+  document.getElementById('class-qa-progress').textContent = t('calculando-resultados')
   enableChatInput(false)
 
   let endResult = { presentationScore: 70, qaScore: 70, presentationFeedback: null, perStudent: _qaLog }
@@ -1518,7 +1519,7 @@ function startWebSpeechRecognition(SpeechRecognition) {
 
   recognition.onstart = () => {
     console.log('[speech] Web Speech API started')
-    if (liveEl) liveEl.textContent = '🎙 Escuchando…'
+    if (liveEl) liveEl.textContent = t('escuchando-mic')
     setRecordingIndicator(true, 'Escuchando (Web Speech)…')
   }
 
@@ -1543,7 +1544,7 @@ function startWebSpeechRecognition(SpeechRecognition) {
       console.warn('[speech] Fatal error — falling back to Whisper')
       _recognitionActive = false
       _speechRecognition = null
-      if (liveEl) liveEl.textContent = '🎙 Cambiando a Whisper…'
+      if (liveEl) liveEl.textContent = t('cambiando-a-whisper')
       startWhisperRecognition()
       return
     }
@@ -1563,7 +1564,7 @@ function startWebSpeechRecognition(SpeechRecognition) {
 
 async function startWhisperLocalStream() {
   const liveEl = document.getElementById('class-transcript-live')
-  if (liveEl) liveEl.textContent = '🎙 Iniciando whisper local…'
+  if (liveEl) liveEl.textContent = t('iniciando-whisper-local')
 
   const result = await window.api.classStartStream({ language: _classLanguage || 'es', localModel: _localModel || 'small' })
   if (result?.error) {
@@ -1581,19 +1582,19 @@ async function startWhisperLocalStream() {
     console.log('[whisper-debug]', msg)
     if (liveEl) liveEl.textContent = msg.slice(0, 120)
   })
-  if (liveEl) liveEl.textContent = '🎙 Iniciando modelo…'
+  if (liveEl) liveEl.textContent = t('iniciando-modelo')
   setRecordingIndicator(true, 'Transcribiendo con whisper.cpp…')
 }
 
 async function startWhisperRecognition() {
   const liveEl = document.getElementById('class-transcript-live')
-  if (liveEl) liveEl.textContent = '🔴 Grabando…'
+  if (liveEl) liveEl.textContent = t('grabando')
 
   let stream
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
   } catch {
-    if (liveEl) liveEl.textContent = '⚠ Sin acceso al micrófono'
+    if (liveEl) liveEl.textContent = t('sin-acceso-al-microfono-corto')
     return
   }
 
@@ -1680,7 +1681,7 @@ function attachVoiceButton({ micBtnId, sendBtnId, cancelBtnId, confirmBtnId, tex
     try {
       _voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
     } catch (err) {
-      toast('Sin acceso al micrófono: ' + (err.message || err), 'error')
+      toast(t('sin-acceso-al-microfono') + (err.message || err), 'error')
       return
     }
     _cancelled   = false
@@ -1700,7 +1701,7 @@ function attachVoiceButton({ micBtnId, sendBtnId, cancelBtnId, confirmBtnId, tex
       if (_cancelled) return
 
       const blob = new Blob(_voiceChunks, { type: mimeType })
-      if (blob.size < 100) { toast('No se detectó audio', 'error'); return }
+      if (blob.size < 100) { toast(t('no-se-detecto-audio'), 'error'); return }
 
       micBtn.style.opacity = '.4'
       try {
@@ -1712,14 +1713,14 @@ function attachVoiceButton({ micBtnId, sendBtnId, cancelBtnId, confirmBtnId, tex
           model: _classModel || undefined,
           provider: _transcriptionBackend === 'groq' ? 'groq' : 'openai'
         })
-        if (result?.error) { toast('Error: ' + result.error, 'error'); return }
+        if (result?.error) { toast(t('error-prefijo') + result.error, 'error'); return }
         const text = result?.text?.trim()
-        if (!text || isHallucination(text)) { toast('No se detectó voz en el audio', 'error'); return }
+        if (!text || isHallucination(text)) { toast(t('no-se-detecto-voz'), 'error'); return }
         const textarea = document.getElementById(textareaId)
         if (textarea) { textarea.value = text; textarea.dispatchEvent(new Event('input')) }
         sendFn()
       } catch (err) {
-        toast('Error al transcribir: ' + (err.message || 'intenta de nuevo'), 'error')
+        toast(t('error-al-transcribir') + (err.message || t('intenta-de-nuevo')), 'error')
       } finally {
         micBtn.style.opacity = ''
       }
@@ -1808,7 +1809,7 @@ export function appendTranscript(text) {
 
   // La barra live solo muestra estado
   const liveEl = document.getElementById('class-transcript-live')
-  if (liveEl) liveEl.textContent = '🎙 Escuchando…'
+  if (liveEl) liveEl.textContent = t('escuchando-mic')
 }
 
 // Export state for later phases

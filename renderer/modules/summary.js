@@ -1,6 +1,7 @@
 import { state } from './state.js'
 import { toast } from './toast.js'
 import { parseSummary, renderMarkdown } from '../summary-utils.js'
+import { t } from './language.js'
 
 export function renderSummaryCards(text) {
   const sections = parseSummary(text)
@@ -21,10 +22,10 @@ export function renderSummarySection(p) {
 
   if (p.summary) {
     renderSummaryCards(p.summary)
-    btn.textContent = '↺ Regenerar'
+    btn.textContent = t('regenerar')
   } else {
     cards.classList.add('hidden')
-    btn.textContent = 'Generar'
+    btn.textContent = t('generar')
   }
   btn.disabled = false
 }
@@ -36,9 +37,9 @@ export async function startSummary() {
   const cards  = document.getElementById('pv-summary-cards')
 
   btn.disabled = true
-  btn.textContent = 'Generando…'
+  btn.textContent = t('generando')
   cards.classList.add('hidden')
-  stream.textContent = 'Generando resumen…'
+  stream.textContent = t('generando-resumen')
   stream.classList.remove('hidden')
 
   window.api.removeAllListeners('summary-chunk')
@@ -55,17 +56,17 @@ export async function startSummary() {
     state.activePaper = await window.api.getPaper(state.activePaper.id)
     stream.classList.add('hidden')
     renderSummaryCards(state.activePaper.summary)
-    btn.textContent = '↺ Regenerar'
+    btn.textContent = t('regenerar')
     btn.disabled = false
   })
 
   window.api.onSummaryError(msg => {
     stream.classList.add('hidden')
-    stream.textContent = '⚠ Error: ' + msg
+    stream.textContent = t('error-prefijo-largo') + msg
     stream.classList.remove('hidden')
     btn.disabled = false
-    btn.textContent = 'Reintentar'
-    toast('Error al generar resumen: ' + msg, 'error')
+    btn.textContent = t('reintentar')
+    toast(t('error-al-generar-resumen') + msg, 'error')
   })
 
   await window.api.startSummary(state.activePaper.id)

@@ -1,6 +1,7 @@
 import { state } from './state.js'
 import { toast } from './toast.js'
 import { renderMarkdown } from '../summary-utils.js'
+import { t } from './language.js'
 
 export function updateChatContext() {
   const ctx   = document.getElementById('chat-context')
@@ -58,8 +59,8 @@ export async function dispatchChat(message) {
     state.chatHistory.push({ role: 'assistant', content: reply })
   } catch (err) {
     thinking.remove()
-    appendChatBubble('assistant', '⚠ Error: ' + err.message)
-    toast('Error en chat: ' + err.message, 'error')
+    appendChatBubble('assistant', t('error-prefijo-largo') + err.message)
+    toast(t('error-en-chat') + err.message, 'error')
   }
   sendBtn.disabled = false
 }

@@ -15,7 +15,7 @@ function extractText(content) {
   return content.filter(b => b.type === 'text').map(b => b.text).join('')
 }
 
-function createAnthropicProvider(apiKey, model = null, _client = null, onUsage = null) {
+function createAnthropicProvider(apiKey, model = null, _client = null, onUsage = null, language = 'es') {
   const MODEL = model || DEFAULT_MODEL
   const client = _client || new Anthropic({ apiKey })
 
@@ -40,7 +40,7 @@ function createAnthropicProvider(apiKey, model = null, _client = null, onUsage =
         model: MODEL,
         max_tokens: 16000,
         thinking: { type: 'adaptive' },
-        messages: [{ role: 'user', content: buildSummaryPrompt(paper) }],
+        messages: [{ role: 'user', content: buildSummaryPrompt(paper, language) }],
       })
       for await (const text of stream.textStream) {
         onChunk(text)
@@ -58,7 +58,7 @@ function createAnthropicProvider(apiKey, model = null, _client = null, onUsage =
       const response = await client.messages.create({
         model: MODEL,
         max_tokens: 2048,
-        messages: [{ role: 'user', content: buildQuizPrompt(paper) }],
+        messages: [{ role: 'user', content: buildQuizPrompt(paper, language) }],
       })
       record('quiz', response.usage)
       return parseJSONResponse(extractText(response.content))
