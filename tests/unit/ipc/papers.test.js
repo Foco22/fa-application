@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import { runFetch, selectCandidates, PRERANK_CAP } from '../../../src/ipc/papers.js'
-import { scoreEmbeddingAgainst } from '../../../src/embeddings/index.js'
+import { scoreEmbeddingAgainst, hasEmbeddingConfig } from '../../../src/embeddings/index.js'
 import { extractKeywords, keywordOverlap } from '../../../src/ingestion/keywords.js'
 
 // ─── shared fixtures ──────────────────────────────────────────────────────────
@@ -41,11 +41,16 @@ function makeCtx(overrides = {}) {
     ...overrides.llm,
   }
 
-  const mockEmbProvider = { generateEmbedding: vi.fn().mockResolvedValue([0.1, 0.2]) }
+  const mockEmbProvider = {
+    id: 'openai:text-embedding-3-small',
+    generateEmbedding: vi.fn().mockResolvedValue([0.1, 0.2]),
+    ...overrides.embProvider,
+  }
 
   const deps = {
     createLLM:             vi.fn().mockReturnValue(mockLLM),
     createEmbeddings:      vi.fn().mockReturnValue(mockEmbProvider),
+    hasEmbeddingConfig:    hasEmbeddingConfig,
     createReranker:        vi.fn().mockReturnValue({
       rerank: vi.fn().mockImplementation(async (_query, documents) =>
         documents.map((_, index) => ({ index, score: 1 - index * 0.01 }))
@@ -101,6 +106,79 @@ describe('runFetch — fetchPapers error', () => {
 
     expect(result).toEqual({ error: 'No categories configured' })
     expect(db.savePaper).not.toHaveBeenCalled()
+  })
+})
+
+// ─── selection phase: embedding provider gating ───────────────────────────────
+
+describe('runFetch — embedding provider availability', () => {
+  it('embeds with the local provider even when there is no API key configured', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { apiKey: '', embeddingProvider: 'local' },
+      db: {
+        getReferencePapers: vi.fn().mockReturnValue([
+          { path: '/refs/a.pdf', snippet: 'AI', embedding: '[0.1,0.2]', abstract_summary: 's', embedding_model: 'local:Xenova/all-MiniLM-L6-v2' },
+        ]),
+      },
+      embProvider: { id: 'local:Xenova/all-MiniLM-L6-v2' },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(deps.createEmbeddings).toHaveBeenCalled()
+    expect(deps.createEmbeddings.mock.results[0].value.generateEmbedding).toHaveBeenCalled()
+  })
+
+  it('does not build an embedding provider for openai when no key is configured', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { apiKey: '', openaiApiKey: '', embeddingApiKey: '', embeddingProvider: 'openai' },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(deps.createEmbeddings).not.toHaveBeenCalled()
+  })
+})
+
+// ─── selection phase: stale reference index ───────────────────────────────────
+
+describe('runFetch — reference index embedded by a different model', () => {
+  // Un vector de OpenAI (1536 dims) y uno de MiniLM (384) no son comparables:
+  // mezclarlos produce similitudes basura. Los del otro modelo se ignoran hasta
+  // que el usuario reindexe.
+  it('ignores reference embeddings produced by a different model', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { keywordList: '' },
+      db: {
+        getReferencePapers: vi.fn().mockReturnValue([
+          { path: '/refs/old.pdf', snippet: 'zzz', embedding: '[0.9,0.9,0.9]', abstract_summary: null, embedding_model: 'openai:text-embedding-3-small' },
+        ]),
+      },
+      embProvider: { id: 'local:Xenova/all-MiniLM-L6-v2' },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    // La única referencia es de otro modelo → no hay vectores comparables, así
+    // que nunca se llega a embeber el abstract del candidato.
+    expect(deps.createEmbeddings.mock.results[0].value.generateEmbedding).not.toHaveBeenCalled()
+    expect(db.savePaper).not.toHaveBeenCalled()
+  })
+
+  it('uses reference embeddings that match the active model', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { keywordList: '' },
+      db: {
+        getReferencePapers: vi.fn().mockReturnValue([
+          { path: '/refs/ok.pdf', snippet: 'zzz', embedding: '[0.1,0.2]', abstract_summary: null, embedding_model: 'openai:text-embedding-3-small' },
+        ]),
+      },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(deps.createEmbeddings.mock.results[0].value.generateEmbedding).toHaveBeenCalled()
+    expect(db.savePaper).toHaveBeenCalled()
   })
 })
 

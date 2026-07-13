@@ -186,6 +186,41 @@ describe('saveReferencePaper / getReferencePapers', () => {
     expect(rows[0].abstract_summary).toBeNull()
   })
 
+  it('persists the embedding_model that produced the vector', () => {
+    db.saveReferencePaper({
+      path: '/refs/local.pdf',
+      snippet: 'text',
+      embedding: JSON.stringify([0.1, 0.2]),
+      embedding_model: 'local:Xenova/all-MiniLM-L6-v2',
+    })
+
+    const rows = db.getReferencePapers()
+    expect(rows[0].embedding_model).toBe('local:Xenova/all-MiniLM-L6-v2')
+  })
+
+  // Filas indexadas antes de que existiera la columna: todas venían del único
+  // proveedor que había entonces, así que se leen como OpenAI en vez de null.
+  it('reads legacy rows with no embedding_model as the original OpenAI model', () => {
+    db.saveReferencePaper({
+      path: '/refs/legacy.pdf',
+      snippet: 'text',
+      embedding: JSON.stringify([0.1, 0.2]),
+    })
+
+    const rows = db.getReferencePapers()
+    expect(rows[0].embedding_model).toBe('openai:text-embedding-3-small')
+  })
+
+  it('counts only the references embedded with the given model', () => {
+    db.saveReferencePaper({ path: '/refs/a.pdf', snippet: 's', embedding: '[0.1]', embedding_model: 'local:Xenova/all-MiniLM-L6-v2' })
+    db.saveReferencePaper({ path: '/refs/b.pdf', snippet: 's', embedding: '[0.1]', embedding_model: 'openai:text-embedding-3-small' })
+    db.saveReferencePaper({ path: '/refs/c.pdf', snippet: 's', embedding: '[0.1]' })
+
+    expect(db.getReferenceCount('local:Xenova/all-MiniLM-L6-v2')).toBe(1)
+    expect(db.getReferenceCount('openai:text-embedding-3-small')).toBe(2)
+    expect(db.getReferenceCount()).toBe(3)
+  })
+
   it('ignores duplicate paths (INSERT OR IGNORE)', () => {
     const paper = { path: '/refs/dup.pdf', snippet: 's', embedding: '[0.1]', abstract_summary: 'first' }
     db.saveReferencePaper(paper)

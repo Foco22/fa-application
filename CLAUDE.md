@@ -20,7 +20,7 @@ El objetivo es construir un hábito de aprendizaje técnico sostenible. El siste
 | Fuente de papers | ArXiv API (`http://export.arxiv.org/api/query`) |
 | Extracción de PDF | `pdf-parse` |
 | IA — LLM (resúmenes + quiz + chat) | Multi-proveedor: Anthropic (`claude-opus-4-8`), OpenAI (`gpt-4o`), DeepSeek |
-| IA — Embeddings (similitud semántica) | OpenAI (`text-embedding-3-small`) |
+| IA — Embeddings (similitud semántica) | OpenAI (`text-embedding-3-small`) o local (Transformers.js, `Xenova/all-MiniLM-L6-v2`) |
 | HTTP | `axios` |
 | Scheduling | `node-cron` |
 | Notificaciones | Electron Notification API |
@@ -314,9 +314,10 @@ learning/
 │   │       └── deepseek.js   # DeepSeek — compatible con API de OpenAI
 │   │
 │   ├── embeddings/      # Capa de abstracción de embeddings
-│   │   ├── index.js          # createEmbeddings(settings), indexReferenceFolder(), scoreAbstractAgainst()
+│   │   ├── index.js          # createEmbeddings(settings), hasEmbeddingConfig(), indexReferenceFolder(), scoreAbstractAgainst()
 │   │   └── providers/
-│   │       └── openai.js     # text-embedding-3-small
+│   │       ├── openai.js     # text-embedding-3-small (API — requiere key)
+│   │       └── local.js      # Transformers.js (MiniLM) — corre offline, sin API key
 │   │
 │   ├── chat/            # Lógica de chat con papers
 │   │   ├── index.js          # chatWithPaper(message, paper, history, llm)
@@ -368,16 +369,34 @@ function createLLM(settings) {
 ```javascript
 // src/embeddings/index.js
 function createEmbeddings(settings) {
-  // Por ahora solo OpenAI; la estructura permite agregar proveedores sin cambiar el código consumidor
-  return createOpenAIEmbeddingProvider(settings.openaiApiKey || settings.apiKey,
-    settings.embeddingModel ? { model: settings.embeddingModel } : {})
+  switch (settings.embeddingProvider || 'openai') {
+    case 'local': return createLocalEmbeddingProvider(...)   // Transformers.js — offline
+    default:      return createOpenAIEmbeddingProvider(...)  // API
+  }
 }
 
 // Interfaz de embeddings:
 {
+  id                     → string            // "openai:text-embedding-3-small" | "local:Xenova/all-MiniLM-L6-v2"
   generateEmbedding(text) → Promise<number[]>
 }
 ```
+
+**`hasEmbeddingConfig(settings)`** — el proveedor local no necesita API key, así que los callers
+(`runFetch`, `index-reference-folder`, auto-index de arranque) **nunca** deben gatear por
+`settings.apiKey` para decidir si construir el proveedor de embeddings; usan esta función.
+
+#### Embeddings de distintos modelos no son comparables
+
+Cada vector queda sellado en `reference_papers.embedding_model` con el `id` del proveedor que lo
+generó. Vectores de dos modelos distintos no comparten ni dimensión (1536 vs 384) ni espacio
+semántico: mezclarlos produce similitudes basura. Por eso `selectCandidates()` **ignora** las
+referencias cuyo `embedding_model` no coincide con el proveedor activo, y `get-reference-stats`
+reporta cuántas quedaron `stale` para que la UI pida reindexar.
+
+**El umbral tampoco se traslada entre motores.** MiniLM da ~0.40 de similitud coseno entre dos
+abstracts claramente relacionados, donde OpenAI da ~0.6–0.7. Con el umbral de OpenAI (`0.6`), el
+motor local rechazaría todos los papers. Sugerido: `~0.6` para OpenAI, `~0.4` para local.
 
 Todos los proveedores aceptan un **cliente inyectable** como último parámetro (`_client = null`), lo que permite mockearlos en tests sin necesidad de `vi.mock`:
 
@@ -455,8 +474,9 @@ registerHandlers({
 | `semanticScholarApiKey` | `""` | Semantic Scholar API key (opcional) |
 | `llmProvider` | `"openai"` | Proveedor LLM activo: `openai`, `anthropic`, `deepseek` |
 | `llmModel` | `""` | Override del modelo (vacío = default del proveedor) |
-| `embeddingProvider` | `"openai"` | Proveedor de embeddings activo |
+| `embeddingProvider` | `"openai"` | Proveedor de embeddings activo: `openai`, `local` |
 | `embeddingModel` | `""` | Override del modelo de embeddings |
+| `embeddingApiKey` | `""` | API key de embeddings (fallback: `openaiApiKey` → `apiKey`; el proveedor `local` no la usa) |
 | `categoryList` | `""` | Categorías ArXiv elegidas (separadas por coma) |
 | `authorList` | `""` | Autores a seguir, uno por línea (apellidos) |
 | `universityList` | *(20 instituciones, una por línea)* | Instituciones para post-filtro |
@@ -719,7 +739,8 @@ learning/
 │   │   │   └── deepseek.test.js        # ídem para proveedor DeepSeek
 │   │   │
 │   │   ├── embeddings/
-│   │   │   └── index.test.js           # createEmbeddings, indexReferenceFolder, scoreAbstractAgainst
+│   │   │   ├── index.test.js           # createEmbeddings, hasEmbeddingConfig, indexReferenceFolder, scoreAbstractAgainst
+│   │   │   └── local.test.js           # proveedor local: lazy load, number[], cacheDir fuera de node_modules
 │   │   │
 │   │   ├── chat/
 │   │   │   └── index.test.js           # chatWithPaper, buildSystemPrompt, historial

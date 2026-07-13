@@ -84,8 +84,16 @@ export const LLM_PROVIDERS = {
   deepseek:  { label: 'DeepSeek API Key',  placeholder: 'sk-...',   models: ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner'] },
 }
 
+// `local` corre con Transformers.js dentro de la app: descarga el modelo la
+// primera vez y después no necesita internet ni API key. Cambiar de proveedor
+// invalida el índice de referencia (los vectores no son comparables entre
+// modelos) — hay que reindexar.
+// `suggestedThreshold`: cada modelo tiene su propia escala de similitud coseno.
+// MiniLM da ~0.40 entre dos abstracts claramente relacionados, donde OpenAI da
+// ~0.6–0.7 — con el umbral de OpenAI el motor local rechazaría todo.
 export const EMBEDDING_PROVIDERS = {
-  openai: { label: 'OpenAI API Key', placeholder: 'sk-...', models: ['text-embedding-3-small', 'text-embedding-3-large'] },
+  openai: { name: 'OpenAI (API)', label: 'OpenAI API Key', placeholder: 'sk-...', models: ['text-embedding-3-small', 'text-embedding-3-large'], needsKey: true, suggestedThreshold: '0.6' },
+  local:  { name: 'Local (gratis, sin internet)', label: null, placeholder: null, models: ['Xenova/all-MiniLM-L6-v2', 'Xenova/bge-small-en-v1.5'], needsKey: false, suggestedThreshold: '0.4' },
 }
 
 // Web Speech API se eliminó de las opciones: es transcripción nativa del navegador,

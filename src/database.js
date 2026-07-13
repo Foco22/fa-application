@@ -1,5 +1,9 @@
 const Database = require('better-sqlite3')
 
+// Modelo con el que se indexó todo antes de que existiera la columna
+// `embedding_model`: las filas viejas, sin sello, sólo pueden venir de aquí.
+const LEGACY_EMBEDDING_MODEL = 'openai:text-embedding-3-small'
+
 // Same "days since Monday" idiom as src/ingestion/arxiv.js / src/vault.js: 0=Sun..6=Sat.
 function isoDate(d) {
   const y = d.getFullYear()
@@ -85,6 +89,7 @@ function openDatabase(path) {
       snippet           TEXT,
       embedding         TEXT NOT NULL,
       abstract_summary  TEXT,
+      embedding_model   TEXT,
       indexed_at        DATETIME DEFAULT (datetime('now'))
     );
   `)
@@ -93,6 +98,7 @@ function openDatabase(path) {
   try { db.exec('ALTER TABLE papers ADD COLUMN notes TEXT') } catch (_) {}
   try { db.exec('ALTER TABLE papers ADD COLUMN highlights TEXT') } catch (_) {}
   try { db.exec('ALTER TABLE reference_papers ADD COLUMN abstract_summary TEXT') } catch (_) {}
+  try { db.exec('ALTER TABLE reference_papers ADD COLUMN embedding_model TEXT') } catch (_) {}
 
   const savePaper = db.prepare(`
     INSERT INTO papers (id, title, authors, abstract, pdf_url, published_date,
@@ -186,14 +192,19 @@ function openDatabase(path) {
   `)
 
   const saveReferencePaper = db.prepare(`
-    INSERT OR IGNORE INTO reference_papers (path, snippet, embedding, abstract_summary)
-    VALUES (@path, @snippet, @embedding, @abstract_summary)
+    INSERT OR IGNORE INTO reference_papers (path, snippet, embedding, abstract_summary, embedding_model)
+    VALUES (@path, @snippet, @embedding, @abstract_summary, @embedding_model)
   `)
 
+  // Las filas indexadas antes de que existiera la columna sólo pudieron salir
+  // del único proveedor que había entonces — se leen con ese sello, no como null.
+  const embeddingModelExpr = `COALESCE(embedding_model, '${LEGACY_EMBEDDING_MODEL}')`
+
   const getReferencePaper  = db.prepare('SELECT id FROM reference_papers WHERE path = ?')
-  const getReferencePapers     = db.prepare('SELECT path, snippet, embedding, abstract_summary FROM reference_papers')
+  const getReferencePapers     = db.prepare(`SELECT path, snippet, embedding, abstract_summary, ${embeddingModelExpr} AS embedding_model FROM reference_papers`)
   const getReferencePapersList = db.prepare('SELECT id, path FROM reference_papers ORDER BY indexed_at DESC')
   const getReferenceCount      = db.prepare('SELECT COUNT(*) AS n FROM reference_papers')
+  const getReferenceCountByModel = db.prepare(`SELECT COUNT(*) AS n FROM reference_papers WHERE ${embeddingModelExpr} = ?`)
 
   return {
     savePaper:         (paper) => savePaper.run({ notes: null, ...paper }),
@@ -236,11 +247,11 @@ function openDatabase(path) {
     saveNotes:           (id, notes)      => saveNotes.run(notes, id),
     saveHighlights:      (id, highlights) => saveHighlights.run(highlights, id),
     deletePaper:         (id) => deletePaper.run(id),
-    saveReferencePaper:     (r)          => saveReferencePaper.run({ abstract_summary: null, ...r }),
+    saveReferencePaper:     (r)          => saveReferencePaper.run({ abstract_summary: null, embedding_model: null, ...r }),
     getReferencePaper:      (p)          => getReferencePaper.get(p),
     getReferencePapers:     ()           => getReferencePapers.all(),
     getReferencePapersList: ()           => getReferencePapersList.all(),
-    getReferenceCount:      ()           => getReferenceCount.get().n,
+    getReferenceCount:      (model)      => model ? getReferenceCountByModel.get(model).n : getReferenceCount.get().n,
     deleteReferencePaper:   (p)          => db.prepare('DELETE FROM reference_papers WHERE path = ?').run(p),
     updatePaperTitle:       (id, title)  => db.prepare('UPDATE papers SET title = ? WHERE id = ?').run(title, id),
 

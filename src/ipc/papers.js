@@ -27,8 +27,15 @@ function makeReportEntry(paper) {
 async function selectCandidates(candidates, { db, deps, settings, embProvider, similarityThreshold }) {
   const { scoreEmbeddingAgainst, embedKeywordList, extractKeywords, keywordOverlap, createReranker } = deps
 
-  const refRows       = db.getReferencePapers()
-  const refEmbeddings = refRows.map(r => JSON.parse(r.embedding))
+  const refRows = db.getReferencePapers()
+
+  // Sólo son comparables los vectores del modelo activo: los de otro modelo ni
+  // siquiera comparten dimensión, y mezclarlos daría similitudes basura. Se
+  // ignoran hasta que el usuario reindexe. Keywords y resúmenes son texto, así
+  // que siguen sirviendo aunque el índice haya quedado obsoleto.
+  const refEmbeddings = refRows
+    .filter(r => r.embedding_model === embProvider?.id)
+    .map(r => JSON.parse(r.embedding))
   const refKeywords   = refRows.flatMap(r => extractKeywords(r.snippet || ''))
   const refSummaries  = refRows.map(r => r.abstract_summary).filter(Boolean)
 
@@ -108,7 +115,7 @@ async function selectCandidates(candidates, { db, deps, settings, embProvider, s
 
 async function runFetch({ db, deps, mainWindow }) {
   const {
-    createLLM, createEmbeddings,
+    createLLM, createEmbeddings, hasEmbeddingConfig,
     fetchPapers, getAffiliations,
     downloadPdf, extractText, extractFirstPage,
     matchesUniversityInText,
@@ -121,8 +128,9 @@ async function runFetch({ db, deps, mainWindow }) {
   const universityList       = (settings.universityList     || '').split('\n').map(s => s.trim()).filter(Boolean)
   const researchCenterList   = (settings.researchCenterList || '').split('\n').map(s => s.trim()).filter(Boolean)
   const orgFilter            = [...universityList, ...researchCenterList]
-  const llm                  = settings.apiKey ? createLLM(settings)        : null
-  const embProvider          = settings.apiKey ? createEmbeddings(settings)  : null
+  const llm                  = settings.apiKey            ? createLLM(settings)        : null
+  // El proveedor local no necesita API key — no se puede gatear por settings.apiKey.
+  const embProvider          = hasEmbeddingConfig(settings) ? createEmbeddings(settings) : null
 
   const result = await fetchPapers(settings, httpClient)
   if (result.error) return { error: result.error }

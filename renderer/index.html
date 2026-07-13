@@ -858,16 +858,24 @@
               <label>Proveedor</label>
               <div class="provider-selector" id="s-embedding-provider-selector">
                 <button class="embedding-provider-btn" data-provider="openai">OpenAI</button>
+                <button class="embedding-provider-btn" data-provider="local">Local (sin internet)</button>
               </div>
             </div>
             <div class="form-group">
               <label>Modelo</label>
               <select id="s-embedding-model"></select>
             </div>
-            <div class="form-group">
+            <div class="form-group" id="s-embedding-key-group">
               <label>API Key <span class="optional">(opcional — si vacío, usa la del proveedor LLM)</span></label>
               <input type="password" id="s-embedding-api-key" placeholder="sk-...">
             </div>
+            <p class="settings-hint hidden" id="s-embedding-local-hint">
+              El modelo se descarga una sola vez (~25 MB) y corre en tu máquina: sin API key, sin costo por paper y sin enviar nada a internet.
+            </p>
+            <p class="field-error hidden" id="s-embedding-reindex-warning">
+              Cambiaste de motor de embeddings: los vectores del índice anterior no son comparables con los del nuevo modelo.
+              Reindexa tu carpeta de referencia (pestaña «Papers de referencia») o el filtro de similitud quedará sin usar.
+            </p>
           </div>
         </div>
 
@@ -970,6 +978,7 @@
             <div class="form-group">
               <label>Umbral de similitud <span class="optional">(0.0 – 1.0)</span></label>
               <input type="number" id="s-similarity-threshold" min="0" max="1" step="0.05" placeholder="0.72" class="input-narrow">
+              <p class="settings-hint" id="s-threshold-hint"></p>
             </div>
             <div class="folder-row ref-stats-row">
               <span id="s-ref-stats" class="ref-stats-label">— papers indexados</span>
