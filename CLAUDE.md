@@ -319,6 +319,12 @@ learning/
 │   │       ├── openai.js     # text-embedding-3-small (API — requiere key)
 │   │       └── local.js      # Transformers.js (MiniLM) — corre offline, sin API key
 │   │
+│   ├── pricing/         # Tabla de precios por modelo (para el tracking de costos)
+│   │   └── index.js          # fetchPricingTable(), refreshPricingIfStale(), getPriceFor(), saveManualOverride()
+│   │
+│   ├── costs/           # Registro de uso y costo de cada llamada pagada
+│   │   └── index.js          # recordUsage(db, event), makeUsageRecorder(db), computeCostMicroUsd()
+│   │
 │   ├── chat/            # Lógica de chat con papers
 │   │   ├── index.js          # chatWithPaper(message, paper, history, llm)
 │   │   └── prompts.js        # buildSystemPrompt(paper)
@@ -465,6 +471,52 @@ registerHandlers({
 | `total` | INTEGER | Total preguntas |
 | `answers` | TEXT | JSON con respuestas del usuario |
 | `taken_at` | DATETIME | Fecha del intento |
+
+### Instrumentación de costos — dónde vive
+
+`main.js` construye **un solo** `onUsage = makeUsageRecorder(db)` y lo inyecta en las factories
+(`createLLM`, `createEmbeddings`, `createTranscription`) antes de pasarlas a `deps`. El registro
+ocurre **dentro de cada método del proveedor**, no en los IPC handlers: cualquier call site nuevo
+queda instrumentado sin tocarlo. Solo se registra en el camino feliz — una llamada fallida no se cobra.
+
+Métodos instrumentados: `streamSummary`, `generateQuiz`, `chat`, `extractAffiliationsWithAI`,
+`extractPaperMetadata`, `summarizeAbstract`, `interpretImage`, `generateEmbedding`, `transcribe`.
+
+Detalles que no son obvios y que rompen el tracking si se pierden:
+
+- **OpenAI en streaming no devuelve `usage` salvo que se pida `stream_options: { include_usage: true }`.**
+  Sin eso, los resúmenes —el flujo más caro— quedarían todos sin costo. El uso llega en un chunk final sin `choices`.
+- **Anthropic reporta el uso en `stream.finalMessage()`**, no en los chunks.
+- **La transcripción no tiene un único modelo de cobro:** Whisper (Groq, `whisper-1`) factura por
+  audio y necesita `response_format: 'verbose_json'` para que la API devuelva `duration`; los
+  `gpt-4o-*-transcribe` facturan por **tokens** y ni siquiera soportan `verbose_json`.
+- **`rerank` NO se instrumenta: es gratis.** Corre local con Transformers.js, no hay nada que cobrar.
+- Los proveedores locales (embeddings) se registran con costo **0**, no se omiten: el dashboard
+  debe mostrar "Local — $0" como su propia serie.
+
+### Tabla `usage_events` (tracking de costos)
+Un evento por cada llamada pagada a IA.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `occurred_at` | DATETIME | Cuándo ocurrió la llamada |
+| `action_type` | TEXT | `summary` / `quiz` / `chat` / `embedding` / `transcription` / … |
+| `provider` / `model` | TEXT | Proveedor y modelo usados |
+| `prompt_tokens` / `completion_tokens` | INTEGER | Uso real reportado por el proveedor |
+| `audio_seconds` | REAL | Segundos de audio (transcripción) |
+| `cost_micro_usd` | INTEGER | Costo en **micro-USD** — `NULL` = precio desconocido |
+
+**Los montos son enteros en micro-USD (1 USD = 1.000.000), nunca `REAL`.** Sumar miles de eventos en punto flotante acumula drift y el total no cerraría con la factura real. La UI divide por 1e6 solo al mostrar, después de sumar los enteros.
+
+`cost_micro_usd = NULL` (modelo sin tarifa conocida) **no es lo mismo que 0**: se reporta aparte como "costo desconocido" en vez de sumarse como gratis y subestimar el gasto. Nunca se bloquea la acción del usuario por no poder calcular un costo.
+
+### Tabla `pricing_cache`
+Clave primaria `(provider, model)`. Los precios por unidad sí van como `REAL`: se usan una sola vez por evento, no se acumulan entre sí.
+
+- **La tabla se descarga de LiteLLM** y se refresca si tiene más de `pricingFetchIntervalDays`. Si el fetch falla o el JSON está corrupto, se conserva la última tabla válida — nunca se acepta un precio corrupto.
+- **`source = 'manual'` gana siempre.** El `ON CONFLICT` del upsert deja intacta una fila manual cuando la pisa un refresh de LiteLLM.
+- **Normalización de nombres:** LiteLLM indexa los modelos de Groq como `groq/<model>` pero el proveedor devuelve el id pelado — `normalizeModelKey()` traduce, si no todo el gasto de Groq quedaría como "costo desconocido".
+- **Precios verificados a mano (2026-07):** LiteLLM cotiza `deepseek-chat`/`deepseek-reasoner` con la tarifa vieja ($0.28/$0.42 por MTok); el precio oficial vigente es $0.14/$0.28. Van como `SEED_OVERRIDES` manuales — sin eso el gasto de DeepSeek saldría al doble.
 
 ### Tabla `settings`
 | Clave | Valor por defecto | Descripción |

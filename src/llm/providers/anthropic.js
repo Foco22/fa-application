@@ -15,9 +15,23 @@ function extractText(content) {
   return content.filter(b => b.type === 'text').map(b => b.text).join('')
 }
 
-function createAnthropicProvider(apiKey, model = null, _client = null) {
+function createAnthropicProvider(apiKey, model = null, _client = null, onUsage = null) {
   const MODEL = model || DEFAULT_MODEL
   const client = _client || new Anthropic({ apiKey })
+
+  // El tracking de costos vive acá adentro, no en los IPC handlers: cualquier
+  // consumidor nuevo de estos métodos queda instrumentado sin tocar su call site.
+  // Solo se registra en el camino feliz — una llamada que falló no se cobra.
+  function record(action_type, usage) {
+    if (!onUsage) return
+    onUsage({
+      action_type,
+      provider: 'anthropic',
+      model: MODEL,
+      prompt_tokens:     usage?.input_tokens  ?? null,
+      completion_tokens: usage?.output_tokens ?? null,
+    })
+  }
 
   return {
     async streamSummary(paper, onChunk) {
@@ -32,6 +46,11 @@ function createAnthropicProvider(apiKey, model = null, _client = null) {
         onChunk(text)
         fullText += text
       }
+      // Anthropic reporta el uso en el mensaje final del stream, no en los chunks.
+      // Si el stream no expone finalMessage, se registra igual la llamada sin
+      // tokens (queda como "costo desconocido") en vez de perder el evento.
+      const final = typeof stream.finalMessage === 'function' ? await stream.finalMessage() : null
+      record('summary', final?.usage)
       return fullText
     },
 
@@ -41,6 +60,7 @@ function createAnthropicProvider(apiKey, model = null, _client = null) {
         max_tokens: 2048,
         messages: [{ role: 'user', content: buildQuizPrompt(paper) }],
       })
+      record('quiz', response.usage)
       return parseJSONResponse(extractText(response.content))
     },
 
@@ -53,6 +73,7 @@ function createAnthropicProvider(apiKey, model = null, _client = null) {
         ...(system ? { system } : {}),
         messages: rest,
       })
+      record('chat', response.usage)
       return extractText(response.content)
     },
 
@@ -64,6 +85,7 @@ function createAnthropicProvider(apiKey, model = null, _client = null) {
           max_tokens: 300,
           messages: [{ role: 'user', content: buildAffiliationsPrompt(context) }],
         })
+        record('affiliations', response.usage)
         const parsed = parseJSONResponse(extractText(response.content))
         return Array.isArray(parsed) ? parsed : null
       } catch {
@@ -80,6 +102,7 @@ function createAnthropicProvider(apiKey, model = null, _client = null) {
           { type: 'text', text: 'Describe esta diapositiva de forma concisa: idea principal, puntos clave, diagramas o fórmulas visibles. Máximo 4 oraciones.' }
         ]}]
       })
+      record('vision', response.usage)
       return extractText(response.content)
     },
 
@@ -90,6 +113,7 @@ function createAnthropicProvider(apiKey, model = null, _client = null) {
           max_tokens: 500,
           messages: [{ role: 'user', content: buildMetadataPrompt(firstPageText) }],
         })
+        record('metadata', response.usage)
         return parseJSONResponse(extractText(response.content))
       } catch {
         return { title: '', authors: '', abstract: '' }
@@ -103,6 +127,7 @@ function createAnthropicProvider(apiKey, model = null, _client = null) {
           max_tokens: 150,
           messages: [{ role: 'user', content: buildAbstractSummaryPrompt(abstract) }],
         })
+        record('abstract_summary', response.usage)
         return extractText(response.content).trim()
       } catch {
         return (abstract || '').slice(0, 200)

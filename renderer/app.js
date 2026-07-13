@@ -14,6 +14,7 @@ import { sendChat, clearChat } from './modules/chat.js'
 import { openSettings, saveSettings, switchSettingsCategory } from './modules/settings.js'
 import { enterClassMode, exitClassMode, initClass } from './modules/class.js'
 import { openLearningDashboard, closeLearningDashboard, initLearningDashboard } from './modules/learning-dashboard.js'
+import { openCostsDashboard, closeCostsDashboard, initCostsDashboard } from './modules/costs-dashboard.js'
 
 /* ── PDF expand ─────────────────────────────────────────────────────────── */
 
@@ -73,8 +74,11 @@ document.getElementById('class-confirm-ok').addEventListener('click', () => {
 
 /* ── Dependency injection ───────────────────────────────────────────────── */
 
+// Abrir un paper sale de cualquier dashboard: si no, el panel quedaba abierto
+// encima del paper que el usuario acaba de pedir.
 function openPaperFromLearning(id) {
   closeLearningDashboard()
+  closeCostsDashboard()
   return openPaper(id)
 }
 
@@ -86,6 +90,7 @@ initContextMenu({ openPaper: openPaperFromLearning, renderVault })
 
 async function triggerFetch() {
   closeLearningDashboard()
+  closeCostsDashboard()
   const actBtn   = document.getElementById('act-fetch')
   const status   = document.getElementById('fetch-status')
   const overlay  = document.getElementById('fetch-overlay')
@@ -148,16 +153,28 @@ initOnboarding({ showApp })
 function wireListeners() {
   initClass()
   initLearningDashboard()
+  initCostsDashboard()
   document.getElementById('act-learning').addEventListener('click', openLearningDashboard)
+  document.getElementById('act-costs').addEventListener('click', openCostsDashboard)
   document.getElementById('btn-win-min').addEventListener('click', () => window.api.minimizeWindow())
   document.getElementById('btn-win-max').addEventListener('click', () => window.api.maximizeWindow())
   document.getElementById('btn-win-close').addEventListener('click', () => window.api.closeWindow())
 
   document.getElementById('act-fetch').addEventListener('click', triggerFetch)
 
+  // Home siempre lleva al home: si hay una clase o un dashboard abierto, lo cierra.
+  // Solo cuando ya estás en el home el botón pasa a colapsar el panel lateral.
   document.getElementById('act-papers').addEventListener('click', () => {
     if (!document.getElementById('class-fullscreen').classList.contains('hidden')) {
       exitClassMode()
+      return
+    }
+    if (!document.getElementById('learning-panel').classList.contains('hidden')) {
+      closeLearningDashboard()
+      return
+    }
+    if (!document.getElementById('costs-panel').classList.contains('hidden')) {
+      closeCostsDashboard()
       return
     }
     document.getElementById('vault-panel').classList.toggle('collapsed')

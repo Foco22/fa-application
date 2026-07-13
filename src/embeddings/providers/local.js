@@ -17,7 +17,7 @@ async function loadPipeline(model, cacheDir) {
 
 // Corre 100% offline. La primera llamada descarga los pesos del modelo (~25 MB
 // para MiniLM) y los cachea en disco; a partir de ahí no hay red ni API key.
-function createLocalEmbeddingProvider({ model = DEFAULT_LOCAL_MODEL, cacheDir = DEFAULT_CACHE_DIR } = {}, _pipeline = null, _loader = loadPipeline) {
+function createLocalEmbeddingProvider({ model = DEFAULT_LOCAL_MODEL, cacheDir = DEFAULT_CACHE_DIR } = {}, _pipeline = null, _loader = loadPipeline, onUsage = null) {
   // El modelo se carga una sola vez, y recién en el primer generateEmbedding:
   // construir el proveedor no debe costar una descarga.
   let pending = null
@@ -34,6 +34,9 @@ function createLocalEmbeddingProvider({ model = DEFAULT_LOCAL_MODEL, cacheDir = 
       // mean + normalize deja los vectores en norma 1, igual que los de OpenAI,
       // para que el umbral de similitud coseno siga siendo interpretable.
       const output = await extract(text.slice(0, 8000), { pooling: 'mean', normalize: true })
+      // Gratis, pero no invisible: el dashboard lo muestra como "Local — $0" en
+      // vez de omitirlo del desglose por proveedor.
+      if (onUsage) onUsage({ action_type: 'embedding', provider: 'local', model })
       return Array.from(output.data)
     },
   }
