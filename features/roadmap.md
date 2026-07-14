@@ -22,4 +22,12 @@ El más grande en instrumentación (toca los 4 proveedores + esquema nuevo). Se 
 
 Último a propósito, no por ser menos importante sino porque es transversal a *todo*: si se hace antes, cualquier UI nueva que salga después (dashboard de aprendizaje, dashboard de costos, categorías nuevas de Settings) nace sin traducir y hay que volver a pasar el peine. Haciéndolo último, barre en una sola pasada toda la superficie de UI que ya existe para ese momento — incluyendo lo que agregaron los tres anteriores.
 
-**Orden corto**: learning-dashboard → settings-redesign → cost-tracking → i18n.
+**Orden corto**: learning-dashboard → settings-redesign → cost-tracking → i18n
+
+---
+
+## Bugs documentados
+
+- [`bug-timezone-week.md`](bug-timezone-week.md) — la semana ISO se calculaba con la zona horaria del
+  usuario, así que ~1 de cada 7 papers se archivaba en la carpeta equivocada del vault. El CI (que
+  corre en UTC) no podía verlo. **Corregido** en el PR #8..
