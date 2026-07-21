@@ -1,5 +1,6 @@
 import { state } from './state.js'
 import { toast } from './toast.js'
+import { t } from './language.js'
 
 export async function renderQuizSection(p) {
   const quizDiv = document.getElementById('pv-quiz')
@@ -8,7 +9,7 @@ export async function renderQuizSection(p) {
   if (p.quiz) {
     try {
       const data    = typeof p.quiz === 'string' ? JSON.parse(p.quiz) : p.quiz
-      btn.textContent = '↺ Regenerar'
+      btn.textContent = t('regenerar')
       btn.disabled    = false
       const results = await window.api.getQuizResults(p.id)
       if (results && results.length > 0) {
@@ -22,7 +23,7 @@ export async function renderQuizSection(p) {
     } catch (_) {}
   }
   quizDiv.innerHTML  = ''
-  btn.textContent    = 'Generar'
+  btn.textContent    = t('generar')
   btn.disabled       = false
 }
 
@@ -120,7 +121,7 @@ export function renderQuiz(container, questions) {
   actions.className = 'quiz-actions'
   const submitBtn = document.createElement('button')
   submitBtn.className   = 'btn-primary'
-  submitBtn.textContent = 'Enviar respuestas'
+  submitBtn.textContent = t('enviar-respuestas')
   submitBtn.addEventListener('click', () => submitQuiz(questions, quizEl))
   actions.appendChild(submitBtn)
   quizEl.appendChild(actions)
@@ -180,18 +181,18 @@ export async function generateQuiz() {
   const btn     = document.getElementById('btn-quiz')
   const quizDiv = document.getElementById('pv-quiz')
   btn.disabled    = true
-  btn.textContent = 'Generando…'
+  btn.textContent = t('generando')
   quizDiv.innerHTML = ''
 
   try {
     const data  = await window.api.generateQuiz(state.activePaper.id)
     state.activePaper = await window.api.getPaper(state.activePaper.id)
     renderQuiz(quizDiv, data.questions)
-    btn.textContent = '↺ Regenerar'
-    toast('Quiz generado', 'success')
+    btn.textContent = t('regenerar')
+    toast(t('quiz-generado'), 'success')
   } catch (err) {
-    toast('Error al generar quiz: ' + err.message, 'error')
-    btn.textContent = 'Generar'
+    toast(t('error-al-generar-quiz') + err.message, 'error')
+    btn.textContent = t('generar')
   }
   btn.disabled = false
 }

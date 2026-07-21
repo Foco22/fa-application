@@ -7,15 +7,10 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
 
   let _whisperStream = null
 
-  function createClassLLM(settings, overrides = {}) {
-    const provider = overrides.llmProvider || settings.classLlmProvider || 'deepseek'
-    const model    = overrides.llmModel    || settings.classLlmModel    || 'deepseek-v4-flash'
-    return createLLM({
-      ...settings,
-      llmProvider: provider,
-      llmModel:    model,
-      apiKey:      settings.classApiKey || settings.apiKey
-    })
+  // El modo Clase (pistas, evaluaciones, Q&A) usa siempre el LLM principal de
+  // la app — sin proveedor/modelo/API key propios de Clase. Ver features/settings-redesign.md.
+  function createClassLLM(settings) {
+    return createLLM(settings)
   }
 
   ipcMain.handle('class-can-have-class', (_e, paperId) => {
@@ -85,12 +80,12 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
     db.updateClassSession(sessionId, { transcript })
   })
 
-  ipcMain.handle('class-student-question', async (_e, { studentId, paperId, sessionId, history, previousQA, reaction, transcript, llmProvider, llmModel }) => {
+  ipcMain.handle('class-student-question', async (_e, { studentId, paperId, sessionId, history, previousQA, reaction, transcript }) => {
     const student = STUDENTS.find(s => s.id === studentId)
     if (!student) return { question: '¿Podría explicar más sobre el método?' }
     try {
       const settings = db.getAllSettings()
-      const llm = createClassLLM(settings, { llmProvider, llmModel })
+      const llm = createClassLLM(settings)
       const paper = db.getPaper(paperId)
       const slides = db.getClassSlides(sessionId)
       const question = await generateTurn(student, { paper, slides, history: history || [], previousQA: previousQA || [], reaction: reaction || null, transcript: transcript || null }, llm)
@@ -101,9 +96,9 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
     }
   })
 
-  ipcMain.handle('class-student-evaluate', async (_e, { studentId, paperId, sessionId, professorAnswer, history, exchangeCount, llmProvider, llmModel }) => {
+  ipcMain.handle('class-student-evaluate', async (_e, { studentId, paperId, sessionId, professorAnswer, history, exchangeCount }) => {
     const settings = db.getAllSettings()
-    const llm = createClassLLM(settings, { llmProvider, llmModel })
+    const llm = createClassLLM(settings)
     const paper = db.getPaper(paperId)
     const slides = db.getClassSlides(sessionId)
     const student = STUDENTS.find(s => s.id === studentId)
@@ -116,9 +111,9 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
     }
   })
 
-  ipcMain.handle('class-end-session', async (_e, { sessionId, transcript, qaLog, llmProvider, llmModel }) => {
+  ipcMain.handle('class-end-session', async (_e, { sessionId, transcript, qaLog }) => {
     const settings = db.getAllSettings()
-    const llm = createClassLLM(settings, { llmProvider, llmModel })
+    const llm = createClassLLM(settings)
     const session = db.getClassSession(sessionId)
     const paper = db.getPaper(session.paper_id)
 
@@ -170,11 +165,11 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
     return db.getClassSessions(paperId)
   })
 
-  ipcMain.handle('class-get-hint', async (_e, { studentId, paperId, history, exchangeCount, missing, llmProvider, llmModel }) => {
+  ipcMain.handle('class-get-hint', async (_e, { studentId, paperId, history, exchangeCount, missing }) => {
     const paper = db.getPaper(paperId)
     const student = STUDENTS.find(s => s.id === studentId)
     const settings = db.getAllSettings()
-    const llm = createClassLLM(settings, { llmProvider, llmModel })
+    const llm = createClassLLM(settings)
     try {
       return await generateHint(student, { paper, history: history || [], exchangeCount, missing }, llm)
     } catch {
@@ -182,9 +177,9 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
     }
   })
 
-  ipcMain.handle('class-assistant-message', async (_e, { question, missing, excerpts, history, canRevealAnswer, llmProvider, llmModel }) => {
+  ipcMain.handle('class-assistant-message', async (_e, { question, missing, excerpts, history, canRevealAnswer }) => {
     const settings = db.getAllSettings()
-    const llm = createClassLLM(settings, { llmProvider, llmModel })
+    const llm = createClassLLM(settings)
     try {
       const reply = await assistantChat({ question, missing, excerpts, history: history || [], canRevealAnswer: !!canRevealAnswer }, llm)
       return { reply }

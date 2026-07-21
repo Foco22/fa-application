@@ -3,6 +3,7 @@ import { toast } from './toast.js'
 import { escAttr } from './utils.js'
 import { scheduleNotesSave, notesGetText, buildLineDiv, flushNotesRender } from './notes.js'
 import { dispatchChat } from './chat.js'
+import { t } from './language.js'
 
 export function hideAnnotationPopup() {
   document.getElementById('annotation-popup').classList.add('hidden')
@@ -162,7 +163,7 @@ export function renderHighlightsPanel() {
 
   list.innerHTML = highlights.map((h, i) => `
     <div class="phl-item" data-hl-id="${escAttr(h.id)}">
-      <div class="phl-item-top phl-goto" data-id="${escAttr(h.id)}" title="Ir al destacado en el PDF">
+      <div class="phl-item-top phl-goto" data-id="${escAttr(h.id)}" title=t('ir-al-destacado')>
         <span class="phl-num">#${h.num ?? (i + 1)}</span>
         <span class="phl-quote">${escAttr(h.text.length > 200 ? h.text.slice(0, 200) + '…' : h.text)}</span>
       </div>
@@ -281,7 +282,7 @@ export function rebuildNotesFromHighlights() {
     : '<div class="notes-line" data-md=""><br></div>'
   state.activePaper = { ...state.activePaper, notes: updated }
   scheduleNotesSave()
-  toast('Notas reconstruidas desde highlights')
+  toast(t('notas-reconstruidas'))
 }
 
 export function deleteHighlight(id) {
@@ -315,15 +316,15 @@ export function startEditHighlight(id) {
   textarea.className = 'phl-edit-input'
   textarea.rows = 2
   textarea.value = hl.comment || ''
-  textarea.placeholder = 'Comentario (opcional)...'
+  textarea.placeholder = t('comentario-opcional')
 
   const saveBtn   = document.createElement('button')
   saveBtn.className = 'phl-btn'
-  saveBtn.textContent = 'Guardar'
+  saveBtn.textContent = t('guardar')
 
   const cancelBtn = document.createElement('button')
   cancelBtn.className = 'phl-btn'
-  cancelBtn.textContent = 'Cancelar'
+  cancelBtn.textContent = t('cancelar')
 
   const editRow = document.createElement('div')
   editRow.className = 'phl-actions'
@@ -368,5 +369,5 @@ export function addHighlightToNotes(text, comment) {
   if (state.highlightsPanelOpen) renderHighlightsPanel()
 
   syncNotesFromHighlights()
-  toast('Añadido a notas')
+  toast(t('anadido-a-notas'))
 }

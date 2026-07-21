@@ -1,14 +1,24 @@
 const fs   = require('fs')
 const path = require('path')
 const { createOpenAIEmbeddingProvider } = require('./providers/openai')
+const { createLocalEmbeddingProvider }  = require('./providers/local')
 
-function createEmbeddings(settings) {
+function createEmbeddings(settings, onUsage = null) {
   const provider = settings.embeddingProvider || 'openai'
-  const apiKey   = settings.openaiApiKey || settings.apiKey
+  const apiKey   = settings.embeddingApiKey || settings.openaiApiKey || settings.apiKey
   const model    = settings.embeddingModel || undefined
   switch (provider) {
-    default: return createOpenAIEmbeddingProvider(apiKey, model ? { model } : {})
+    case 'local': return createLocalEmbeddingProvider(model ? { model } : {}, null, undefined, onUsage)
+    default:      return createOpenAIEmbeddingProvider(apiKey, model ? { model } : {}, null, onUsage)
   }
+}
+
+// El proveedor local corre offline, así que no necesita key alguna; los demás
+// no pueden embeber nada sin ella. Los callers usan esto para decidir si vale
+// la pena construir el proveedor.
+function hasEmbeddingConfig(settings) {
+  if ((settings.embeddingProvider || 'openai') === 'local') return true
+  return Boolean(settings.embeddingApiKey || settings.openaiApiKey || settings.apiKey)
 }
 
 function cosineSimilarity(a, b) {
@@ -38,7 +48,10 @@ async function indexReferenceFolder(folderPath, db, provider, pdfParse, llm = nu
       const snippet  = text.slice(0, 3000)
       const embedding = await provider.generateEmbedding(snippet)
       const abstract_summary = llm ? await llm.summarizeAbstract(snippet) : null
-      db.saveReferencePaper({ path: filePath, snippet, embedding: JSON.stringify(embedding), abstract_summary })
+      db.saveReferencePaper({
+        path: filePath, snippet, embedding: JSON.stringify(embedding), abstract_summary,
+        embedding_model: provider.id,
+      })
       indexed++
       console.log(`[embeddings] Indexed: ${file}`)
     } catch (err) {
@@ -92,7 +105,10 @@ async function indexFiles(filePaths, db, provider, pdfParse, llm = null) {
       const snippet  = text.slice(0, 3000)
       const embedding = await provider.generateEmbedding(snippet)
       const abstract_summary = llm ? await llm.summarizeAbstract(snippet) : null
-      db.saveReferencePaper({ path: filePath, snippet, embedding: JSON.stringify(embedding), abstract_summary })
+      db.saveReferencePaper({
+        path: filePath, snippet, embedding: JSON.stringify(embedding), abstract_summary,
+        embedding_model: provider.id,
+      })
       indexed++
       console.log(`[embeddings] Indexed: ${path.basename(filePath)}`)
     } catch (err) {
@@ -104,6 +120,6 @@ async function indexFiles(filePaths, db, provider, pdfParse, llm = null) {
 }
 
 module.exports = {
-  createEmbeddings, cosineSimilarity, indexReferenceFolder, indexFiles,
+  createEmbeddings, hasEmbeddingConfig, cosineSimilarity, indexReferenceFolder, indexFiles,
   scoreAbstractAgainst, scoreEmbeddingAgainst, embedKeywordList,
 }

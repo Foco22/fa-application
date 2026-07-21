@@ -1,5 +1,7 @@
-function registerSettingsHandlers({ ipcMain, db }) {
+function registerSettingsHandlers({ ipcMain, db, deps = {} }) {
   ipcMain.handle('get-settings', () => db.getAllSettings())
+
+  ipcMain.handle('get-app-version', () => deps.getAppVersion())
 
   ipcMain.handle('save-settings', (_e, payload) => {
     for (const [key, value] of Object.entries(payload)) {

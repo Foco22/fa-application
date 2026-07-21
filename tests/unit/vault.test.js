@@ -320,3 +320,33 @@ describe('migratePaperFolders', () => {
     expect(res.moved).toBe(0)
   })
 })
+// ─── migración: carpetas que quedaron en la semana equivocada ─────────────────
+
+describe('migratePaperFolders — corrección de semana', () => {
+  // El bug de zona horaria dejó papers archivados en la semana anterior a la que
+  // les corresponde. Esas carpetas ya están nombradas por título (no por id), así
+  // que la migración tiene que reconocerlas por su nombre canónico, no solo por id.
+  it('mueve una carpeta bien nombrada que quedó en la semana equivocada', () => {
+    const paper = { id: '2401.90001', title: 'Paper Con Semana Equivocada', published_date: '2024-06-10' }
+    const correct   = paperDir(tmpDir, paper)
+    const wrongWeek = correct.replace(/week-\d+/, 'week-01')
+
+    fs.mkdirSync(path.join(wrongWeek, 'raw'), { recursive: true })
+    fs.writeFileSync(path.join(wrongWeek, 'raw', 'x.pdf'), 'pdf')
+
+    const res = migratePaperFolders(tmpDir, [paper])
+
+    expect(res.moved).toBe(1)
+    expect(fs.existsSync(path.join(correct, 'raw', 'x.pdf'))).toBe(true)
+    expect(fs.existsSync(wrongWeek)).toBe(false)
+  })
+
+  it('no toca una carpeta que ya está en la semana correcta', () => {
+    const paper = { id: '2401.90002', title: 'Otro Paper', published_date: '2024-06-10' }
+    const correct = paperDir(tmpDir, paper)
+    fs.mkdirSync(path.join(correct, 'raw'), { recursive: true })
+
+    expect(migratePaperFolders(tmpDir, [paper]).moved).toBe(0)
+    expect(fs.existsSync(correct)).toBe(true)
+  })
+})

@@ -1,5 +1,6 @@
 import { state } from './state.js'
 import { toast } from './toast.js'
+import { t } from './language.js'
 
 let _openPaper   = () => {}
 let _renderVault = () => {}
@@ -58,7 +59,7 @@ ctxMenu.addEventListener('click', async (e) => {
       document.getElementById('empty-state').classList.remove('hidden')
     }
     _renderVault()
-    toast('Eliminado', 'info')
+    toast(t('eliminado'), 'info')
   } else if (action === 'rename' && ref) {
     const current  = state.papers.find(p => p.id === ref.paperId)?.title || ref.paperId
     const newTitle = window.prompt('Nuevo nombre:', current)

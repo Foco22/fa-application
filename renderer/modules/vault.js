@@ -1,6 +1,7 @@
 import { state } from './state.js'
 import { toast } from './toast.js'
 import { escAttr } from './utils.js'
+import { t } from './language.js'
 
 let _openPaper      = () => {}
 let _showContextMenu = () => {}
@@ -83,7 +84,7 @@ export function renderVault() {
   if (mainPapers.length === 0) {
     const empty = document.createElement('div')
     empty.style.cssText = 'padding:16px 12px;font-size:11px;color:var(--text-3);text-align:center;'
-    empty.textContent = 'Sin papers'
+    empty.textContent = t('sin-papers')
     list.appendChild(empty)
   } else {
     const groups = groupByYearWeek(mainPapers)
@@ -162,7 +163,7 @@ export function renderVault() {
   const isRefOpen   = state.expandedNodes.has(refNodeKey)
   const refYearEl   = document.createElement('div')
   refYearEl.className = 'tree-year' + (isRefOpen ? ' open' : '')
-  refYearEl.innerHTML = `<span class="tree-arrow">${isRefOpen ? '▾' : '▸'}</span><span class="tree-label">Referencias</span>`
+  refYearEl.innerHTML = `<span class="tree-arrow">${isRefOpen ? '▾' : '▸'}</span><span class="tree-label">${t('referencias')}</span>`
   refYearEl.addEventListener('click', () => { toggleNode(refNodeKey); renderVault() })
 
   refYearEl.addEventListener('dragover', (e) => {
@@ -178,7 +179,7 @@ export function renderVault() {
       .filter(f => f.name.toLowerCase().endsWith('.pdf'))
       .map(f => f.path)
     if (paths.length === 0) return
-    refYearEl.querySelector('.tree-label').textContent = 'Indexando…'
+    refYearEl.querySelector('.tree-label').textContent = t('indexando')
     const { indexed, errors } = await window.api.indexFiles(paths)
     state.papers    = await window.api.getPapers()
     state.refPapers = await window.api.getReferenceList()
@@ -194,7 +195,7 @@ export function renderVault() {
       const emptyEl = document.createElement('div')
       emptyEl.className = 'tree-week'
       emptyEl.style.cssText = 'color:var(--text-3);padding-left:28px;font-size:11px;cursor:default'
-      emptyEl.textContent = 'Sin papers indexados'
+      emptyEl.textContent = t('sin-papers-indexados')
       list.appendChild(emptyEl)
     } else {
       for (const ref of state.refPapers) {
@@ -204,8 +205,8 @@ export function renderVault() {
           <span class="tree-arrow" style="visibility:hidden">▸</span>
           <span class="ref-label" title="${escAttr(ref.path)}">${ref.name}</span>
           <div class="ref-actions">
-            <button class="ref-action-btn ref-rename-btn" title="Renombrar">✎</button>
-            <button class="ref-action-btn ref-delete-btn" title="Eliminar">✕</button>
+            <button class="ref-action-btn ref-rename-btn" title=t('renombrar')>✎</button>
+            <button class="ref-action-btn ref-delete-btn" title=t('eliminar')>✕</button>
           </div>`
 
         refEl.addEventListener('contextmenu', (e) => {
@@ -220,7 +221,7 @@ export function renderVault() {
           if (p) {
             _openPaper(ref.paperId)
           } else {
-            refEl.querySelector('.ref-label').textContent = 'Indexando…'
+            refEl.querySelector('.ref-label').textContent = t('indexando')
             await window.api.indexFiles([ref.path])
             state.papers    = await window.api.getPapers()
             state.refPapers = await window.api.getReferenceList()

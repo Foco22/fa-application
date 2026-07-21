@@ -20,7 +20,7 @@ El objetivo es construir un hábito de aprendizaje técnico sostenible. El siste
 | Fuente de papers | ArXiv API (`http://export.arxiv.org/api/query`) |
 | Extracción de PDF | `pdf-parse` |
 | IA — LLM (resúmenes + quiz + chat) | Multi-proveedor: Anthropic (`claude-opus-4-8`), OpenAI (`gpt-4o`), DeepSeek |
-| IA — Embeddings (similitud semántica) | OpenAI (`text-embedding-3-small`) |
+| IA — Embeddings (similitud semántica) | OpenAI (`text-embedding-3-small`) o local (Transformers.js, `Xenova/all-MiniLM-L6-v2`) |
 | HTTP | `axios` |
 | Scheduling | `node-cron` |
 | Notificaciones | Electron Notification API |
@@ -314,9 +314,18 @@ learning/
 │   │       └── deepseek.js   # DeepSeek — compatible con API de OpenAI
 │   │
 │   ├── embeddings/      # Capa de abstracción de embeddings
-│   │   ├── index.js          # createEmbeddings(settings), indexReferenceFolder(), scoreAbstractAgainst()
+│   │   ├── index.js          # createEmbeddings(settings), hasEmbeddingConfig(), indexReferenceFolder(), scoreAbstractAgainst()
 │   │   └── providers/
-│   │       └── openai.js     # text-embedding-3-small
+│   │       ├── openai.js     # text-embedding-3-small (API — requiere key)
+│   │       └── local.js      # Transformers.js (MiniLM) — corre offline, sin API key
+│   │
+│   ├── pricing/         # Tabla de precios por modelo (para el tracking de costos)
+│   │   └── index.js          # fetchPricingTable(), refreshPricingIfStale(), getPriceFor(), saveManualOverride()
+│   │
+│   ├── costs/           # Registro de uso y costo de cada llamada pagada
+│   │   └── index.js          # recordUsage(db, event), makeUsageRecorder(db), computeCostMicroUsd()
+│   │
+│   ├── notifications.js # Texto de las notificaciones del proceso main (es/en)
 │   │
 │   ├── chat/            # Lógica de chat con papers
 │   │   ├── index.js          # chatWithPaper(message, paper, history, llm)
@@ -330,6 +339,10 @@ learning/
 │       └── reference.js      # index-reference-folder, index-files, get-reference-list, delete-reference, rename-reference
 │
 └── renderer/
+    ├── i18n.js          # t(key), applyLanguage(lang) — diccionario de la UI
+    ├── i18n/
+    │   ├── es.js            # idioma de fábrica
+    │   └── en.js            # mismo set de claves (un test lo verifica)
     ├── index.html       # UI principal
     ├── app.js           # Lógica del frontend (vanilla JS)
     └── styles.css       # Estilos
@@ -368,16 +381,34 @@ function createLLM(settings) {
 ```javascript
 // src/embeddings/index.js
 function createEmbeddings(settings) {
-  // Por ahora solo OpenAI; la estructura permite agregar proveedores sin cambiar el código consumidor
-  return createOpenAIEmbeddingProvider(settings.openaiApiKey || settings.apiKey,
-    settings.embeddingModel ? { model: settings.embeddingModel } : {})
+  switch (settings.embeddingProvider || 'openai') {
+    case 'local': return createLocalEmbeddingProvider(...)   // Transformers.js — offline
+    default:      return createOpenAIEmbeddingProvider(...)  // API
+  }
 }
 
 // Interfaz de embeddings:
 {
+  id                     → string            // "openai:text-embedding-3-small" | "local:Xenova/all-MiniLM-L6-v2"
   generateEmbedding(text) → Promise<number[]>
 }
 ```
+
+**`hasEmbeddingConfig(settings)`** — el proveedor local no necesita API key, así que los callers
+(`runFetch`, `index-reference-folder`, auto-index de arranque) **nunca** deben gatear por
+`settings.apiKey` para decidir si construir el proveedor de embeddings; usan esta función.
+
+#### Embeddings de distintos modelos no son comparables
+
+Cada vector queda sellado en `reference_papers.embedding_model` con el `id` del proveedor que lo
+generó. Vectores de dos modelos distintos no comparten ni dimensión (1536 vs 384) ni espacio
+semántico: mezclarlos produce similitudes basura. Por eso `selectCandidates()` **ignora** las
+referencias cuyo `embedding_model` no coincide con el proveedor activo, y `get-reference-stats`
+reporta cuántas quedaron `stale` para que la UI pida reindexar.
+
+**El umbral tampoco se traslada entre motores.** MiniLM da ~0.40 de similitud coseno entre dos
+abstracts claramente relacionados, donde OpenAI da ~0.6–0.7. Con el umbral de OpenAI (`0.6`), el
+motor local rechazaría todos los papers. Sugerido: `~0.6` para OpenAI, `~0.4` para local.
 
 Todos los proveedores aceptan un **cliente inyectable** como último parámetro (`_client = null`), lo que permite mockearlos en tests sin necesidad de `vi.mock`:
 
@@ -447,6 +478,52 @@ registerHandlers({
 | `answers` | TEXT | JSON con respuestas del usuario |
 | `taken_at` | DATETIME | Fecha del intento |
 
+### Instrumentación de costos — dónde vive
+
+`main.js` construye **un solo** `onUsage = makeUsageRecorder(db)` y lo inyecta en las factories
+(`createLLM`, `createEmbeddings`, `createTranscription`) antes de pasarlas a `deps`. El registro
+ocurre **dentro de cada método del proveedor**, no en los IPC handlers: cualquier call site nuevo
+queda instrumentado sin tocarlo. Solo se registra en el camino feliz — una llamada fallida no se cobra.
+
+Métodos instrumentados: `streamSummary`, `generateQuiz`, `chat`, `extractAffiliationsWithAI`,
+`extractPaperMetadata`, `summarizeAbstract`, `interpretImage`, `generateEmbedding`, `transcribe`.
+
+Detalles que no son obvios y que rompen el tracking si se pierden:
+
+- **OpenAI en streaming no devuelve `usage` salvo que se pida `stream_options: { include_usage: true }`.**
+  Sin eso, los resúmenes —el flujo más caro— quedarían todos sin costo. El uso llega en un chunk final sin `choices`.
+- **Anthropic reporta el uso en `stream.finalMessage()`**, no en los chunks.
+- **La transcripción no tiene un único modelo de cobro:** Whisper (Groq, `whisper-1`) factura por
+  audio y necesita `response_format: 'verbose_json'` para que la API devuelva `duration`; los
+  `gpt-4o-*-transcribe` facturan por **tokens** y ni siquiera soportan `verbose_json`.
+- **`rerank` NO se instrumenta: es gratis.** Corre local con Transformers.js, no hay nada que cobrar.
+- Los proveedores locales (embeddings) se registran con costo **0**, no se omiten: el dashboard
+  debe mostrar "Local — $0" como su propia serie.
+
+### Tabla `usage_events` (tracking de costos)
+Un evento por cada llamada pagada a IA.
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `occurred_at` | DATETIME | Cuándo ocurrió la llamada |
+| `action_type` | TEXT | `summary` / `quiz` / `chat` / `embedding` / `transcription` / … |
+| `provider` / `model` | TEXT | Proveedor y modelo usados |
+| `prompt_tokens` / `completion_tokens` | INTEGER | Uso real reportado por el proveedor |
+| `audio_seconds` | REAL | Segundos de audio (transcripción) |
+| `cost_micro_usd` | INTEGER | Costo en **micro-USD** — `NULL` = precio desconocido |
+
+**Los montos son enteros en micro-USD (1 USD = 1.000.000), nunca `REAL`.** Sumar miles de eventos en punto flotante acumula drift y el total no cerraría con la factura real. La UI divide por 1e6 solo al mostrar, después de sumar los enteros.
+
+`cost_micro_usd = NULL` (modelo sin tarifa conocida) **no es lo mismo que 0**: se reporta aparte como "costo desconocido" en vez de sumarse como gratis y subestimar el gasto. Nunca se bloquea la acción del usuario por no poder calcular un costo.
+
+### Tabla `pricing_cache`
+Clave primaria `(provider, model)`. Los precios por unidad sí van como `REAL`: se usan una sola vez por evento, no se acumulan entre sí.
+
+- **La tabla se descarga de LiteLLM** y se refresca si tiene más de `pricingFetchIntervalDays`. Si el fetch falla o el JSON está corrupto, se conserva la última tabla válida — nunca se acepta un precio corrupto.
+- **`source = 'manual'` gana siempre.** El `ON CONFLICT` del upsert deja intacta una fila manual cuando la pisa un refresh de LiteLLM.
+- **Normalización de nombres:** LiteLLM indexa los modelos de Groq como `groq/<model>` pero el proveedor devuelve el id pelado — `normalizeModelKey()` traduce, si no todo el gasto de Groq quedaría como "costo desconocido".
+- **Precios verificados a mano (2026-07):** LiteLLM cotiza `deepseek-chat`/`deepseek-reasoner` con la tarifa vieja ($0.28/$0.42 por MTok); el precio oficial vigente es $0.14/$0.28. Van como `SEED_OVERRIDES` manuales — sin eso el gasto de DeepSeek saldría al doble.
+
 ### Tabla `settings`
 | Clave | Valor por defecto | Descripción |
 |---|---|---|
@@ -455,8 +532,9 @@ registerHandlers({
 | `semanticScholarApiKey` | `""` | Semantic Scholar API key (opcional) |
 | `llmProvider` | `"openai"` | Proveedor LLM activo: `openai`, `anthropic`, `deepseek` |
 | `llmModel` | `""` | Override del modelo (vacío = default del proveedor) |
-| `embeddingProvider` | `"openai"` | Proveedor de embeddings activo |
+| `embeddingProvider` | `"openai"` | Proveedor de embeddings activo: `openai`, `local` |
 | `embeddingModel` | `""` | Override del modelo de embeddings |
+| `embeddingApiKey` | `""` | API key de embeddings (fallback: `openaiApiKey` → `apiKey`; el proveedor `local` no la usa) |
 | `categoryList` | `""` | Categorías ArXiv elegidas (separadas por coma) |
 | `authorList` | `""` | Autores a seguir, uno por línea (apellidos) |
 | `universityList` | *(20 instituciones, una por línea)* | Instituciones para post-filtro |
@@ -556,6 +634,17 @@ async function chatWithPaper(message, paper, history, llm) {
 - **OpenAI / DeepSeek**: pasa `messages` directamente (OpenAI soporta rol `system` dentro del array)
 
 ---
+
+## Internacionalización (es / en)
+
+El setting `language` gobierna **la interfaz y el contenido que genera la IA**, para que no queden mezclados.
+
+- **Interfaz:** el texto estático de `index.html` va marcado con `data-i18n` (`data-i18n-placeholder`, `data-i18n-title`) y `applyLanguage(lang)` lo reescribe. Los strings que arma el JS (ej. el botón "Generar"/"Regenerar" del resumen) **no los toca `applyLanguage`** — usan `t('clave')` y se refrescan porque al cambiar de idioma se vuelve a correr el render de la vista activa (`refreshActiveView()` en `app.js`).
+- **Diccionarios:** `renderer/i18n/es.js` y `en.js` se cargan como **módulos ES, no como `.json`** — `fetch()` sobre `file://` está bloqueado en Electron. Un test compara que ambos tengan exactamente el mismo set de claves: si falta una, el texto saldría sin traducir.
+- **Contenido de IA:** `src/llm/prompts.js` y `src/chat/prompts.js` reciben `language`; `createLLM(settings)` lo propaga desde `settings.language`. **El idioma cambia el contenido, nunca el esquema JSON** del resumen ni del quiz.
+- **Lo ya generado no se retraduce:** un resumen escrito en español sigue en español al pasar a inglés. Solo cambia la interfaz alrededor.
+- **Notificaciones:** corren en el proceso main, fuera del renderer, así que leen `db.getSetting('language')` (`src/notifications.js`) — el valor persistido, nunca uno pendiente en el formulario.
+- **Onboarding:** siempre en español, porque corre antes de que exista el setting.
 
 ## Seguridad Electron
 
@@ -719,7 +808,8 @@ learning/
 │   │   │   └── deepseek.test.js        # ídem para proveedor DeepSeek
 │   │   │
 │   │   ├── embeddings/
-│   │   │   └── index.test.js           # createEmbeddings, indexReferenceFolder, scoreAbstractAgainst
+│   │   │   ├── index.test.js           # createEmbeddings, hasEmbeddingConfig, indexReferenceFolder, scoreAbstractAgainst
+│   │   │   └── local.test.js           # proveedor local: lazy load, number[], cacheDir fuera de node_modules
 │   │   │
 │   │   ├── chat/
 │   │   │   └── index.test.js           # chatWithPaper, buildSystemPrompt, historial

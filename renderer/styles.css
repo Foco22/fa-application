@@ -134,6 +134,16 @@ button:active { transform: scale(0.95); }
 .action-btn:disabled   { opacity: .4; cursor: not-allowed; transform: none; }
 .action-btn.active-btn { background: var(--surface-3); color: var(--text); border-color: rgba(255,255,255,.22); }
 
+.btn-secondary {
+  background: var(--surface-2); color: var(--text-2);
+  padding: 7px 14px; border-radius: var(--r-sm);
+  border: 1px solid var(--border-2);
+  font-size: 13px; letter-spacing: -0.12px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.btn-secondary:hover    { color: var(--text); border-color: var(--accent); }
+.btn-secondary:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
 /* Icon buttons */
 .icon-btn    { background: transparent; color: var(--text-3); font-size: 17px; padding: 4px 8px; border-radius: var(--r-sm); }
 .icon-btn:hover { color: var(--text); }
@@ -1144,24 +1154,67 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 
 /* home chat uses .chat-pill-wrap — same as class chat */
 
-/* ── Settings panel ──────────────────────────────────────────────────────── */
-#settings-panel { background: rgba(0,0,0,.6); display: flex; justify-content: flex-end; z-index: 200; }
+/* ── Settings panel: modal centrado con sidebar de categorías (estilo Obsidian) ── */
+#settings-panel { background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 200; }
 
-.settings-drawer {
-  width: 480px; height: 100%;
-  background: var(--surface-1); border-left: 1px solid var(--border-2);
-  display: flex; flex-direction: column;
+.settings-modal {
+  position: relative;
+  width: min(1000px, 92vw);
+  height: min(680px, 88vh);
+  background: var(--surface-1);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-lg, 12px);
+  box-shadow: 0 24px 64px rgba(0,0,0,.5);
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 1fr auto;
+  grid-template-areas: "sidebar content" "sidebar footer";
+  overflow: hidden;
 }
-.settings-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: var(--sp-md) var(--sp-lg); border-bottom: 1px solid var(--border);
+
+.settings-modal-close {
+  position: absolute; top: var(--sp-sm); right: var(--sp-sm); z-index: 1;
+}
+
+.settings-sidebar {
+  grid-area: sidebar;
+  background: var(--surface-1);
+  border-right: 1px solid var(--border);
+  padding: var(--sp-lg) var(--sp-sm);
+  display: flex; flex-direction: column; gap: 2px;
+  overflow-y: auto;
+}
+.settings-sidebar-title {
   font-family: var(--font-display);
-  font-size: 17px; font-weight: 600; letter-spacing: -0.374px; flex-shrink: 0;
+  font-size: 15px; font-weight: 600; letter-spacing: -0.2px;
+  color: var(--text);
+  padding: 0 12px;
+  margin-bottom: var(--sp-md);
 }
-.settings-body {
-  overflow-y: auto; flex: 1; padding: var(--sp-lg);
-  display: flex; flex-direction: column; gap: var(--sp-xl);
+.settings-cat-btn {
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  background: transparent; border: none;
+  color: var(--text-2);
+  font-size: 13px; text-align: left; letter-spacing: 0.1px;
+  cursor: pointer;
+  transition: all .12s;
 }
+.settings-cat-btn:hover { background: var(--surface-3, var(--border)); color: var(--text); }
+.settings-cat-btn.active { background: var(--accent-dim); color: var(--accent); font-weight: 500; }
+
+.settings-content {
+  grid-area: content;
+  overflow-y: auto;
+  padding: var(--sp-xl) var(--sp-xl) var(--sp-lg);
+}
+.settings-pane { display: flex; flex-direction: column; gap: var(--sp-xl); }
+.settings-pane-title {
+  font-family: var(--font-display);
+  font-size: 19px; font-weight: 600; letter-spacing: -0.374px;
+  margin: 0 0 calc(var(--sp-md) * -1) 0;
+}
+
 .settings-section h3 {
   font-family: var(--font-mono);
   font-size: 10px; font-weight: 600; text-transform: uppercase;
@@ -1170,13 +1223,18 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 }
 .settings-section { display: flex; flex-direction: column; gap: var(--sp-sm); }
 .settings-hint { font-size: 11px; color: var(--text-4); margin: 0; line-height: 1.4; }
-.settings-footer { padding-top: 6px; }
+.settings-footer {
+  grid-area: footer;
+  padding: var(--sp-md) var(--sp-xl);
+  border-top: 1px solid var(--border);
+  display: flex; justify-content: flex-end;
+}
 
 .provider-selector {
   display: flex;
   gap: 6px;
 }
-.provider-btn {
+.provider-btn, .embedding-provider-btn {
   flex: 1;
   padding: 7px 10px;
   border-radius: var(--r-sm);
@@ -1187,8 +1245,8 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
   cursor: pointer;
   transition: all .15s;
 }
-.provider-btn:hover { border-color: var(--accent); color: var(--text); }
-.provider-btn.active {
+.provider-btn:hover, .embedding-provider-btn:hover { border-color: var(--accent); color: var(--text); }
+.provider-btn.active, .embedding-provider-btn.active {
   background: var(--accent-dim);
   border-color: var(--accent);
   color: var(--accent);
@@ -2221,12 +2279,65 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 .avatar-s2 { background: #10b981; }
 .avatar-s3 { background: #f59e0b; }
 .input-narrow { width: 80px; }
-.ref-stats-row { margin-top: 8px; }
-.ref-stats-label { font-size: 12px; color: var(--text-muted); }
+.folder-row { display: flex; align-items: center; gap: var(--sp-sm); }
+.folder-row input[type="text"] { flex: 1; min-width: 0; }
+.ref-stats-row { margin-top: 8px; justify-content: space-between; }
+.ref-stats-label { font-size: 12px; color: var(--text-3); }
 .ctx-hidden { display: none; }
 
 .class-lang-select {
   width: 100%; padding: 8px 10px; margin-top: 8px;
   background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 6px; color: var(--text); font-size: 13px;
+}
+
+/* ── Dashboard de costos ──────────────────────────────────────────────────── */
+
+/* Mismo layout que #ld-content: sin esto las secciones quedan pegadas y el
+   selector Día/Semana/Mes se monta sobre las tarjetas de arriba. */
+#ct-content { display: flex; flex-direction: column; gap: var(--sp-xl); }
+#ct-content.hidden, #ct-empty.hidden { display: none; }
+
+.ct-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.ct-filter-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.ct-filter-row input[type="date"] {
+  background: var(--surface-3);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.ct-filter-row input[type="date"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Las tablas anchas scrollean dentro de su caja; la página nunca scrollea en horizontal. */
+.ct-table-wrap { overflow-x: auto; }
+
+/* El punto de color acompaña al NOMBRE del proveedor, nunca lo reemplaza:
+   la identidad no puede depender solo del color. */
+.ct-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 7px;
+  vertical-align: middle;
 }

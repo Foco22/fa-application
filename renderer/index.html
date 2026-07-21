@@ -25,59 +25,59 @@
       </div>
 
       <div id="step-1" class="wizard-step active">
-        <h2>¿Qué temas te interesan?</h2>
-        <p class="hint">Elige al menos una categoría</p>
+        <h2 data-i18n="que-temas-te-interesan">¿Qué temas te interesan?</h2>
+        <p class="hint" data-i18n="elige-al-menos-una-categoria">Elige al menos una categoría</p>
         <div id="categories-grid" class="categories-grid"></div>
-        <p id="step1-error" class="field-error hidden">Selecciona al menos una categoría.</p>
-        <div class="wizard-nav"><span></span><button id="step1-next" class="btn-primary">Siguiente →</button></div>
+        <p id="step1-error" class="field-error hidden" data-i18n="selecciona-al-menos-una-categoria">Selecciona al menos una categoría.</p>
+        <div class="wizard-nav"><span></span><button id="step1-next" class="btn-primary" data-i18n="siguiente">Siguiente →</button></div>
       </div>
 
       <div id="step-2" class="wizard-step hidden">
-        <h2>¿De qué universidades?</h2>
-        <p class="hint">Todas activas por defecto</p>
+        <h2 data-i18n="de-que-universidades">¿De qué universidades?</h2>
+        <p class="hint" data-i18n="todas-activas-por-defecto">Todas activas por defecto</p>
         <div id="universities-grid" class="universities-grid"></div>
         <div class="wizard-nav">
-          <button id="step2-back" class="btn-ghost">← Atrás</button>
-          <button id="step2-next" class="btn-primary">Siguiente →</button>
+          <button id="step2-back" class="btn-ghost" data-i18n="atras">← Atrás</button>
+          <button id="step2-next" class="btn-primary" data-i18n="siguiente">Siguiente →</button>
         </div>
       </div>
 
       <div id="step-3" class="wizard-step hidden">
-        <h2>¿Autores a seguir?</h2>
-        <p class="hint">Opcional — un apellido por línea</p>
-        <textarea id="author-input" rows="7" placeholder="LeCun&#10;Bengio&#10;Hinton"></textarea>
+        <h2 data-i18n="autores-a-seguir">¿Autores a seguir?</h2>
+        <p class="hint" data-i18n="opcional-un-apellido-por-linea">Opcional — un apellido por línea</p>
+        <textarea id="author-input" rows="7" placeholder="LeCun&#10;Bengio&#10;Hinton" data-i18n-placeholder="lecun-10-bengio-10-hinton"></textarea>
         <div class="wizard-nav">
-          <button id="step3-back" class="btn-ghost">← Atrás</button>
-          <button id="step3-next" class="btn-primary">Siguiente →</button>
+          <button id="step3-back" class="btn-ghost" data-i18n="atras">← Atrás</button>
+          <button id="step3-next" class="btn-primary" data-i18n="siguiente">Siguiente →</button>
         </div>
       </div>
 
       <div id="step-4" class="wizard-step hidden">
-        <h2>Configuración</h2>
+        <h2 data-i18n="configuracion">Configuración</h2>
         <div class="form-group">
-          <label for="wiz-api-key">OpenAI API Key</label>
-          <input type="password" id="wiz-api-key" placeholder="sk-...">
-          <p id="step4-error" class="field-error hidden">La API key es obligatoria.</p>
+          <label for="wiz-api-key" data-i18n="openai-api-key">OpenAI API Key</label>
+          <input type="password" id="wiz-api-key" placeholder="sk-..." data-i18n-placeholder="sk-2">
+          <p id="step4-error" class="field-error hidden" data-i18n="la-api-key-es-obligatoria">La API key es obligatoria.</p>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label for="wiz-fetch-day">Día</label>
+            <label for="wiz-fetch-day" data-i18n="dia">Día</label>
             <select id="wiz-fetch-day">
-              <option value="monday">Lunes</option>
-              <option value="tuesday">Martes</option>
-              <option value="wednesday">Miércoles</option>
-              <option value="thursday">Jueves</option>
-              <option value="friday">Viernes</option>
-              <option value="saturday">Sábado</option>
-              <option value="sunday">Domingo</option>
+              <option value="monday" data-i18n="lunes">Lunes</option>
+              <option value="tuesday" data-i18n="martes">Martes</option>
+              <option value="wednesday" data-i18n="miercoles">Miércoles</option>
+              <option value="thursday" data-i18n="jueves">Jueves</option>
+              <option value="friday" data-i18n="viernes">Viernes</option>
+              <option value="saturday" data-i18n="sabado">Sábado</option>
+              <option value="sunday" data-i18n="domingo">Domingo</option>
             </select>
           </div>
           <div class="form-group">
-            <label for="wiz-fetch-hour">Hora</label>
+            <label for="wiz-fetch-hour" data-i18n="hora">Hora</label>
             <input type="time" id="wiz-fetch-hour" value="09:00">
           </div>
           <div class="form-group">
-            <label for="wiz-max-papers">Máx.</label>
+            <label for="wiz-max-papers" data-i18n="max">Máx.</label>
             <select id="wiz-max-papers">
               <option value="1">1</option>
               <option value="2">2</option>
@@ -87,8 +87,8 @@
           </div>
         </div>
         <div class="wizard-nav">
-          <button id="step4-back" class="btn-ghost">← Atrás</button>
-          <button id="step4-finish" class="btn-primary">✓ Comenzar</button>
+          <button id="step4-back" class="btn-ghost" data-i18n="atras">← Atrás</button>
+          <button id="step4-finish" class="btn-primary" data-i18n="comenzar">✓ Comenzar</button>
         </div>
       </div>
     </div>
@@ -109,14 +109,14 @@
       </div>
       <div class="topbar-right">
         <div class="zoom-controls">
-          <button id="btn-zoom-out" class="icon-btn-sm" title="Reducir (Ctrl −)">A−</button>
+          <button id="btn-zoom-out" class="icon-btn-sm" title="Reducir (Ctrl −)" data-i18n-title="reducir-ctrl">A−</button>
           <span id="zoom-level" class="zoom-level">100%</span>
-          <button id="btn-zoom-in"  class="icon-btn-sm" title="Ampliar (Ctrl +)">A+</button>
+          <button id="btn-zoom-in"  class="icon-btn-sm" title="Ampliar (Ctrl +)" data-i18n-title="ampliar-ctrl">A+</button>
         </div>
         <div class="win-controls">
-          <button class="win-btn win-min"   id="btn-win-min"   title="Minimizar">−</button>
-          <button class="win-btn win-max"   id="btn-win-max"   title="Maximizar">□</button>
-          <button class="win-btn win-close" id="btn-win-close" title="Cerrar">✕</button>
+          <button class="win-btn win-min"   id="btn-win-min"   title="Minimizar" data-i18n-title="minimizar">−</button>
+          <button class="win-btn win-max"   id="btn-win-max"   title="Maximizar" data-i18n-title="maximizar">□</button>
+          <button class="win-btn win-close" id="btn-win-close" title="Cerrar" data-i18n-title="cerrar-2">✕</button>
         </div>
       </div>
     </header>
@@ -127,29 +127,34 @@
       <!-- Activity bar -->
       <nav class="activity-bar">
         <div class="activity-top">
-          <button class="activity-btn" id="act-papers" title="Papers">
+          <button class="activity-btn" id="act-papers" title="Papers" data-i18n-title="papers">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"/>
             </svg>
           </button>
-          <button class="activity-btn act-fetch-btn" id="act-fetch" title="Fetch papers">
+          <button class="activity-btn act-fetch-btn" id="act-fetch" title="Fetch papers" data-i18n-title="fetch-papers">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
             </svg>
           </button>
-          <button class="activity-btn" id="act-chat" title="Chat">
+          <button class="activity-btn" id="act-chat" title="Chat" data-i18n-title="chat">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z"/>
             </svg>
           </button>
-          <button class="activity-btn" id="act-learning" title="Evolución del conocimiento">
+          <button class="activity-btn" id="act-learning" title="Evolución del conocimiento" data-i18n-title="evolucion-del-conocimiento">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 3v16.5a1.5 1.5 0 0 0 1.5 1.5H21M7 16.5l4.5-5.25 3 3.375L20.25 7"/>
             </svg>
           </button>
+          <button class="activity-btn" id="act-costs" title="Costos" data-i18n-title="costos">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+            </svg>
+          </button>
         </div>
         <div class="activity-bottom">
-          <button class="activity-btn" id="act-settings" title="Configuración">
+          <button class="activity-btn" id="act-settings" title="Configuración" data-i18n-title="configuracion">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"/>
               <path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
@@ -161,9 +166,9 @@
       <!-- Left: Vault -->
       <aside id="vault-panel" class="vault-panel">
         <div class="vault-header">
-          <span class="vault-title">VAULT</span>
+          <span class="vault-title" data-i18n="vault">VAULT</span>
           <div class="vault-header-right">
-            <button id="btn-open-vault" class="icon-btn-sm" title="Abrir en explorador de archivos">↗</button>
+            <button id="btn-open-vault" class="icon-btn-sm" title="Abrir en explorador de archivos" data-i18n-title="abrir-en-explorador-de-archivos">↗</button>
             <span id="vault-count" class="vault-count">0</span>
           </div>
         </div>
@@ -197,12 +202,12 @@
 
           <!-- Barra de tabs -->
           <div class="tab-bar">
-            <button class="tab-btn" data-tab="pdf">PDF</button>
-            <button class="tab-btn" data-tab="abstract">Abstract</button>
-            <button class="tab-btn active" data-tab="resumen">Resumen</button>
-            <button class="tab-btn" data-tab="notas">Notas</button>
-            <button class="tab-btn" data-tab="quiz">Quiz</button>
-            <button class="tab-btn" data-tab="clase">Clase</button>
+            <button class="tab-btn" data-tab="pdf" data-i18n="tab-archivo">Archivo</button>
+            <button class="tab-btn" data-tab="abstract" data-i18n="abstract">Abstract</button>
+            <button class="tab-btn active" data-tab="resumen" data-i18n="resumen">Resumen</button>
+            <button class="tab-btn" data-tab="notas" data-i18n="notas">Notas</button>
+            <button class="tab-btn" data-tab="quiz" data-i18n="quiz">Quiz</button>
+            <button class="tab-btn" data-tab="clase" data-i18n="clase">Clase</button>
           </div>
 
           <!-- Tab: PDF -->
@@ -216,22 +221,22 @@
                 Selecciona texto para añadirlo a notas
               </div>
             <div class="pdf-toolbar-btns">
-                <button id="btn-highlights-toggle" class="action-btn" title="Ver destacados">Destacados</button>
-                <button id="btn-pdf-expand" class="action-btn" title="Ampliar PDF">⤢ Ampliar</button>
+                <button id="btn-highlights-toggle" class="action-btn" title="Ver destacados" data-i18n-title="ver-destacados" data-i18n="destacados">Destacados</button>
+                <button id="btn-pdf-expand" class="action-btn" title="Ampliar PDF" data-i18n-title="ampliar-pdf" data-i18n="ampliar">⤢ Ampliar</button>
               </div>
             </div>
             <div class="pdf-body">
               <div class="pdf-container">
                 <div id="pdf-placeholder" class="pdf-placeholder">
                   <div class="pdf-placeholder-icon">📄</div>
-                  <p>PDF no disponible para este paper</p>
+                  <p data-i18n="pdf-no-disponible-para-este-paper">PDF no disponible para este paper</p>
                 </div>
                 <div id="pdf-viewer" class="pdf-viewer hidden"></div>
               </div>
               <!-- Panel de destacados (visible en modo ampliado) -->
               <div id="pdf-highlights-panel" class="pdf-highlights-panel hidden">
                 <div class="phl-header">
-                  <span class="section-label">Destacados</span>
+                  <span class="section-label" data-i18n="destacados">Destacados</span>
                 </div>
                 <div id="phl-list" class="phl-list"></div>
               </div>
@@ -249,43 +254,43 @@
           <div id="tab-resumen" class="tab-panel">
             <section class="pv-section">
               <div class="section-header">
-                <div class="section-label">Análisis IA</div>
-                <button id="btn-summary" class="action-btn">Generar</button>
+                <div class="section-label" data-i18n="analisis-ia">Análisis IA</div>
+                <button id="btn-summary" class="action-btn" data-i18n="generar">Generar</button>
               </div>
               <div id="pv-summary-stream" class="summary-body hidden"></div>
               <div id="pv-summary-cards" class="summary-cards hidden">
                 <div class="summary-card">
                   <div class="summary-card-header">
                     <span class="summary-num">1</span>
-                    <span class="summary-q">¿Cuál es el problema y por qué importa?</span>
+                    <span class="summary-q" data-i18n="cual-es-el-problema-y-por-que-importa">¿Cuál es el problema y por qué importa?</span>
                   </div>
                   <div class="summary-card-body" id="sc-0"></div>
                 </div>
                 <div class="summary-card">
                   <div class="summary-card-header">
                     <span class="summary-num">2</span>
-                    <span class="summary-q">¿Cuál es la idea clave?</span>
+                    <span class="summary-q" data-i18n="cual-es-la-idea-clave">¿Cuál es la idea clave?</span>
                   </div>
                   <div class="summary-card-body" id="sc-1"></div>
                 </div>
                 <div class="summary-card">
                   <div class="summary-card-header">
                     <span class="summary-num">3</span>
-                    <span class="summary-q">¿Cómo funciona, en términos generales?</span>
+                    <span class="summary-q" data-i18n="como-funciona-en-terminos-generales">¿Cómo funciona, en términos generales?</span>
                   </div>
                   <div class="summary-card-body" id="sc-2"></div>
                 </div>
                 <div class="summary-card">
                   <div class="summary-card-header">
                     <span class="summary-num">4</span>
-                    <span class="summary-q">¿Qué tan bien funciona y qué evidencia hay?</span>
+                    <span class="summary-q" data-i18n="que-tan-bien-funciona-y-que-evidencia-hay">¿Qué tan bien funciona y qué evidencia hay?</span>
                   </div>
                   <div class="summary-card-body" id="sc-3"></div>
                 </div>
                 <div class="summary-card">
                   <div class="summary-card-header">
                     <span class="summary-num">5</span>
-                    <span class="summary-q">¿Cuáles son sus límites y qué queda abierto?</span>
+                    <span class="summary-q" data-i18n="cuales-son-sus-limites-y-que-queda-abierto">¿Cuáles son sus límites y qué queda abierto?</span>
                   </div>
                   <div class="summary-card-body" id="sc-4"></div>
                 </div>
@@ -296,9 +301,9 @@
           <!-- Tab: Notas -->
           <div id="tab-notas" class="tab-panel notes-tab hidden">
             <div class="notes-bar">
-              <span class="section-label">Notas</span>
+              <span class="section-label" data-i18n="notas">Notas</span>
               <span id="notes-save-indicator" class="save-indicator"></span>
-              <button id="btn-rebuild-notes" class="ref-action-btn" title="Reconstruir notas desde highlights (elimina texto duplicado)">↺ Reconstruir</button>
+              <button id="btn-rebuild-notes" class="ref-action-btn" title="Reconstruir notas desde highlights (elimina texto duplicado)" data-i18n-title="reconstruir-notas-desde-highlights-elimina-texto" data-i18n="reconstruir">↺ Reconstruir</button>
             </div>
             <div id="pv-notes" class="notes-editor" contenteditable="true" spellcheck="false"></div>
           </div>
@@ -307,8 +312,8 @@
           <div id="tab-quiz" class="tab-panel hidden">
             <section class="pv-section">
               <div class="section-header">
-                <div class="section-label">Quiz de comprensión</div>
-                <button id="btn-quiz" class="action-btn">Generar</button>
+                <div class="section-label" data-i18n="quiz-de-comprension">Quiz de comprensión</div>
+                <button id="btn-quiz" class="action-btn" data-i18n="generar">Generar</button>
               </div>
               <div id="pv-quiz"></div>
             </section>
@@ -322,8 +327,8 @@
       <aside id="chat-panel" class="chat-panel">
         <div id="chat-resize-handle" class="chat-resize-handle"></div>
         <div class="chat-header">
-          <span class="chat-title">ASSISTANT</span>
-          <button id="btn-clear-chat" class="icon-btn-sm" title="Limpiar chat">⊘</button>
+          <span class="chat-title" data-i18n="assistant">ASSISTANT</span>
+          <button id="btn-clear-chat" class="icon-btn-sm" title="Limpiar chat" data-i18n-title="limpiar-chat">⊘</button>
         </div>
         <div id="chat-context" class="chat-context hidden">
           <span class="context-icon">📎</span>
@@ -331,14 +336,14 @@
         </div>
         <div id="chat-messages" class="chat-messages">
           <div class="chat-welcome">
-            <p>Pregúntame sobre el paper activo, o sobre investigación en general.</p>
+            <p data-i18n="preguntame-sobre-el-paper-activo-o-sobre-investi">Pregúntame sobre el paper activo, o sobre investigación en general.</p>
           </div>
         </div>
         <div class="chat-pill-wrap">
           <div class="chat-pill">
             <textarea id="chat-input" class="chat-pill-input" rows="1"
-              placeholder="Escribe tu pregunta..."></textarea>
-            <button id="btn-chat-send" class="chat-pill-send" title="Enviar">
+              placeholder="Escribe tu pregunta..." data-i18n-placeholder="escribe-tu-pregunta"></textarea>
+            <button id="btn-chat-send" class="chat-pill-send" title="Enviar" data-i18n-title="enviar">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
             </button>
           </div>
@@ -348,8 +353,8 @@
       <!-- Learning dashboard: replaces content+chat, vault stays visible -->
       <section id="learning-panel" class="learning-panel hidden">
         <div class="learning-header">
-          <button id="btn-close-learning" class="btn-ghost">← Volver</button>
-          <span class="learning-title">Evolución del conocimiento</span>
+          <button id="btn-close-learning" class="btn-ghost" data-i18n="volver">← Volver</button>
+          <span class="learning-title" data-i18n="evolucion-del-conocimiento">Evolución del conocimiento</span>
         </div>
         <div class="learning-body">
           <div id="ld-empty" class="ld-empty hidden">
@@ -359,42 +364,42 @@
           <div id="ld-content">
             <div class="ld-stat-row">
               <div class="ld-stat-card">
-                <span class="ld-stat-label">Clases dadas</span>
+                <span class="ld-stat-label" data-i18n="clases-dadas">Clases dadas</span>
                 <span class="ld-stat-value" id="ld-total-classes">—</span>
               </div>
               <div class="ld-stat-card" id="ld-week-status-card">
-                <span class="ld-stat-label">Esta semana (clases/meta)</span>
+                <span class="ld-stat-label" data-i18n="esta-semana-clases-meta">Esta semana (clases/meta)</span>
                 <span class="ld-stat-value" id="ld-week-pct">—</span>
               </div>
               <div class="ld-stat-card">
-                <span class="ld-stat-label">Rendimiento (últimas 4 semanas)</span>
+                <span class="ld-stat-label" data-i18n="rendimiento-ultimas-4-semanas">Rendimiento (últimas 4 semanas)</span>
                 <span class="ld-stat-value" id="ld-avg-4w">—</span>
               </div>
             </div>
 
             <section class="ld-chart-section">
               <div class="section-header">
-                <div class="section-label">Clases por semana</div>
+                <div class="section-label" data-i18n="clases-por-semana">Clases por semana</div>
                 <div class="range-selector" id="ld-range-selector">
-                  <button class="range-btn active" data-range="8w">8 semanas</button>
-                  <button class="range-btn" data-range="3m">3 meses</button>
-                  <button class="range-btn" data-range="all">Todo</button>
+                  <button class="range-btn active" data-range="8w" data-i18n="8-semanas">8 semanas</button>
+                  <button class="range-btn" data-range="3m" data-i18n="3-meses">3 meses</button>
+                  <button class="range-btn" data-range="all" data-i18n="todo">Todo</button>
                 </div>
               </div>
               <div class="ld-chart-row">
                 <div class="ld-chart-col">
-                  <div class="ld-chart-sublabel">Clases</div>
+                  <div class="ld-chart-sublabel" data-i18n="clases">Clases</div>
                   <div class="ld-chart-wrap"><canvas id="ld-chart-weekly"></canvas></div>
                 </div>
                 <div class="ld-chart-col">
-                  <div class="ld-chart-sublabel">Cumplimiento de meta (%)</div>
+                  <div class="ld-chart-sublabel" data-i18n="cumplimiento-de-meta">Cumplimiento de meta (%)</div>
                   <div class="ld-chart-wrap"><canvas id="ld-chart-weekly-pct"></canvas></div>
                 </div>
               </div>
             </section>
 
             <section class="ld-chart-section">
-              <div class="section-header"><div class="section-label">Rendimiento en clases</div></div>
+              <div class="section-header"><div class="section-label" data-i18n="rendimiento-en-clases">Rendimiento en clases</div></div>
               <div class="ld-avg-row">
                 <span class="ld-avg-chip">Claridad <b id="ld-avg-clarity">—</b></span>
                 <span class="ld-avg-chip">Exposición <b id="ld-avg-presentation">—</b></span>
@@ -404,11 +409,79 @@
             </section>
 
             <section class="ld-chart-section">
-              <div class="section-header"><div class="section-label">Rendimiento en quizzes</div></div>
+              <div class="section-header"><div class="section-label" data-i18n="rendimiento-en-quizzes">Rendimiento en quizzes</div></div>
               <div class="ld-avg-row">
                 <span class="ld-avg-chip">Acierto promedio <b id="ld-avg-quiz">—</b></span>
               </div>
               <div class="ld-chart-wrap"><canvas id="ld-chart-quiz-perf"></canvas></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <!-- Costos -->
+      <section id="costs-panel" class="learning-panel hidden">
+        <div class="learning-header">
+          <button id="btn-close-costs" class="btn-ghost" data-i18n="volver">← Volver</button>
+          <span class="learning-title" data-i18n="costos">Costos</span>
+        </div>
+        <div class="learning-body">
+          <div id="ct-empty" class="ld-empty hidden">
+            <div class="empty-glyph">$</div>
+            <p>Aún no hay uso registrado.<br>Genera un resumen, un quiz o da una clase y el gasto aparecerá acá.</p>
+          </div>
+
+          <div id="ct-content">
+            <div class="ld-stat-row">
+              <div class="ld-stat-card">
+                <span class="ld-stat-label" data-i18n="gasto-del-periodo">Gasto del período</span>
+                <span class="ld-stat-value" id="ct-range-total">—</span>
+              </div>
+              <div class="ld-stat-card">
+                <span class="ld-stat-label" data-i18n="total-historico">Total histórico</span>
+                <span class="ld-stat-value" id="ct-alltime-total">—</span>
+              </div>
+              <div class="ld-stat-card" id="ct-unknown-card">
+                <span class="ld-stat-label" data-i18n="eventos-sin-precio-conocido">Eventos sin precio conocido</span>
+                <span class="ld-stat-value" id="ct-unknown">—</span>
+              </div>
+            </div>
+
+            <section class="ld-chart-section">
+              <div class="section-header">
+                <div class="section-label" data-i18n="gasto-por-proveedor">Gasto por proveedor</div>
+                <div class="range-selector" id="ct-group-selector">
+                  <button class="range-btn" data-group="day" data-i18n="dia">Día</button>
+                  <button class="range-btn active" data-group="week" data-i18n="semana">Semana</button>
+                  <button class="range-btn" data-group="month" data-i18n="mes">Mes</button>
+                </div>
+              </div>
+              <div class="ct-filter-row">
+                <label><span data-i18n="desde">Desde</span> <input type="date" id="ct-from"></label>
+                <label><span data-i18n="hasta">Hasta</span> <input type="date" id="ct-to"></label>
+                <button id="ct-clear-range" class="btn-ghost" data-i18n="todo-el-historial">Todo el historial</button>
+              </div>
+              <div class="ld-chart-wrap"><canvas id="ct-chart"></canvas></div>
+            </section>
+
+            <section class="ld-chart-section">
+              <div class="section-header"><div class="section-label" data-i18n="detalle-por-accion">Detalle por acción</div></div>
+              <div class="ct-table-wrap">
+                <table class="class-qa-table">
+                  <thead>
+                    <tr><th data-i18n="accion">Acción</th><th data-i18n="proveedor">Proveedor</th><th data-i18n="modelo">Modelo</th><th data-i18n="eventos">Eventos</th><th data-i18n="costo">Costo</th></tr>
+                  </thead>
+                  <tbody id="ct-action-table"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="ld-chart-section">
+              <div class="section-header"><div class="section-label" data-i18n="tabla-de-precios">Tabla de precios</div></div>
+              <div class="ct-filter-row">
+                <span id="ct-pricing-status" class="settings-hint">—</span>
+                <button id="ct-refresh-pricing" class="ref-action-btn" data-i18n="actualizar-precios">↻ Actualizar precios</button>
+              </div>
             </section>
           </div>
         </div>
@@ -429,8 +502,8 @@
       <!-- View: Prep -->
       <div id="class-view-prep" class="class-view hidden">
         <header class="class-header">
-          <h2 class="class-header-title">Preparación de la clase</h2>
-          <button id="class-btn-exit-prep" class="class-exit-btn">Salir de la clase</button>
+          <h2 class="class-header-title" data-i18n="preparacion-de-la-clase">Preparación de la clase</h2>
+          <button id="class-btn-exit-prep" class="class-exit-btn" data-i18n="salir-de-la-clase">Salir de la clase</button>
         </header>
         <p id="class-paper-title" class="class-paper-title"></p>
         <div class="class-prep-body">
@@ -438,86 +511,86 @@
           <!-- Col izquierda: slides -->
           <div class="class-prep-slides-col">
             <div class="class-prep-col-header">
-              <span class="class-section-title">Diapositivas</span>
+              <span class="class-section-title" data-i18n="diapositivas">Diapositivas</span>
               <span id="class-slides-count" class="class-slides-count"></span>
-              <button id="class-btn-add-slide-more" class="class-add-slide-more-btn" style="display:none" title="Agregar foto">+</button>
+              <button id="class-btn-add-slide-more" class="class-add-slide-more-btn" style="display:none" title="Agregar foto" data-i18n-title="agregar-foto-2">+</button>
             </div>
             <div id="class-slides-dropzone" class="class-slides-dropzone">
               <!-- Estado vacío -->
               <div id="class-slides-placeholder" class="class-slides-placeholder">
                 <span class="class-slides-placeholder-icon">🖼</span>
-                <span class="class-slides-placeholder-text">Sube fotos de tus slides</span>
-                <span class="class-slides-placeholder-sub">intro · desarrollo · conclusión · máx. 3</span>
-                <button id="class-btn-add-slide" class="class-add-slide-btn">+ Agregar foto</button>
+                <span class="class-slides-placeholder-text" data-i18n="sube-fotos-de-tus-slides">Sube fotos de tus slides</span>
+                <span class="class-slides-placeholder-sub" data-i18n="intro-desarrollo-conclusion-max-3">intro · desarrollo · conclusión · máx. 3</span>
+                <button id="class-btn-add-slide" class="class-add-slide-btn" data-i18n="agregar-foto">+ Agregar foto</button>
               </div>
               <!-- Visor de slide única -->
               <div id="class-slide-viewer" class="class-slide-viewer" style="display:none">
                 <img id="class-slide-viewer-img" class="class-slide-viewer-img" src="" alt="">
                 <button id="class-slide-viewer-prev" class="class-slide-viewer-nav class-slide-viewer-prev">‹</button>
                 <button id="class-slide-viewer-next" class="class-slide-viewer-nav class-slide-viewer-next">›</button>
-                <button id="class-btn-add-slide-overlay" class="class-add-slide-overlay" title="Agregar foto">+ Agregar foto</button>
+                <button id="class-btn-add-slide-overlay" class="class-add-slide-overlay" title="Agregar foto" data-i18n-title="agregar-foto-2" data-i18n="agregar-foto">+ Agregar foto</button>
                 <div class="class-slide-viewer-info">
                   <span id="class-slide-viewer-label" class="class-slide-viewer-label"></span>
                   <span id="class-slide-viewer-indicator" class="class-slide-viewer-indicator"></span>
                 </div>
-                <button id="class-slide-viewer-remove" class="class-slide-viewer-remove" title="Eliminar slide">✕</button>
+                <button id="class-slide-viewer-remove" class="class-slide-viewer-remove" title="Eliminar slide" data-i18n-title="eliminar-slide">✕</button>
               </div>
             </div>
           </div>
 
           <!-- Col derecha: duración + idioma + iniciar -->
           <div class="class-prep-settings-col">
-            <span class="class-section-title">Duración</span>
+            <span class="class-section-title" data-i18n="duracion">Duración</span>
             <div class="duration-options">
-              <button class="duration-btn active" data-duration="180">3 min</button>
-              <button class="duration-btn" data-duration="240">4 min</button>
-              <button class="duration-btn" data-duration="300">5 min</button>
+              <button class="duration-btn active" data-duration="180" data-i18n="3-min">3 min</button>
+              <button class="duration-btn" data-duration="240" data-i18n="4-min">4 min</button>
+              <button class="duration-btn" data-duration="300" data-i18n="5-min">5 min</button>
             </div>
-            <span class="class-section-title" style="margin-top:16px">Idioma de la clase</span>
+            <span class="class-section-title" style="margin-top:16px" data-i18n="idioma-de-la-clase">Idioma de la clase</span>
             <select id="class-lang-select" class="class-lang-select">
-              <option value="es">Español</option>
-              <option value="en">English</option>
-              <option value="fr">Français</option>
-              <option value="de">Deutsch</option>
-              <option value="pt">Português</option>
-              <option value="">Auto-detectar</option>
+              <option value="es" data-i18n="espanol">Español</option>
+              <option value="en" data-i18n="english">English</option>
+              <option value="fr" data-i18n="francais">Français</option>
+              <option value="de" data-i18n="deutsch">Deutsch</option>
+              <option value="pt" data-i18n="portugues">Português</option>
+              <option value="" data-i18n="auto-detectar">Auto-detectar</option>
             </select>
-            <span class="class-section-title" style="margin-top:16px">Compañía transcripción</span>
+            <span class="class-section-title" style="margin-top:16px" data-i18n="compania-transcripcion">Compañía transcripción</span>
             <select id="class-transcription-backend-select" class="class-lang-select">
-              <option value="groq">Groq</option>
-              <option value="whisper">OpenAI</option>
-              <option value="whisper-local">Local (whisper.cpp)</option>
-              <option value="webspeech">Web Speech (Chrome)</option>
+              <option value="groq" data-i18n="groq">Groq</option>
+              <option value="whisper" data-i18n="openai">OpenAI</option>
+              <option value="whisper-local" data-i18n="local-whisper-cpp">Local (whisper.cpp)</option>
+              <option value="webspeech" data-i18n="web-speech-chrome">Web Speech (Chrome)</option>
             </select>
-            <span class="class-section-title" style="margin-top:4px" id="class-groq-model-label">Modelo transcripción</span>
+            <span class="class-section-title" style="margin-top:4px" id="class-groq-model-label" data-i18n="modelo-transcripcion">Modelo transcripción</span>
             <select id="class-groq-model-select" class="class-lang-select">
-              <option value="whisper-large-v3-turbo">whisper-large-v3-turbo</option>
-              <option value="whisper-large-v3">whisper-large-v3</option>
+              <option value="whisper-large-v3-turbo" data-i18n="whisper-large-v3-turbo">whisper-large-v3-turbo</option>
+              <option value="whisper-large-v3" data-i18n="whisper-large-v3">whisper-large-v3</option>
             </select>
-            <span class="class-section-title" style="margin-top:4px" id="class-model-select-label">Modelo transcripción</span>
+            <span class="class-section-title" style="margin-top:4px" id="class-model-select-label" data-i18n="modelo-transcripcion">Modelo transcripción</span>
             <select id="class-model-select" class="class-lang-select">
-              <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</option>
-              <option value="gpt-4o-transcribe">gpt-4o-transcribe</option>
-              <option value="whisper-1">whisper-1</option>
+              <option value="gpt-4o-mini-transcribe" data-i18n="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</option>
+              <option value="gpt-4o-transcribe" data-i18n="gpt-4o-transcribe">gpt-4o-transcribe</option>
+              <option value="whisper-1" data-i18n="whisper-1">whisper-1</option>
             </select>
-            <span class="class-section-title" style="margin-top:4px" id="class-local-model-label">Modelo local</span>
+            <span class="class-section-title" style="margin-top:4px" id="class-local-model-label" data-i18n="modelo-local">Modelo local</span>
             <select id="class-local-model-select" class="class-lang-select">
-              <option value="small">small (289MB)</option>
-              <option value="base">base (142MB)</option>
-              <option value="large-v3-turbo">turbo (1.6GB, solo GPU)</option>
-              <option value="medium">medium (solo GPU)</option>
+              <option value="small" data-i18n="small-289mb">small (289MB)</option>
+              <option value="base" data-i18n="base-142mb">base (142MB)</option>
+              <option value="large-v3-turbo" data-i18n="turbo-1-6gb-solo-gpu">turbo (1.6GB, solo GPU)</option>
+              <option value="medium" data-i18n="medium-solo-gpu">medium (solo GPU)</option>
             </select>
-            <span class="class-section-title" style="margin-top:16px">Compañía LLM</span>
+            <span class="class-section-title" style="margin-top:16px" data-i18n="compania-llm">Compañía LLM</span>
             <select id="class-prep-llm-provider" class="class-lang-select">
-              <option value="deepseek">DeepSeek</option>
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
+              <option value="deepseek" data-i18n="deepseek">DeepSeek</option>
+              <option value="openai" data-i18n="openai">OpenAI</option>
+              <option value="anthropic" data-i18n="anthropic">Anthropic</option>
             </select>
-            <span class="class-section-title" style="margin-top:4px">Modelo LLM</span>
+            <span class="class-section-title" style="margin-top:4px" data-i18n="modelo-llm">Modelo LLM</span>
             <select id="class-prep-llm-model" class="class-lang-select">
-              <option value="deepseek-v4-flash">deepseek-v4-flash</option>
+              <option value="deepseek-v4-flash" data-i18n="deepseek-v4-flash">deepseek-v4-flash</option>
             </select>
-            <button id="class-btn-start" class="btn-primary class-start-btn" disabled>
+            <button id="class-btn-start" class="btn-primary class-start-btn" disabled data-i18n="iniciar-clase">
               Iniciar Clase →
             </button>
           </div>
@@ -529,7 +602,7 @@
       <div id="class-view-loading" class="class-view hidden">
         <div class="class-loading-inner">
           <div class="class-spinner"></div>
-          <p id="class-loading-msg" class="class-loading-msg">Preparando la clase…</p>
+          <p id="class-loading-msg" class="class-loading-msg" data-i18n="preparando-la-clase">Preparando la clase…</p>
           <p id="class-loading-sub" class="class-loading-sub"></p>
         </div>
       </div>
@@ -541,11 +614,11 @@
             <div class="class-timer-display" id="class-timer-display">3:00</div>
           </div>
           <div class="class-topbar-center">
-            <span class="class-topbar-title">Presentación</span>
+            <span class="class-topbar-title" data-i18n="presentacion">Presentación</span>
           </div>
           <div class="class-topbar-right">
-            <button id="class-btn-exit-active" class="class-exit-btn">Salir de la clase</button>
-            <button id="class-btn-end-presentation" class="class-end-btn">
+            <button id="class-btn-exit-active" class="class-exit-btn" data-i18n="salir-de-la-clase">Salir de la clase</button>
+            <button id="class-btn-end-presentation" class="class-end-btn" data-i18n="terminar-presentacion">
               Terminar presentación →
             </button>
           </div>
@@ -554,22 +627,22 @@
           <div class="class-slides-panel">
             <div id="class-slide-display" class="class-slide-display"></div>
             <div class="class-slide-nav">
-              <button id="class-slide-prev" class="class-nav-btn" title="Anterior (←)">‹</button>
+              <button id="class-slide-prev" class="class-nav-btn" title="Anterior (←)" data-i18n-title="anterior">‹</button>
               <span id="class-slide-indicator" class="class-slide-indicator">1 / 1</span>
-              <button id="class-slide-next" class="class-nav-btn" title="Siguiente (→)">›</button>
+              <button id="class-slide-next" class="class-nav-btn" title="Siguiente (→)" data-i18n-title="siguiente-2">›</button>
             </div>
           </div>
           <!-- Professor self-view: lets you check your own posture/framing while presenting -->
           <div class="class-active-webcam-box" id="class-active-webcam-box">
             <video id="class-active-webcam" class="class-active-webcam" autoplay muted playsinline></video>
             <div class="class-active-webcam-placeholder" id="class-active-webcam-placeholder">
-              <span>Sin cámara</span>
+              <span data-i18n="sin-camara">Sin cámara</span>
             </div>
           </div>
         </div>
         <div class="class-transcript-bar">
           <span class="class-transcript-icon">🎙</span>
-          <span id="class-transcript-live" class="class-transcript-live">Habla — tu voz se transcribirá aquí…</span>
+          <span id="class-transcript-live" class="class-transcript-live" data-i18n="habla-tu-voz-se-transcribira-aqui">Habla — tu voz se transcribirá aquí…</span>
         </div>
       </div>
 
@@ -580,11 +653,11 @@
             <span id="class-qa-progress" class="class-qa-progress-label"></span>
           </div>
           <div class="class-topbar-center">
-            <span class="class-topbar-title">Preguntas y respuestas</span>
+            <span class="class-topbar-title" data-i18n="preguntas-y-respuestas">Preguntas y respuestas</span>
           </div>
           <div class="class-topbar-right">
-            <button id="class-btn-exit-qa" class="class-exit-btn">Salir de la clase</button>
-            <button id="class-btn-toggle-notes" class="class-notes-toggle-btn" title="Ver paper y notas">Paper</button>
+            <button id="class-btn-exit-qa" class="class-exit-btn" data-i18n="salir-de-la-clase">Salir de la clase</button>
+            <button id="class-btn-toggle-notes" class="class-notes-toggle-btn" title="Ver paper y notas" data-i18n-title="ver-paper-y-notas" data-i18n="paper">Paper</button>
           </div>
         </div>
         <!-- Spotlight: professor webcam + student overlay -->
@@ -592,12 +665,12 @@
           <!-- Professor self-view (main) -->
           <video id="class-qa-selfview" class="class-qa-selfview" autoplay muted playsinline></video>
           <div class="class-qa-selfview-placeholder" id="class-qa-selfview-placeholder">
-            <span>Sin cámara</span>
+            <span data-i18n="sin-camara">Sin cámara</span>
           </div>
           <!-- Active student overlay (pip) -->
           <div class="class-qa-student-pip" id="class-qa-student-pip">
             <div class="class-spotlight-avatar" id="class-spotlight-avatar"></div>
-            <div class="class-spotlight-name" id="class-spotlight-name">Esperando…</div>
+            <div class="class-spotlight-name" id="class-spotlight-name" data-i18n="esperando">Esperando…</div>
           </div>
         </div>
         <!-- PDF view (replaces spotlight when toggled) -->
@@ -605,13 +678,13 @@
         <!-- PDF.js view with hint highlights -->
         <div id="class-qa-pdf-hints" class="class-qa-pdf-hints hidden">
           <div class="class-qa-pdf-hints-bar">
-            <span class="class-qa-pdf-hints-label">Fragmentos destacados</span>
+            <span class="class-qa-pdf-hints-label" data-i18n="fragmentos-destacados">Fragmentos destacados</span>
             <div class="class-qa-pdf-hints-zoom">
-              <button id="class-pdf-zoom-out" class="class-notes-toggle-btn class-pdf-zoom-btn" title="Alejar">−</button>
+              <button id="class-pdf-zoom-out" class="class-notes-toggle-btn class-pdf-zoom-btn" title="Alejar" data-i18n-title="alejar">−</button>
               <span id="class-pdf-zoom-level" class="class-pdf-zoom-level">120%</span>
-              <button id="class-pdf-zoom-in"  class="class-notes-toggle-btn class-pdf-zoom-btn" title="Acercar">+</button>
+              <button id="class-pdf-zoom-in"  class="class-notes-toggle-btn class-pdf-zoom-btn" title="Acercar" data-i18n-title="acercar">+</button>
             </div>
-            <button id="class-qa-pdf-hints-close" class="class-notes-toggle-btn">✕ Cerrar</button>
+            <button id="class-qa-pdf-hints-close" class="class-notes-toggle-btn" data-i18n="cerrar">✕ Cerrar</button>
           </div>
           <div id="class-qa-pdf-hints-pages" class="class-qa-pdf-hints-pages"></div>
         </div>
@@ -620,8 +693,8 @@
       <!-- View: Results -->
       <div id="class-view-results" class="class-view hidden">
         <header class="class-header">
-          <span class="class-header-title">Resultados de la Clase</span>
-          <button id="class-btn-done" class="btn-primary">Volver al paper</button>
+          <span class="class-header-title" data-i18n="resultados-de-la-clase">Resultados de la Clase</span>
+          <button id="class-btn-done" class="btn-primary" data-i18n="volver-al-paper">Volver al paper</button>
         </header>
         <div class="class-results-body">
 
@@ -629,7 +702,7 @@
           <div class="class-score-final-block">
             <span class="class-score-final-num" id="class-score-final-num">—</span>
             <span class="class-score-final-denom">/ 100</span>
-            <span class="class-score-final-label">Nota Final</span>
+            <span class="class-score-final-label" data-i18n="nota-final">Nota Final</span>
           </div>
 
           <!-- Dos scores -->
@@ -637,27 +710,27 @@
             <div class="class-score-block">
               <span class="class-score-big" id="class-score-pres-num">—</span>
               <span class="class-score-denom">/ 100</span>
-              <span class="class-score-label">Presentación · 50%</span>
+              <span class="class-score-label" data-i18n="presentacion-50">Presentación · 50%</span>
             </div>
             <div class="class-scores-divider"></div>
             <div class="class-score-block">
               <span class="class-score-big" id="class-score-qa-num">—</span>
               <span class="class-score-denom">/ 100</span>
-              <span class="class-score-label">Preguntas · 50%</span>
+              <span class="class-score-label" data-i18n="preguntas-50">Preguntas · 50%</span>
             </div>
           </div>
 
           <!-- Feedback de presentación -->
           <div class="class-results-section">
-            <h3 class="class-section-heading">Presentación</h3>
+            <h3 class="class-section-heading" data-i18n="presentacion">Presentación</h3>
             <p id="class-pres-feedback" class="class-feedback-text"></p>
             <div class="class-results-detail">
               <div class="class-results-col">
-                <h4>Fortalezas</h4>
+                <h4 data-i18n="fortalezas">Fortalezas</h4>
                 <p id="class-pres-strengths"></p>
               </div>
               <div class="class-results-col">
-                <h4>Mejoras</h4>
+                <h4 data-i18n="mejoras">Mejoras</h4>
                 <p id="class-pres-improvements"></p>
               </div>
             </div>
@@ -665,14 +738,14 @@
 
           <!-- Tabla Q&A -->
           <div class="class-results-section">
-            <h3 class="class-section-heading">Preguntas y respuestas</h3>
+            <h3 class="class-section-heading" data-i18n="preguntas-y-respuestas">Preguntas y respuestas</h3>
             <table class="class-qa-table">
               <thead>
                 <tr>
-                  <th>Estudiante</th>
-                  <th>Pregunta</th>
-                  <th>Ayuda usada</th>
-                  <th>Pts</th>
+                  <th data-i18n="estudiante">Estudiante</th>
+                  <th data-i18n="pregunta">Pregunta</th>
+                  <th data-i18n="ayuda-usada">Ayuda usada</th>
+                  <th data-i18n="pts">Pts</th>
                 </tr>
               </thead>
               <tbody id="class-qa-table-body"></tbody>
@@ -686,28 +759,28 @@
 
     <!-- ── Sidebar: Participantes (visible durante active y qa) ── -->
     <div id="class-sidebar-participants" class="class-sidebar class-sidebar--participants hidden">
-      <div class="class-sidebar-header">Participantes</div>
+      <div class="class-sidebar-header" data-i18n="participantes">Participantes</div>
       <div class="class-sidebar-tiles">
         <!-- Professor webcam tile -->
         <div class="class-video-tile class-tile-self" id="class-tile-self">
           <video id="class-webcam" class="class-tile-video" autoplay muted playsinline></video>
-          <div class="class-tile-label">Tú</div>
+          <div class="class-tile-label" data-i18n="tu">Tú</div>
         </div>
         <!-- Student tiles -->
         <div class="class-video-tile" id="class-tile-s1" data-student="1">
-          <div class="class-tile-avatar avatar-s1">MG</div>
-          <div class="class-tile-name">María García</div>
-          <div class="class-tile-label">María</div>
+          <div class="class-tile-avatar avatar-s1" data-i18n="mg">MG</div>
+          <div class="class-tile-name" data-i18n="maria-garcia">María García</div>
+          <div class="class-tile-label" data-i18n="maria">María</div>
         </div>
         <div class="class-video-tile" id="class-tile-s2" data-student="2">
-          <div class="class-tile-avatar avatar-s2">CR</div>
-          <div class="class-tile-name">Carlos Reyes</div>
-          <div class="class-tile-label">Carlos</div>
+          <div class="class-tile-avatar avatar-s2" data-i18n="cr">CR</div>
+          <div class="class-tile-name" data-i18n="carlos-reyes">Carlos Reyes</div>
+          <div class="class-tile-label" data-i18n="carlos">Carlos</div>
         </div>
         <div class="class-video-tile" id="class-tile-s3" data-student="3">
-          <div class="class-tile-avatar avatar-s3">SK</div>
-          <div class="class-tile-name">Sofía Kim</div>
-          <div class="class-tile-label">Sofía</div>
+          <div class="class-tile-avatar avatar-s3" data-i18n="sk">SK</div>
+          <div class="class-tile-name" data-i18n="sofia-kim">Sofía Kim</div>
+          <div class="class-tile-label" data-i18n="sofia">Sofía</div>
         </div>
       </div>
     </div>
@@ -717,14 +790,14 @@
     <div id="class-qa-assistant-panel" class="class-qa-assistant-panel hidden">
       <div class="class-qa-assistant-resize-handle" id="class-qa-assistant-resize"></div>
       <div class="class-qa-assistant-bar">
-        <span class="class-qa-assistant-label">Asistente</span>
+        <span class="class-qa-assistant-label" data-i18n="asistente">Asistente</span>
         <button id="class-qa-assistant-close" class="class-notes-toggle-btn">✕</button>
       </div>
       <div id="class-qa-assistant-messages" class="class-qa-assistant-messages"></div>
       <div class="chat-pill-wrap">
         <div class="chat-pill" id="assistant-pill">
           <textarea id="class-qa-assistant-input" class="chat-pill-input" rows="1"
-            placeholder="Pregunta al asistente…"></textarea>
+            placeholder="Pregunta al asistente…" data-i18n-placeholder="pregunta-al-asistente"></textarea>
           <div class="chat-pill-waveform hidden" id="assistant-waveform">
             <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
             <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
@@ -732,12 +805,12 @@
             <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
             <span class="waveform-bar"></span><span class="waveform-bar"></span>
           </div>
-          <button id="class-qa-assistant-voice-cancel" class="chat-pill-rec-btn chat-pill-cancel hidden" title="Cancelar">✕</button>
-          <button id="class-qa-assistant-voice-confirm" class="chat-pill-rec-btn chat-pill-confirm hidden" title="Enviar">✓</button>
-          <button id="class-qa-assistant-voice" class="chat-pill-mic" title="Grabar">
+          <button id="class-qa-assistant-voice-cancel" class="chat-pill-rec-btn chat-pill-cancel hidden" title="Cancelar" data-i18n-title="cancelar">✕</button>
+          <button id="class-qa-assistant-voice-confirm" class="chat-pill-rec-btn chat-pill-confirm hidden" title="Enviar" data-i18n-title="enviar">✓</button>
+          <button id="class-qa-assistant-voice" class="chat-pill-mic" title="Grabar" data-i18n-title="grabar">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
           </button>
-          <button id="class-qa-assistant-send" class="chat-pill-send" title="Enviar">
+          <button id="class-qa-assistant-send" class="chat-pill-send" title="Enviar" data-i18n-title="enviar">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
           </button>
         </div>
@@ -746,16 +819,16 @@
 
     <div id="class-sidebar-chat" class="class-sidebar class-sidebar--chat hidden">
       <div class="class-sidebar-chat-resize" id="class-sidebar-chat-resize"></div>
-      <div class="class-sidebar-header">Chat de clase</div>
+      <div class="class-sidebar-header" data-i18n="chat-de-clase">Chat de clase</div>
       <div id="class-rec-indicator" class="class-rec-indicator hidden">
         <span class="class-rec-dot"></span>
-        <span id="class-rec-label">Escuchando…</span>
+        <span id="class-rec-label" data-i18n="escuchando">Escuchando…</span>
       </div>
       <div id="class-qa-messages" class="class-qa-messages"></div>
       <div class="chat-pill-wrap">
         <div class="chat-pill" id="qa-pill">
           <textarea id="class-qa-input" class="chat-pill-input" rows="1"
-            placeholder="Escribe tu respuesta…" disabled></textarea>
+            placeholder="Escribe tu respuesta…" data-i18n-placeholder="escribe-tu-respuesta" disabled></textarea>
           <div class="chat-pill-waveform hidden" id="qa-waveform">
             <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
             <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
@@ -763,12 +836,12 @@
             <span class="waveform-bar"></span><span class="waveform-bar"></span><span class="waveform-bar"></span>
             <span class="waveform-bar"></span><span class="waveform-bar"></span>
           </div>
-          <button id="class-qa-voice-cancel" class="chat-pill-rec-btn chat-pill-cancel hidden" title="Cancelar">✕</button>
-          <button id="class-qa-voice-confirm" class="chat-pill-rec-btn chat-pill-confirm hidden" title="Enviar">✓</button>
-          <button id="class-qa-voice" class="chat-pill-mic" title="Grabar" disabled>
+          <button id="class-qa-voice-cancel" class="chat-pill-rec-btn chat-pill-cancel hidden" title="Cancelar" data-i18n-title="cancelar">✕</button>
+          <button id="class-qa-voice-confirm" class="chat-pill-rec-btn chat-pill-confirm hidden" title="Enviar" data-i18n-title="enviar">✓</button>
+          <button id="class-qa-voice" class="chat-pill-mic" title="Grabar" data-i18n-title="grabar" disabled>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
           </button>
-          <button id="class-qa-send" class="chat-pill-send" title="Enviar" disabled>
+          <button id="class-qa-send" class="chat-pill-send" title="Enviar" data-i18n-title="enviar" disabled>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
           </button>
         </div>
@@ -778,11 +851,11 @@
     <!-- Exit-class confirm modal -->
     <div id="class-exit-overlay" class="confirm-overlay hidden">
       <div class="confirm-modal">
-        <p class="confirm-title">¿Salir de la clase?</p>
-        <p class="confirm-body">La clase se reiniciará desde cero.</p>
+        <p class="confirm-title" data-i18n="salir-de-la-clase-2">¿Salir de la clase?</p>
+        <p class="confirm-body" data-i18n="la-clase-se-reiniciara-desde-cero">La clase se reiniciará desde cero.</p>
         <div class="confirm-btns">
-          <button id="class-exit-cancel" class="btn-ghost">Cancelar</button>
-          <button id="class-exit-ok" class="btn-danger">Salir</button>
+          <button id="class-exit-cancel" class="btn-ghost" data-i18n="cancelar">Cancelar</button>
+          <button id="class-exit-ok" class="btn-danger" data-i18n="salir">Salir</button>
         </div>
       </div>
     </div>
@@ -791,142 +864,206 @@
 
   <!-- ── Settings panel ───────────────────────────────────────────────── -->
   <div id="settings-panel" class="fullscreen hidden">
-    <div class="settings-drawer">
-      <div class="settings-header">
-        <span>Configuración</span>
-        <button id="btn-close-settings" class="icon-btn">✕</button>
+    <div class="settings-modal">
+      <button id="btn-close-settings" class="icon-btn settings-modal-close">✕</button>
+
+      <div class="settings-sidebar" id="settings-sidebar">
+        <div class="settings-sidebar-title" data-i18n="configuracion">Configuración</div>
+        <button class="settings-cat-btn active" data-category="general" data-i18n="general">General</button>
+        <button class="settings-cat-btn" data-category="llm" data-i18n="large-language-model">Large Language Model</button>
+        <button class="settings-cat-btn" data-category="embedding" data-i18n="embedding">Embedding</button>
+        <button class="settings-cat-btn" data-category="stt" data-i18n="speech-to-text">Speech to Text</button>
+        <button class="settings-cat-btn" data-category="ingesta" data-i18n="ingesta">Ingesta</button>
+        <button class="settings-cat-btn" data-category="reference" data-i18n="papers-de-referencia">Papers de referencia</button>
       </div>
-      <div class="settings-body">
-        <div class="settings-section">
-          <h3>Proveedor de IA</h3>
-          <div class="form-group">
-            <label>Proveedor</label>
-            <div class="provider-selector" id="s-provider-selector">
-              <button class="provider-btn" data-provider="openai">OpenAI</button>
-              <button class="provider-btn" data-provider="anthropic">Anthropic</button>
-              <button class="provider-btn" data-provider="deepseek">DeepSeek</button>
-            </div>
-          </div>
-          <div class="form-group">
-            <label id="s-api-key-label">API Key</label>
-            <input type="password" id="s-api-key" placeholder="sk-...">
-          </div>
-          <div class="form-group">
-            <label>Modelo</label>
-            <select id="s-llm-model"></select>
-          </div>
-          <div class="form-group">
-            <label>Semantic Scholar API Key <span class="optional">(opcional)</span></label>
-            <input type="text" id="s-ss-key">
-          </div>
-        </div>
-        <div class="settings-section">
-          <h3>Programación</h3>
-          <div class="form-row">
+
+      <div class="settings-content">
+
+        <!-- General -->
+        <div class="settings-pane" id="settings-pane-general">
+          <h2 class="settings-pane-title" data-i18n="general">General</h2>
+          <div class="settings-section">
+            <h3 data-i18n="idioma">Idioma</h3>
             <div class="form-group">
-              <label>Día</label>
-              <select id="s-fetch-day">
-                <option value="monday">Lunes</option><option value="tuesday">Martes</option>
-                <option value="wednesday">Miércoles</option><option value="thursday">Jueves</option>
-                <option value="friday">Viernes</option><option value="saturday">Sábado</option>
-                <option value="sunday">Domingo</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Hora</label>
-              <input type="time" id="s-fetch-hour">
-            </div>
-            <div class="form-group">
-              <label>Máx.</label>
-              <select id="s-max-papers">
-                <option value="1">1</option><option value="2">2</option>
-                <option value="3">3</option><option value="5">5</option>
+              <label data-i18n="idioma-de-la-interfaz">Idioma de la interfaz</label>
+              <select id="s-language">
+                <option value="es" data-i18n="espanol">Español</option>
+                <option value="en" data-i18n="english">English</option>
               </select>
             </div>
           </div>
-        </div>
-        <div class="settings-section">
-          <h3>Categorías ArXiv</h3>
-          <div id="s-categories-grid" class="categories-grid"></div>
-        </div>
-        <div class="settings-section">
-          <h3>Universidades</h3>
-          <p class="settings-hint">Una por línea. Papers de estas instituciones pasan el filtro.</p>
-          <textarea id="s-universities" rows="5"></textarea>
-        </div>
-        <div class="settings-section">
-          <h3>Centros de Research / Frontier AI</h3>
-          <p class="settings-hint">Una por línea. Papers de Anthropic, OpenAI, DeepMind, Meta, etc. también pasan el filtro.</p>
-          <textarea id="s-research-centers" rows="5" placeholder="Anthropic&#10;OpenAI&#10;Google DeepMind&#10;Meta AI"></textarea>
-        </div>
-        <div class="settings-section">
-          <h3>Autores</h3>
-          <textarea id="s-authors" rows="4" placeholder="LeCun&#10;Bengio"></textarea>
-        </div>
-        <div class="settings-section">
-          <h3>Palabras clave</h3>
-          <p class="settings-hint">Una por línea. Temas que te interesan más allá de tu colección de referencia — amplían la búsqueda a cosas nuevas, no solo a lo que ya leíste.</p>
-          <textarea id="s-keywords" rows="4" placeholder="reinforcement learning&#10;diffusion models"></textarea>
-        </div>
-        <div class="settings-section">
-          <h3>Transcripción de voz</h3>
-          <div class="form-group">
-            <label>Proveedor</label>
-            <select id="s-transcription-provider">
-              <option value="groq">Groq Whisper (recomendado — rápido, multilingual)</option>
-              <option value="webspeech">Web Speech API (rápida, gratis)</option>
-              <option value="whisper">Whisper / OpenAI (precisa)</option>
-              <option value="whisper-local">Whisper local / whisper.cpp (gratis, sin internet)</option>
-            </select>
+          <div class="settings-section">
+            <h3 data-i18n="version">Versión</h3>
+            <p class="settings-hint" id="s-app-version">—</p>
           </div>
-          <div class="form-group" id="s-groq-key-group">
-            <label>Groq API Key <a href="https://console.groq.com/keys" target="_blank" style="font-size:11px;margin-left:6px">Obtener gratis →</a></label>
-            <input type="password" id="s-groq-api-key" placeholder="gsk_...">
-          </div>
-          <p class="settings-hint">Groq usa <code>whisper-large-v3-turbo</code> (español+inglés, más rápido que OpenAI). Web Speech usa Chromium directamente. Whisper local requiere compilar <code>tools/whisper.cpp/stream</code>.</p>
         </div>
-        <div class="settings-section">
-          <h3>Papers de Referencia</h3>
-          <p class="settings-hint">PDFs de papers que ya encontraste interesantes. Nuevos papers se filtran por similitud semántica contra esta colección.</p>
-          <div class="form-group">
-            <label>Carpeta</label>
-            <div class="folder-row">
-              <input type="text" id="s-ref-folder" readonly placeholder="Sin carpeta configurada">
-              <button id="btn-pick-ref-folder" class="btn-secondary">Explorar</button>
+
+        <!-- LLM -->
+        <div class="settings-pane hidden" id="settings-pane-llm">
+          <h2 class="settings-pane-title" data-i18n="large-language-model">Large Language Model</h2>
+          <p class="settings-hint" data-i18n="proveedor-y-modelo-usados-en-resumenes-quiz-chat">Proveedor y modelo usados en resúmenes, quiz, chat y los agentes del modo Clase.</p>
+          <div class="settings-section">
+            <div class="form-group">
+              <label data-i18n="proveedor">Proveedor</label>
+              <div class="provider-selector" id="s-provider-selector">
+                <button class="provider-btn" data-provider="openai" data-i18n="openai">OpenAI</button>
+                <button class="provider-btn" data-provider="anthropic" data-i18n="anthropic">Anthropic</button>
+                <button class="provider-btn" data-provider="deepseek" data-i18n="deepseek">DeepSeek</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label id="s-api-key-label" data-i18n="api-key">API Key</label>
+              <input type="password" id="s-api-key" placeholder="sk-..." data-i18n-placeholder="sk-2">
+            </div>
+            <div class="form-group">
+              <label data-i18n="modelo">Modelo</label>
+              <select id="s-llm-model"></select>
             </div>
           </div>
-          <div class="form-group">
-            <label>Umbral de similitud <span class="optional">(0.0 – 1.0)</span></label>
-            <input type="number" id="s-similarity-threshold" min="0" max="1" step="0.05" placeholder="0.72" class="input-narrow">
-          </div>
-          <div class="folder-row ref-stats-row">
-            <span id="s-ref-stats" class="ref-stats-label">— papers indexados</span>
-            <button id="btn-reindex" class="btn-secondary">Re-indexar</button>
+        </div>
+
+        <!-- Embedding -->
+        <div class="settings-pane hidden" id="settings-pane-embedding">
+          <h2 class="settings-pane-title" data-i18n="embedding">Embedding</h2>
+          <p class="settings-hint" data-i18n="motor-de-similitud-semantica-usado-para-filtrar-">Motor de similitud semántica usado para filtrar papers nuevos contra tu colección de referencia y palabras clave.</p>
+          <div class="settings-section">
+            <div class="form-group">
+              <label data-i18n="proveedor">Proveedor</label>
+              <div class="provider-selector" id="s-embedding-provider-selector">
+                <button class="embedding-provider-btn" data-provider="openai" data-i18n="openai">OpenAI</button>
+                <button class="embedding-provider-btn" data-provider="local" data-i18n="local-sin-internet">Local (sin internet)</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label data-i18n="modelo">Modelo</label>
+              <select id="s-embedding-model"></select>
+            </div>
+            <div class="form-group" id="s-embedding-key-group">
+              <label>API Key <span class="optional" data-i18n="opcional-si-vacio-usa-la-del-proveedor-llm">(opcional — si vacío, usa la del proveedor LLM)</span></label>
+              <input type="password" id="s-embedding-api-key" placeholder="sk-..." data-i18n-placeholder="sk-2">
+            </div>
+            <p class="settings-hint hidden" id="s-embedding-local-hint" data-i18n="el-modelo-se-descarga-una-sola-vez-25-mb-y-corre">
+              El modelo se descarga una sola vez (~25 MB) y corre en tu máquina: sin API key, sin costo por paper y sin enviar nada a internet.
+            </p>
+            <p class="field-error hidden" id="s-embedding-reindex-warning">
+              Cambiaste de motor de embeddings: los vectores del índice anterior no son comparables con los del nuevo modelo.
+              Reindexa tu carpeta de referencia (pestaña «Papers de referencia») o el filtro de similitud quedará sin usar.
+            </p>
           </div>
         </div>
-        <div class="settings-section">
-          <h3>Modelo para Class Mode</h3>
-          <p class="settings-hint">Proveedor y modelo usados para pistas, evaluaciones y Q&A. Por defecto DeepSeek (más rápido y barato para intercambios frecuentes).</p>
-          <div class="form-group">
-            <label>Proveedor</label>
-            <div class="provider-selector" id="s-class-provider-selector">
-              <button class="class-provider-btn" data-provider="openai">OpenAI</button>
-              <button class="class-provider-btn" data-provider="anthropic">Anthropic</button>
-              <button class="class-provider-btn" data-provider="deepseek">DeepSeek</button>
+
+        <!-- Speech to Text -->
+        <div class="settings-pane hidden" id="settings-pane-stt">
+          <h2 class="settings-pane-title" data-i18n="speech-to-text">Speech to Text</h2>
+          <div class="settings-section">
+            <div class="form-group">
+              <label data-i18n="proveedor">Proveedor</label>
+              <select id="s-transcription-provider">
+                <option value="groq" data-i18n="groq-whisper-recomendado-rapido-multilingual">Groq Whisper (recomendado — rápido, multilingual)</option>
+                <option value="openai" data-i18n="openai-preciso">OpenAI (preciso)</option>
+                <option value="whisper-local" data-i18n="whisper-local-whisper-cpp-gratis-sin-internet">Whisper local / whisper.cpp (gratis, sin internet)</option>
+              </select>
+            </div>
+            <div class="form-group" id="s-stt-model-group">
+              <label data-i18n="modelo">Modelo</label>
+              <select id="s-stt-model"></select>
+            </div>
+            <div class="form-group" id="s-stt-key-group">
+              <label id="s-stt-key-label" data-i18n="api-key">API Key</label>
+              <input type="password" id="s-stt-api-key" placeholder="gsk_..." data-i18n-placeholder="gsk">
+            </div>
+            <p class="settings-hint">Whisper local requiere compilar <code>tools/whisper.cpp/stream</code>.</p>
+          </div>
+        </div>
+
+        <!-- Ingesta -->
+        <div class="settings-pane hidden" id="settings-pane-ingesta">
+          <h2 class="settings-pane-title" data-i18n="ingesta">Ingesta</h2>
+          <div class="settings-section">
+            <h3 data-i18n="programacion">Programación</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label data-i18n="dia">Día</label>
+                <select id="s-fetch-day">
+                  <option value="monday" data-i18n="lunes">Lunes</option><option value="tuesday" data-i18n="martes">Martes</option>
+                  <option value="wednesday" data-i18n="miercoles">Miércoles</option><option value="thursday" data-i18n="jueves">Jueves</option>
+                  <option value="friday" data-i18n="viernes">Viernes</option><option value="saturday" data-i18n="sabado">Sábado</option>
+                  <option value="sunday" data-i18n="domingo">Domingo</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label data-i18n="hora">Hora</label>
+                <input type="time" id="s-fetch-hour">
+              </div>
+              <div class="form-group">
+                <label data-i18n="max">Máx.</label>
+                <select id="s-max-papers">
+                  <option value="1">1</option><option value="2">2</option>
+                  <option value="3">3</option><option value="5">5</option>
+                </select>
+              </div>
             </div>
           </div>
-          <div class="form-group">
-            <label>Modelo</label>
-            <select id="s-class-llm-model"></select>
+          <div class="settings-section">
+            <h3 data-i18n="categorias-arxiv">Categorías ArXiv</h3>
+            <div id="s-categories-grid" class="categories-grid"></div>
           </div>
-          <div class="form-group">
-            <label id="s-class-api-key-label">API Key <span class="optional">(opcional — si es distinta a la del proveedor principal)</span></label>
-            <input type="password" id="s-class-api-key" placeholder="sk-...">
+          <div class="settings-section">
+            <h3 data-i18n="universidades">Universidades</h3>
+            <p class="settings-hint" data-i18n="una-por-linea-papers-de-estas-instituciones-pasa">Una por línea. Papers de estas instituciones pasan el filtro.</p>
+            <textarea id="s-universities" rows="5"></textarea>
+          </div>
+          <div class="settings-section">
+            <h3 data-i18n="centros-de-research-frontier-ai">Centros de Research / Frontier AI</h3>
+            <p class="settings-hint" data-i18n="una-por-linea-papers-de-anthropic-openai-deepmin">Una por línea. Papers de Anthropic, OpenAI, DeepMind, Meta, etc. también pasan el filtro.</p>
+            <textarea id="s-research-centers" rows="5" placeholder="Anthropic&#10;OpenAI&#10;Google DeepMind&#10;Meta AI" data-i18n-placeholder="anthropic-10-openai-10-google-deepmind-10-meta-a"></textarea>
+          </div>
+          <div class="settings-section">
+            <h3 data-i18n="autores">Autores</h3>
+            <textarea id="s-authors" rows="4" placeholder="LeCun&#10;Bengio" data-i18n-placeholder="lecun-10-bengio"></textarea>
+          </div>
+          <div class="settings-section">
+            <h3 data-i18n="palabras-clave">Palabras clave</h3>
+            <p class="settings-hint" data-i18n="una-por-linea-temas-que-te-interesan-mas-alla-de">Una por línea. Temas que te interesan más allá de tu colección de referencia — amplían la búsqueda a cosas nuevas, no solo a lo que ya leíste.</p>
+            <textarea id="s-keywords" rows="4" placeholder="reinforcement learning&#10;diffusion models" data-i18n-placeholder="reinforcement-learning-10-diffusion-models"></textarea>
+          </div>
+          <div class="settings-section">
+            <h3 data-i18n="semantic-scholar">Semantic Scholar</h3>
+            <div class="form-group">
+              <label>API Key <span class="optional" data-i18n="opcional">(opcional)</span></label>
+              <input type="text" id="s-ss-key">
+            </div>
           </div>
         </div>
-        <div class="settings-footer">
-          <button id="btn-save-settings" class="btn-primary">Guardar</button>
+
+        <!-- Papers de referencia -->
+        <div class="settings-pane hidden" id="settings-pane-reference">
+          <h2 class="settings-pane-title" data-i18n="papers-de-referencia">Papers de referencia</h2>
+          <p class="settings-hint" data-i18n="pdfs-de-papers-que-ya-encontraste-interesantes-n">PDFs de papers que ya encontraste interesantes. Nuevos papers se filtran por similitud semántica contra esta colección.</p>
+          <div class="settings-section">
+            <div class="form-group">
+              <label data-i18n="carpeta">Carpeta</label>
+              <div class="folder-row">
+                <input type="text" id="s-ref-folder" readonly placeholder="Sin carpeta configurada" data-i18n-placeholder="sin-carpeta-configurada">
+                <button id="btn-pick-ref-folder" class="btn-secondary" data-i18n="explorar">Explorar</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Umbral de similitud <span class="optional">(0.0 – 1.0)</span></label>
+              <input type="number" id="s-similarity-threshold" min="0" max="1" step="0.05" placeholder="0.72" class="input-narrow">
+              <p class="settings-hint" id="s-threshold-hint"></p>
+            </div>
+            <div class="folder-row ref-stats-row">
+              <span id="s-ref-stats" class="ref-stats-label" data-i18n="papers-indexados">— papers indexados</span>
+              <button id="btn-reindex" class="btn-secondary" data-i18n="re-indexar">Re-indexar</button>
+            </div>
+          </div>
         </div>
+
+      </div>
+
+      <div class="settings-footer">
+        <button id="btn-save-settings" class="btn-primary" data-i18n="guardar">Guardar</button>
       </div>
     </div>
   </div>
@@ -937,18 +1074,18 @@
   <div id="fetch-overlay" class="fetch-overlay hidden">
     <div class="fetch-overlay-content">
       <span class="spinner spinner-lg"></span>
-      <p id="fetch-overlay-text">Buscando papers nuevos…</p>
+      <p id="fetch-overlay-text" data-i18n="buscando-papers-nuevos">Buscando papers nuevos…</p>
     </div>
   </div>
 
   <!-- Confirm class modal -->
   <div id="class-confirm-overlay" class="confirm-overlay hidden">
     <div class="confirm-modal">
-      <p class="confirm-title">¿Iniciar clase?</p>
+      <p class="confirm-title" data-i18n="iniciar-clase-2">¿Iniciar clase?</p>
       <p class="confirm-body" id="class-confirm-paper-title"></p>
       <div class="confirm-btns">
-        <button id="class-confirm-cancel" class="btn-ghost">Cancelar</button>
-        <button id="class-confirm-ok" class="btn-primary">Iniciar</button>
+        <button id="class-confirm-cancel" class="btn-ghost" data-i18n="cancelar">Cancelar</button>
+        <button id="class-confirm-ok" class="btn-primary" data-i18n="iniciar">Iniciar</button>
       </div>
     </div>
   </div>
@@ -956,18 +1093,18 @@
   <!-- Annotation popup (shown on text selection in PDF viewer) -->
   <div id="annotation-popup" class="annotation-popup hidden">
     <p class="annotation-preview" id="annotation-preview"></p>
-    <textarea id="annotation-comment" class="annotation-comment" placeholder="Comentario (opcional)..." rows="4"></textarea>
+    <textarea id="annotation-comment" class="annotation-comment" placeholder="Comentario (opcional)..." data-i18n-placeholder="comentario-opcional" rows="4"></textarea>
     <div class="annotation-btns">
-      <button id="btn-annotation-cancel" class="btn-ghost">Cancelar</button>
-      <button id="btn-annotation-confirm" class="btn-primary">Añadir a notas</button>
+      <button id="btn-annotation-cancel" class="btn-ghost" data-i18n="cancelar">Cancelar</button>
+      <button id="btn-annotation-confirm" class="btn-primary" data-i18n="anadir-a-notas">Añadir a notas</button>
     </div>
   </div>
 
   <div id="ctx-menu" class="ctx-menu hidden">
-    <button class="ctx-item" data-action="open">Abrir</button>
-    <button class="ctx-item ctx-ref-only ctx-hidden" data-action="rename">Renombrar</button>
+    <button class="ctx-item" data-action="open" data-i18n="abrir">Abrir</button>
+    <button class="ctx-item ctx-ref-only ctx-hidden" data-action="rename" data-i18n="renombrar">Renombrar</button>
     <div class="ctx-separator"></div>
-    <button class="ctx-item ctx-item-danger" data-action="delete">Eliminar</button>
+    <button class="ctx-item ctx-item-danger" data-action="delete" data-i18n="eliminar">Eliminar</button>
   </div>
 
   <script src="../node_modules/pdfjs-dist/build/pdf.min.js"></script>

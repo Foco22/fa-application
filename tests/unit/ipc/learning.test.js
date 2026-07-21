@@ -43,7 +43,9 @@ describe('chat-message', () => {
     const result = await invoke('chat-message', { message: 'Explica el método', paperId: '2401.00001', history: [] })
 
     expect(deps.createLLM).toHaveBeenCalledWith(SETTINGS)
-    expect(deps.chatWithPaper).toHaveBeenCalledWith('Explica el método', PAPER, [], mockLLM)
+    // El idioma activo viaja al chat: las respuestas salen en el mismo idioma que
+    // el resto de la app, no mezclado.
+    expect(deps.chatWithPaper).toHaveBeenCalledWith('Explica el método', PAPER, [], mockLLM, undefined)
     expect(result).toBe('La respuesta es...')
   })
 
@@ -62,7 +64,7 @@ describe('chat-message', () => {
 
     await invoke('chat-message', { message: 'hola', paperId: null, history: [] })
 
-    expect(deps.chatWithPaper).toHaveBeenCalledWith('hola', null, [], expect.anything())
+    expect(deps.chatWithPaper).toHaveBeenCalledWith('hola', null, [], expect.anything(), undefined)
   })
 
   it('defaults history to [] when not provided', async () => {
@@ -80,7 +82,27 @@ describe('chat-message', () => {
 
     await invoke('chat-message', { message: 'hola', paperId: null })
 
-    expect(deps.chatWithPaper).toHaveBeenCalledWith('hola', null, [], expect.anything())
+    expect(deps.chatWithPaper).toHaveBeenCalledWith('hola', null, [], expect.anything(), undefined)
+  })
+
+  // El idioma sale del setting guardado, no de un valor del renderer: el chat
+  // responde en el mismo idioma que el resto de la app.
+  it('passes the saved language through to chatWithPaper', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = {
+      getAllSettings: vi.fn().mockReturnValue({ ...SETTINGS, language: 'en' }),
+      getPaper:      vi.fn().mockReturnValue(null),
+    }
+    const deps = {
+      createLLM:     vi.fn().mockReturnValue({}),
+      chatWithPaper: vi.fn().mockResolvedValue('ok'),
+      vault:         {},
+    }
+    registerLearningHandlers({ ipcMain, db, deps, mainWindow: null })
+
+    await invoke('chat-message', { message: 'hi', paperId: null })
+
+    expect(deps.chatWithPaper).toHaveBeenCalledWith('hi', null, [], expect.anything(), 'en')
   })
 })
 
