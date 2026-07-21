@@ -11,9 +11,22 @@ const {
   parseJSONResponse,
 } = require('../prompts')
 
-function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = false, supportsVision = true } = {}, _client = null) {
+function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = false, supportsVision = true, providerName = 'openai', language = 'es' } = {}, _client = null, onUsage = null) {
   const client = _client || new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) })
   const MODEL = model || 'gpt-4o'
+
+  // El tracking vive dentro del proveedor, no en los IPC handlers: un call site
+  // nuevo queda instrumentado solo. Se registra unicamente en el camino feliz.
+  function record(action_type, usage) {
+    if (!onUsage) return
+    onUsage({
+      action_type,
+      provider: providerName,
+      model: MODEL,
+      prompt_tokens:     usage?.prompt_tokens     ?? null,
+      completion_tokens: usage?.completion_tokens ?? null,
+    })
+  }
 
   const provider = {
     async streamSummary(paper, onChunk) {
@@ -21,18 +34,25 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
         model: MODEL,
         max_tokens: 8192,
         stream: true,
-        messages: [{ role: 'user', content: buildSummaryPrompt(paper) }],
+        // Sin include_usage, OpenAI NO devuelve uso en streaming y el resumen
+        // (el flujo mas caro de la app) quedaria sin costo.
+        stream_options: { include_usage: true },
+        messages: [{ role: 'user', content: buildSummaryPrompt(paper, language) }],
       }
       if (jsonMode) params.response_format = { type: 'json_object' }
       const stream = await client.chat.completions.create(params)
       let fullText = ''
+      let usage = null
       for await (const chunk of stream) {
+        // El uso llega en un chunk final sin choices.
+        if (chunk.usage) usage = chunk.usage
         const text = chunk.choices[0]?.delta?.content
         if (text) {
           onChunk(text)
           fullText += text
         }
       }
+      record('summary', usage)
       return fullText
     },
 
@@ -40,13 +60,15 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
       const response = await client.chat.completions.create({
         model: MODEL,
         response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content: buildQuizPrompt(paper) }],
+        messages: [{ role: 'user', content: buildQuizPrompt(paper, language) }],
       })
+      record('quiz', response.usage)
       return parseJSONResponse(response.choices[0].message.content)
     },
 
     async chat(messages) {
       const response = await client.chat.completions.create({ model: MODEL, messages })
+      record('chat', response.usage)
       const msg = response.choices[0].message
       // reasoning models (e.g. DeepSeek R1-style) put the answer in content and
       // the thinking in reasoning_content — but content can be null if only
@@ -62,6 +84,7 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
           max_tokens: 300,
           messages: [{ role: 'user', content: buildAffiliationsPrompt(context) }],
         })
+        record('affiliations', response.usage)
         const parsed = parseJSONResponse(response.choices[0].message.content)
         return Array.isArray(parsed) ? parsed : null
       } catch {
@@ -76,6 +99,7 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
           max_tokens: 500,
           messages: [{ role: 'user', content: buildMetadataPrompt(firstPageText) }],
         })
+        record('metadata', response.usage)
         return parseJSONResponse(response.choices[0].message.content)
       } catch {
         return { title: '', authors: '', abstract: '' }
@@ -89,6 +113,7 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
           max_tokens: 150,
           messages: [{ role: 'user', content: buildAbstractSummaryPrompt(abstract) }],
         })
+        record('abstract_summary', response.usage)
         return (response.choices[0].message.content || '').trim()
       } catch {
         return (abstract || '').slice(0, 200)
@@ -108,6 +133,7 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
           ]
         }]
       })
+      record('vision', response.usage)
       return response.choices[0].message.content
     },
   }
@@ -118,7 +144,7 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
   if (supportsVision) {
     // OCR fiel de una página a Markdown. max_tokens muy por encima de
     // interpretImage (400): una página densa puede superar 1500-2000 tokens.
-    provider.transcribePageToMarkdown = async (base64, mimeType = 'image/png', { onUsage } = {}) => {
+    provider.transcribePageToMarkdown = async (base64, mimeType = 'image/png') => {
       const response = await client.chat.completions.create({
         model: MODEL,
         max_tokens: 4096,
@@ -127,15 +153,13 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
           { type: 'text', text: buildOcrPagePrompt() }
         ]}]
       })
-      const text = response.choices[0].message.content
-      if (onUsage && response.usage) {
-        onUsage({ prompt_tokens: response.usage.prompt_tokens, completion_tokens: response.usage.completion_tokens })
-      }
-      return text
+      record('ocr', response.usage)
+      return response.choices[0].message.content
     }
 
-    // Interpretación profunda de una figura (opt-in, action_type 'ocr_figure').
-    provider.interpretFigureInDepth = async (base64, mimeType = 'image/png', { onUsage } = {}) => {
+    // Interpretación profunda de una figura (siempre corre como parte del OCR
+    // — ver src/ingestion/ocr.js — contabilizada aparte bajo 'ocr_figure').
+    provider.interpretFigureInDepth = async (base64, mimeType = 'image/png') => {
       const response = await client.chat.completions.create({
         model: MODEL,
         max_tokens: 1024,
@@ -144,19 +168,16 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
           { type: 'text', text: buildFigureInterpretationPrompt() }
         ]}]
       })
-      const text = response.choices[0].message.content
-      if (onUsage && response.usage) {
-        onUsage({ prompt_tokens: response.usage.prompt_tokens, completion_tokens: response.usage.completion_tokens })
-      }
-      return text
+      record('ocr_figure', response.usage)
+      return response.choices[0].message.content
     }
   }
 
   return provider
 }
 
-function createOpenAIProvider(apiKey, model = null, _client = null) {
-  return createOpenAICompatibleProvider(apiKey, { model: model || 'gpt-4o', jsonMode: true }, _client)
+function createOpenAIProvider(apiKey, model = null, _client = null, onUsage = null, language = 'es') {
+  return createOpenAICompatibleProvider(apiKey, { model: model || 'gpt-4o', jsonMode: true, providerName: 'openai', language }, _client, onUsage)
 }
 
 module.exports = { createOpenAIProvider, createOpenAICompatibleProvider }

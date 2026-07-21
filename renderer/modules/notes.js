@@ -1,6 +1,7 @@
 import { state } from './state.js'
 import { mdInline } from '../summary-utils.js'
 import { escAttr } from './utils.js'
+import { t } from './language.js'
 
 export function notesLineParts(text) {
   if (!text) return { cls: '', html: '' }
@@ -202,14 +203,14 @@ export function onNotesBlur() { flushNotesRender() }
 
 export function scheduleNotesSave() {
   const indicator = document.getElementById('notes-save-indicator')
-  indicator.textContent = 'Guardando…'
+  indicator.textContent = t('guardando')
   indicator.className = 'save-indicator saving'
   clearTimeout(state.notesSaveTimer)
   state.notesSaveTimer = setTimeout(async () => {
     const notes = notesGetText()
     await window.api.saveNotes({ paperId: state.activePaper.id, notes })
     state.activePaper = { ...state.activePaper, notes }
-    indicator.textContent = 'Guardado'
+    indicator.textContent = t('guardado')
     indicator.className = 'save-indicator saved'
     setTimeout(() => {
       indicator.textContent = ''

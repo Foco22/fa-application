@@ -222,20 +222,11 @@ describe('Anthropic provider — transcribePageToMarkdown', () => {
     expect(args.max_tokens).toBeGreaterThanOrEqual(4000)
   })
 
-  it('reports usage via onUsage on success', async () => {
-    const mockClient = makeVisionClient('text', { input_tokens: 123, output_tokens: 456 })
-    const onUsage = vi.fn()
-    await createAnthropicProvider('sk-test', null, mockClient).transcribePageToMarkdown(B64, 'image/png', { onUsage })
-    expect(onUsage).toHaveBeenCalledWith(expect.objectContaining({ prompt_tokens: 123, completion_tokens: 456 }))
-  })
-
-  it('does not report usage when the call throws', async () => {
+  it('propagates the error when the call throws, so the orchestrator can fall back to pdf-parse', async () => {
     const mockClient = { messages: { create: vi.fn().mockRejectedValue(new Error('rate limit')), stream: vi.fn() } }
-    const onUsage = vi.fn()
     await expect(
-      createAnthropicProvider('sk-test', null, mockClient).transcribePageToMarkdown(B64, 'image/png', { onUsage })
-    ).rejects.toThrow()
-    expect(onUsage).not.toHaveBeenCalled()
+      createAnthropicProvider('sk-test', null, mockClient).transcribePageToMarkdown(B64, 'image/png')
+    ).rejects.toThrow('rate limit')
   })
 })
 
@@ -250,12 +241,6 @@ describe('Anthropic provider — interpretFigureInDepth', () => {
     expect(result).toBe('La figura 2 muestra la arquitectura...')
   })
 
-  it('reports usage via onUsage on success', async () => {
-    const mockClient = makeVisionClient('desc', { input_tokens: 10, output_tokens: 90 })
-    const onUsage = vi.fn()
-    await createAnthropicProvider('sk-test', null, mockClient).interpretFigureInDepth(B64, 'image/png', { onUsage })
-    expect(onUsage).toHaveBeenCalledWith(expect.objectContaining({ prompt_tokens: 10, completion_tokens: 90 }))
-  })
 })
 
 // ─── chat ─────────────────────────────────────────────────────────────────────

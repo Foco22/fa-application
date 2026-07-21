@@ -19,7 +19,10 @@ const { chatWithPaper }               = require('./src/chat')
 const { createScheduler }     = require('./src/scheduler')
 const cron                    = require('node-cron')
 const { registerHandlers }    = require('./src/ipc')
-const { createEmbeddings, indexReferenceFolder, indexFiles, scoreEmbeddingAgainst, embedKeywordList } = require('./src/embeddings')
+const { createEmbeddings, hasEmbeddingConfig, indexReferenceFolder, indexFiles, scoreEmbeddingAgainst, embedKeywordList } = require('./src/embeddings')
+const { refreshPricingIfStale } = require('./src/pricing')
+const { makeUsageRecorder } = require('./src/costs')
+const { newPapersMessage } = require('./src/notifications')
 const { extractKeywords, keywordOverlap } = require('./src/ingestion/keywords')
 const { createReranker } = require('./src/rerank')
 const { createTranscription } = require('./src/transcription')
@@ -134,17 +137,25 @@ app.whenReady().then(() => {
   })
 
   const settings = db.getAllSettings()
+
+  // El tracking de costos se inyecta UNA sola vez, acá: las factories que reciben
+  // los IPC handlers ya vienen instrumentadas, así que ningún handler (ni los que
+  // se agreguen mañana) necesita acordarse de registrar el uso.
+  const onUsage = makeUsageRecorder(db)
+
   const { runFetch } = registerHandlers({
     ipcMain, db, mainWindow,
     deps: {
-      createLLM,
+      createLLM:          (s)            => createLLM(s, onUsage),
       chatWithPaper, fetchPapers,
       getAffiliations, matchesUniversityList,
       downloadPdf, extractText, extractFirstPage, matchesUniversityInText,
-      createEmbeddings, scoreEmbeddingAgainst, embedKeywordList, indexReferenceFolder, indexFiles,
+      createEmbeddings:   (s)            => createEmbeddings(s, onUsage),
+      hasEmbeddingConfig, scoreEmbeddingAgainst, embedKeywordList, indexReferenceFolder, indexFiles,
       extractKeywords, keywordOverlap, createReranker,
-      createTranscription,
+      createTranscription: (key, opts, client) => createTranscription(key, opts, client, onUsage),
       createWhisperStream,
+      getAppVersion: () => app.getVersion(),
       whisperStreamBin:  fs.existsSync(WHISPER_STREAM_BIN) ? WHISPER_STREAM_BIN : null,
       whisperModelsDir:  fs.existsSync(WHISPER_MODELS_DIR) ? WHISPER_MODELS_DIR : null,
       shell, dialog,
@@ -155,10 +166,20 @@ app.whenReady().then(() => {
     }
   })
 
+  // Refresca la tabla de precios en segundo plano si la caché está vencida.
+  // No bloquea el arranque ni molesta al usuario si falla: sin internet se
+  // sigue usando la última tabla válida.
+  refreshPricingIfStale(db, axios)
+    .then(r => {
+      if (r.updated)    console.log(`[startup] Pricing: ${r.count} modelos actualizados`)
+      else if (r.error) console.error(`[startup] Pricing: ${r.error} — se usa la tabla cacheada`)
+    })
+    .catch(err => console.error('[startup] Pricing error:', err.message))
+
   // Auto-index reference folder on startup
-  if (settings.referenceFolderPath && settings.apiKey) {
-    const embeddingProvider = createEmbeddings(settings)
-    const llm = createLLM(settings)
+  if (settings.referenceFolderPath && hasEmbeddingConfig(settings)) {
+    const embeddingProvider = createEmbeddings(settings, onUsage)
+    const llm = settings.apiKey ? createLLM(settings, onUsage) : null
     indexReferenceFolder(settings.referenceFolderPath, db, embeddingProvider, pdfParse, llm)
       .then(r => console.log(`[startup] Reference index: +${r.indexed} indexed, ${r.errors} errors`))
       .catch(err => console.error('[startup] Reference index error:', err.message))
@@ -167,9 +188,11 @@ app.whenReady().then(() => {
   scheduler = createScheduler(settings, async () => {
     const result = await runFetch()
     if (Array.isArray(result) && result.length > 0) {
+      // El idioma se relee de la DB en cada notificación: el scheduler puede
+      // dispararse horas después de que el usuario cambió el idioma.
       new Notification({
         title: 'Paper Learning',
-        body: `${result.length} paper${result.length > 1 ? 's' : ''} nuevo${result.length > 1 ? 's' : ''} listo${result.length > 1 ? 's' : ''}`
+        body: newPapersMessage(result.length, db.getSetting('language'))
       }).show()
     }
   }, cron)

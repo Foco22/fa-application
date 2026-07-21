@@ -4,7 +4,7 @@ function registerLearningHandlers({ ipcMain, db, deps, mainWindow }) {
   const {
     createLLM, chatWithPaper, vault,
     rasterizePdf, transcribePdfToMarkdown, pdfParse, extractPagesText,
-    recordUsage, OCR_MAX_CHARS = 200000,
+    OCR_MAX_CHARS = 200000,
   } = deps
 
   ipcMain.handle('save-quiz-result', (_e, payload) => {
@@ -44,14 +44,14 @@ function registerLearningHandlers({ ipcMain, db, deps, mainWindow }) {
     const settings = db.getAllSettings()
     const llm      = createLLM(settings)
     const paper    = paperId ? db.getPaper(paperId) : null
-    return chatWithPaper(message, paper, history || [], llm)
+    return chatWithPaper(message, paper, history || [], llm, settings.language)
   })
 
   // OCR bajo demanda — ÚNICO punto de entrada al OCR. Solo sobre un paper que YA
   // existe en la DB y tiene su PDF en raw/. Nunca lo dispara runFetch /
   // index-files / indexReferenceFolder. Funciona igual para papers de fetch y de
   // referencia (ref-…). Aplica también a re-corridas (sobrescribe).
-  ipcMain.handle('generate-ocr', async (_e, { paperId, interpretFigures = false } = {}) => {
+  ipcMain.handle('generate-ocr', async (_e, { paperId } = {}) => {
     const paper = db.getPaper(paperId)
     if (!paper) return { success: false, error: 'not-found' }
 
@@ -69,8 +69,6 @@ function registerLearningHandlers({ ipcMain, db, deps, mainWindow }) {
     try {
       result = await transcribePdfToMarkdown(buffer, {
         rasterizePdf, llm, pdfParse, extractPagesText,
-        interpretFigures: !!interpretFigures,
-        record: recordUsage,
         onProgress: (page, total) => mainWindow?.webContents.send('ocr-progress', { paperId, page, total }),
       })
     } catch (err) {

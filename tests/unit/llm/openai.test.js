@@ -228,12 +228,6 @@ describe('OpenAI provider — transcribePageToMarkdown', () => {
     expect(mockClient.chat.completions.create.mock.calls[0][0].max_tokens).toBeGreaterThanOrEqual(4000)
   })
 
-  it('reports usage via onUsage on success', async () => {
-    const mockClient = makeVisionClient('text', { prompt_tokens: 321, completion_tokens: 654 })
-    const onUsage = vi.fn()
-    await createOpenAIProvider('sk-test', null, mockClient).transcribePageToMarkdown(B64, 'image/png', { onUsage })
-    expect(onUsage).toHaveBeenCalledWith(expect.objectContaining({ prompt_tokens: 321, completion_tokens: 654 }))
-  })
 })
 
 describe('OpenAI provider — interpretFigureInDepth', () => {

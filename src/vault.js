@@ -4,19 +4,33 @@ const os   = require('os')
 
 const DEFAULT_VAULT_DIR = path.join(os.homedir(), 'Documents', 'PaperLearning', 'vault')
 
+// TODO el cálculo va en UTC, a propósito.
+//
+// JS parsea una fecha sin hora ('2025-06-16') como medianoche UTC, pero los
+// getters locales (getDay/getDate) la leían en la zona del usuario: en Chile
+// (UTC−4) eso es el día ANTERIOR a las 20:00, así que el paper se archivaba en
+// la semana equivocada del vault. Es un bug que solo aparecía fuera de UTC —
+// por eso el CI, que corre en UTC, nunca lo vio.
+//
+// Se usan getters UTC en vez de convertir a local porque las dos fuentes de
+// fecha ya son UTC: `published_date` de ArXiv viene sin hora, y `created_at` lo
+// escribe SQLite con datetime('now'), que es UTC. Así la carpeta de un paper es
+// la misma sin importar desde qué zona se abra la app.
 function isoWeek(date) {
   const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
-  const week1 = new Date(d.getFullYear(), 0, 4)
-  return 1 + Math.round(((d - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7)
+  d.setUTCHours(0, 0, 0, 0)
+  d.setUTCDate(d.getUTCDate() + 3 - ((d.getUTCDay() + 6) % 7))
+  const week1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 4))
+  return 1 + Math.round(((d - week1) / 86400000 - 3 + ((week1.getUTCDay() + 6) % 7)) / 7)
 }
 
 function paperSlot(paper) {
   const d = new Date(paper.published_date || paper.created_at || Date.now())
   const week = isoWeek(d)
   return {
-    year:    String(d.getFullYear()),
+    // getUTCFullYear por lo mismo que isoWeek: el 1 de enero a las 00:00 UTC no
+    // puede caer en el año anterior sólo porque el usuario esté en Chile.
+    year:    String(d.getUTCFullYear()),
     weekKey: `week-${String(week).padStart(2, '0')}`
   }
 }
@@ -207,7 +221,10 @@ function migratePaperFolders(vaultDir, papers) {
   const index = indexPaperDirs(vaultDir)
 
   for (const paper of papers) {
-    const src = index.get(paper.id) // carpeta vieja nombrada por id
+    // Se busca por id (carpetas viejas, nombradas por id) y también por el nombre
+    // canónico: el bug de zona horaria dejó carpetas BIEN nombradas pero en la
+    // semana equivocada, y buscándolas solo por id se quedaban ahí para siempre.
+    const src = index.get(paper.id) || index.get(paperFolderName(paper))
     if (!src) continue
     const target = paperDir(vaultDir, paper)
     if (src === target || fs.existsSync(target)) continue

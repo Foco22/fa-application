@@ -211,6 +211,41 @@ describe('saveReferencePaper / getReferencePapers', () => {
     expect(rows[0].abstract_summary).toBeNull()
   })
 
+  it('persists the embedding_model that produced the vector', () => {
+    db.saveReferencePaper({
+      path: '/refs/local.pdf',
+      snippet: 'text',
+      embedding: JSON.stringify([0.1, 0.2]),
+      embedding_model: 'local:Xenova/all-MiniLM-L6-v2',
+    })
+
+    const rows = db.getReferencePapers()
+    expect(rows[0].embedding_model).toBe('local:Xenova/all-MiniLM-L6-v2')
+  })
+
+  // Filas indexadas antes de que existiera la columna: todas venían del único
+  // proveedor que había entonces, así que se leen como OpenAI en vez de null.
+  it('reads legacy rows with no embedding_model as the original OpenAI model', () => {
+    db.saveReferencePaper({
+      path: '/refs/legacy.pdf',
+      snippet: 'text',
+      embedding: JSON.stringify([0.1, 0.2]),
+    })
+
+    const rows = db.getReferencePapers()
+    expect(rows[0].embedding_model).toBe('openai:text-embedding-3-small')
+  })
+
+  it('counts only the references embedded with the given model', () => {
+    db.saveReferencePaper({ path: '/refs/a.pdf', snippet: 's', embedding: '[0.1]', embedding_model: 'local:Xenova/all-MiniLM-L6-v2' })
+    db.saveReferencePaper({ path: '/refs/b.pdf', snippet: 's', embedding: '[0.1]', embedding_model: 'openai:text-embedding-3-small' })
+    db.saveReferencePaper({ path: '/refs/c.pdf', snippet: 's', embedding: '[0.1]' })
+
+    expect(db.getReferenceCount('local:Xenova/all-MiniLM-L6-v2')).toBe(1)
+    expect(db.getReferenceCount('openai:text-embedding-3-small')).toBe(2)
+    expect(db.getReferenceCount()).toBe(3)
+  })
+
   it('ignores duplicate paths (INSERT OR IGNORE)', () => {
     const paper = { path: '/refs/dup.pdf', snippet: 's', embedding: '[0.1]', abstract_summary: 'first' }
     db.saveReferencePaper(paper)
@@ -429,5 +464,119 @@ describe('getWeeklyStreak', () => {
 
     const result = db.getWeeklyStreak(new Date('2024-01-22T12:00:00'))
     expect(result).toEqual({ current: 0, best: 0 })
+  })
+})
+// ─── pricing_cache ────────────────────────────────────────────────────────────
+
+describe('pricing_cache', () => {
+  const GPT4O = {
+    provider: 'openai', model: 'gpt-4o',
+    prompt_price_per_token: 0.0000025, completion_price_per_token: 0.00001,
+    unit: 'token', source: 'litellm',
+  }
+
+  it('saves a price row and reads it back by provider+model', () => {
+    db.savePricingRows([GPT4O])
+    expect(db.getPricingRow('openai', 'gpt-4o')).toMatchObject({
+      prompt_price_per_token: 0.0000025,
+      completion_price_per_token: 0.00001,
+      source: 'litellm',
+    })
+  })
+
+  it('returns undefined for a model that was never priced', () => {
+    expect(db.getPricingRow('openai', 'nope')).toBeUndefined()
+  })
+
+  it('upserts on (provider, model) instead of duplicating rows', () => {
+    db.savePricingRows([GPT4O])
+    db.savePricingRows([{ ...GPT4O, prompt_price_per_token: 0.000003 }])
+
+    expect(db.getPricingRows()).toHaveLength(1)
+    expect(db.getPricingRow('openai', 'gpt-4o').prompt_price_per_token).toBe(0.000003)
+  })
+
+  // Un refresh de LiteLLM no puede pisar un precio que el usuario corrigió a mano.
+  it('leaves a manual row untouched when a litellm refresh writes the same model', () => {
+    db.savePricingRows([{ ...GPT4O, prompt_price_per_token: 0.9, source: 'manual' }])
+    db.savePricingRows([GPT4O])
+
+    const row = db.getPricingRow('openai', 'gpt-4o')
+    expect(row.source).toBe('manual')
+    expect(row.prompt_price_per_token).toBe(0.9)
+  })
+
+  it('lets a manual row overwrite a litellm row', () => {
+    db.savePricingRows([GPT4O])
+    db.savePricingRows([{ ...GPT4O, prompt_price_per_token: 0.9, source: 'manual' }])
+
+    expect(db.getPricingRow('openai', 'gpt-4o')).toMatchObject({ source: 'manual', prompt_price_per_token: 0.9 })
+  })
+
+  it('stores audio prices per second for transcription models', () => {
+    db.savePricingRows([{
+      provider: 'groq', model: 'groq/whisper-large-v3-turbo',
+      audio_price_per_second: 0.00001111, unit: 'second', source: 'litellm',
+    }])
+    expect(db.getPricingRow('groq', 'groq/whisper-large-v3-turbo').audio_price_per_second).toBe(0.00001111)
+  })
+})
+
+// ─── usage_events ─────────────────────────────────────────────────────────────
+
+describe('usage_events', () => {
+  const EVENT = {
+    action_type: 'summary', provider: 'anthropic', model: 'claude-opus-4-8',
+    prompt_tokens: 1000, completion_tokens: 500, cost_micro_usd: 17500,
+  }
+
+  it('inserts an event and reads it back', () => {
+    db.saveUsageEvent(EVENT)
+    const rows = db.getUsageEvents()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      action_type: 'summary', provider: 'anthropic', model: 'claude-opus-4-8',
+      prompt_tokens: 1000, completion_tokens: 500, cost_micro_usd: 17500,
+    })
+  })
+
+  it('defaults the optional columns to null instead of failing', () => {
+    db.saveUsageEvent({ action_type: 'embedding', provider: 'openai', model: 'text-embedding-3-small', prompt_tokens: 42, cost_micro_usd: 1 })
+    const row = db.getUsageEvents()[0]
+    expect(row.completion_tokens).toBeNull()
+    expect(row.audio_seconds).toBeNull()
+    expect(row.paper_id).toBeNull()
+    expect(row.session_id).toBeNull()
+  })
+
+  // Un modelo sin precio no puede romper la acción del usuario: se registra el
+  // uso con costo desconocido en vez de perder el evento.
+  it('accepts an event with an unknown cost (null), not zero', () => {
+    db.saveUsageEvent({ ...EVENT, model: 'brand-new-model', cost_micro_usd: null })
+    expect(db.getUsageEvents()[0].cost_micro_usd).toBeNull()
+  })
+
+  it('stamps occurred_at automatically', () => {
+    db.saveUsageEvent(EVENT)
+    expect(db.getUsageEvents()[0].occurred_at).toBeTruthy()
+  })
+
+  it('records audio seconds for transcription events', () => {
+    db.saveUsageEvent({ action_type: 'transcription', provider: 'groq', model: 'whisper-large-v3-turbo', audio_seconds: 120, cost_micro_usd: 1333 })
+    expect(db.getUsageEvents()[0].audio_seconds).toBe(120)
+  })
+
+  // Los montos se suman como enteros (micro-USD): sumar cientos de eventos en
+  // REAL acumularía drift de punto flotante y el total no cerraría con la factura.
+  it('sums costs as integers, exactly', () => {
+    for (let i = 0; i < 3; i++) db.saveUsageEvent({ ...EVENT, cost_micro_usd: 14300 })
+    expect(db.getTotalCostMicroUsd()).toBe(42900)
+  })
+
+  it('ignores unknown-cost events in the total instead of counting them as zero', () => {
+    db.saveUsageEvent({ ...EVENT, cost_micro_usd: 10000 })
+    db.saveUsageEvent({ ...EVENT, cost_micro_usd: null })
+    expect(db.getTotalCostMicroUsd()).toBe(10000)
+    expect(db.getUnknownCostCount()).toBe(1)
   })
 })

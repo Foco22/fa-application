@@ -12,9 +12,11 @@ import { startSummary } from './modules/summary.js'
 import { generateOcr, reloadOcr, openOcrFile } from './modules/ocr.js'
 import { generateQuiz } from './modules/quiz.js'
 import { sendChat, clearChat } from './modules/chat.js'
-import { openSettings, saveSettings } from './modules/settings.js'
+import { openSettings, saveSettings, switchSettingsCategory } from './modules/settings.js'
 import { enterClassMode, exitClassMode, initClass } from './modules/class.js'
 import { openLearningDashboard, closeLearningDashboard, initLearningDashboard } from './modules/learning-dashboard.js'
+import { openCostsDashboard, closeCostsDashboard, initCostsDashboard } from './modules/costs-dashboard.js'
+import { applyLanguage, onLanguageChange, t } from './modules/language.js'
 
 /* ── PDF expand ─────────────────────────────────────────────────────────── */
 
@@ -74,8 +76,11 @@ document.getElementById('class-confirm-ok').addEventListener('click', () => {
 
 /* ── Dependency injection ───────────────────────────────────────────────── */
 
+// Abrir un paper sale de cualquier dashboard: si no, el panel quedaba abierto
+// encima del paper que el usuario acaba de pedir.
 function openPaperFromLearning(id) {
   closeLearningDashboard()
+  closeCostsDashboard()
   return openPaper(id)
 }
 
@@ -87,14 +92,15 @@ initContextMenu({ openPaper: openPaperFromLearning, renderVault })
 
 async function triggerFetch() {
   closeLearningDashboard()
+  closeCostsDashboard()
   const actBtn   = document.getElementById('act-fetch')
   const status   = document.getElementById('fetch-status')
   const overlay  = document.getElementById('fetch-overlay')
   const overlayText = document.getElementById('fetch-overlay-text')
   actBtn.disabled = true
   actBtn.classList.add('spinning')
-  status.textContent = 'Buscando papers…'
-  overlayText.textContent = 'Buscando papers nuevos…'
+  status.textContent = t('buscando-papers')
+  overlayText.textContent = t('buscando-papers-nuevos-dyn')
   overlay.classList.remove('hidden')
 
   try {
@@ -102,8 +108,8 @@ async function triggerFetch() {
     if (result && result.error) {
       // El detalle completo va al toast (abajo); la barra superior solo lleva
       // un rótulo corto para no romper el layout del topbar con texto largo.
-      toast('Error en la ingesta: ' + result.error, 'error')
-      status.textContent = '⚠ Error en la ingesta'
+      toast(t('error-en-la-ingesta') + result.error, 'error')
+      status.textContent = t('error-en-la-ingesta-corto')
       setTimeout(() => { status.textContent = '' }, 4000)
     } else if (Array.isArray(result)) {
       state.papers = await window.api.getPapers()
@@ -114,13 +120,13 @@ async function triggerFetch() {
         toast(status.textContent, 'success')
         await openPaper(result[0].id)
       } else {
-        status.textContent = 'Sin papers nuevos'
+        status.textContent = t('sin-papers-nuevos')
       }
       setTimeout(() => { status.textContent = '' }, 4000)
     }
   } catch (err) {
-    toast('Error: ' + err.message, 'error')
-    status.textContent = '⚠ Error'
+    toast(t('error-prefijo') + err.message, 'error')
+    status.textContent = t('error-corto')
   }
   actBtn.disabled = false
   actBtn.classList.remove('spinning')
@@ -129,9 +135,30 @@ async function triggerFetch() {
 
 /* ── Main app ───────────────────────────────────────────────────────────── */
 
+// Repinta la vista abierta ahora mismo. Se invoca al cambiar de idioma: el texto
+// estático lo cubre applyLanguage(), pero los botones y estados que arma el JS
+// (ej. t('generar')/"Regenerar" del resumen) solo se actualizan volviendo a correr
+// su render.
+async function refreshActiveView() {
+  renderVault()
+  if (!document.getElementById('learning-panel').classList.contains('hidden')) {
+    await openLearningDashboard()
+  } else if (!document.getElementById('costs-panel').classList.contains('hidden')) {
+    await openCostsDashboard()
+  } else if (state.activePaper) {
+    await openPaper(state.activePaper.id)
+  }
+}
+
 async function showApp() {
   document.getElementById('onboarding').classList.add('hidden')
   document.getElementById('app').classList.remove('hidden')
+
+  // El idioma guardado se aplica ANTES del primer render: si no, la UI parpadea
+  // en español y recién después pasa a inglés.
+  const settings = await window.api.getSettings()
+  applyLanguage(settings.language || 'es')
+  onLanguageChange(refreshActiveView)
 
   state.papers    = await window.api.getPapers()
   state.refPapers = await window.api.getReferenceList()
@@ -149,16 +176,28 @@ initOnboarding({ showApp })
 function wireListeners() {
   initClass()
   initLearningDashboard()
+  initCostsDashboard()
   document.getElementById('act-learning').addEventListener('click', openLearningDashboard)
+  document.getElementById('act-costs').addEventListener('click', openCostsDashboard)
   document.getElementById('btn-win-min').addEventListener('click', () => window.api.minimizeWindow())
   document.getElementById('btn-win-max').addEventListener('click', () => window.api.maximizeWindow())
   document.getElementById('btn-win-close').addEventListener('click', () => window.api.closeWindow())
 
   document.getElementById('act-fetch').addEventListener('click', triggerFetch)
 
+  // Home siempre lleva al home: si hay una clase o un dashboard abierto, lo cierra.
+  // Solo cuando ya estás en el home el botón pasa a colapsar el panel lateral.
   document.getElementById('act-papers').addEventListener('click', () => {
     if (!document.getElementById('class-fullscreen').classList.contains('hidden')) {
       exitClassMode()
+      return
+    }
+    if (!document.getElementById('learning-panel').classList.contains('hidden')) {
+      closeLearningDashboard()
+      return
+    }
+    if (!document.getElementById('costs-panel').classList.contains('hidden')) {
+      closeCostsDashboard()
       return
     }
     document.getElementById('vault-panel').classList.toggle('collapsed')
@@ -232,6 +271,10 @@ function wireListeners() {
   })
   document.getElementById('btn-save-settings').addEventListener('click', saveSettings)
 
+  document.querySelectorAll('.settings-cat-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchSettingsCategory(btn.dataset.category))
+  })
+
   document.getElementById('btn-pick-ref-folder').addEventListener('click', async () => {
     const folder = await window.api.selectFolder()
     if (folder) document.getElementById('s-ref-folder').value = folder
@@ -239,10 +282,10 @@ function wireListeners() {
 
   document.getElementById('btn-reindex').addEventListener('click', async () => {
     const btn = document.getElementById('btn-reindex')
-    btn.disabled = true; btn.textContent = 'Indexando…'
+    btn.disabled = true; btn.textContent = t('indexando')
     const { indexed, errors, total } = await window.api.indexReferenceFolder()
     document.getElementById('s-ref-stats').textContent = `${total} paper${total !== 1 ? 's' : ''} indexado${total !== 1 ? 's' : ''}`
-    btn.disabled = false; btn.textContent = 'Re-indexar'
+    btn.disabled = false; btn.textContent = t('re-indexar-dyn')
     toast(`+${indexed} indexados${errors > 0 ? `, ${errors} errores` : ''}`, indexed > 0 ? 'success' : 'info')
     state.refPapers = await window.api.getReferenceList()
     renderVault()
@@ -324,10 +367,10 @@ document.addEventListener('click', (e) => {
   const code = btn.closest('.code-block')?.querySelector('code')
   if (!code) return
   navigator.clipboard.writeText(code.textContent).then(() => {
-    btn.textContent = '✓ Copiado'
+    btn.textContent = t('copiado')
     btn.classList.add('copied')
     setTimeout(() => {
-      btn.textContent = 'Copiar'
+      btn.textContent = t('copiar')
       btn.classList.remove('copied')
     }, 2000)
   }).catch(() => {})

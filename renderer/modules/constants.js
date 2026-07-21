@@ -68,12 +68,14 @@ export const DEFAULT_RESEARCH_CENTERS = [
   'xAI',
 ]
 
-export const STATUS_LABELS = {
-  new:         'Nuevo',
-  downloading: 'Descargando…',
-  ready:       'Listo',
-  pdf_error:   '⚠ PDF no disp.',
-  error:       'Error',
+// Claves del diccionario, no texto: el badge de estado del paper se traduce
+// como el resto de la UI (ver renderer/i18n.js).
+export const STATUS_KEYS = {
+  new:         'estado-nuevo',
+  downloading: 'estado-descargando',
+  ready:       'estado-listo',
+  pdf_error:   'estado-archivo-error',
+  error:       'estado-error',
 }
 
 export const TABS = ['pdf', 'abstract', 'resumen', 'notas', 'quiz']
@@ -83,3 +85,32 @@ export const LLM_PROVIDERS = {
   anthropic: { label: 'Anthropic API Key', placeholder: 'sk-ant-...', models: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'] },
   deepseek:  { label: 'DeepSeek API Key',  placeholder: 'sk-...',   models: ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner'] },
 }
+
+// `local` corre con Transformers.js dentro de la app: descarga el modelo la
+// primera vez y después no necesita internet ni API key. Cambiar de proveedor
+// invalida el índice de referencia (los vectores no son comparables entre
+// modelos) — hay que reindexar.
+// `suggestedThreshold`: cada modelo tiene su propia escala de similitud coseno.
+// MiniLM da ~0.40 entre dos abstracts claramente relacionados, donde OpenAI da
+// ~0.6–0.7 — con el umbral de OpenAI el motor local rechazaría todo.
+export const EMBEDDING_PROVIDERS = {
+  openai: { name: 'OpenAI (API)', label: 'OpenAI API Key', placeholder: 'sk-...', models: ['text-embedding-3-small', 'text-embedding-3-large'], needsKey: true, suggestedThreshold: '0.6' },
+  local:  { name: 'Local (gratis, sin internet)', label: null, placeholder: null, models: ['Xenova/all-MiniLM-L6-v2', 'Xenova/bge-small-en-v1.5'], needsKey: false, suggestedThreshold: '0.4' },
+}
+
+// Web Speech API se eliminó de las opciones: es transcripción nativa del navegador,
+// sin llamada medible de nuestro lado, fuera del set de proveedores trackeables.
+export const STT_PROVIDERS = {
+  groq:   { name: 'Groq Whisper (recomendado — rápido, multilingual)', label: 'Groq API Key', placeholder: 'gsk_...', models: ['whisper-large-v3-turbo'], needsKey: true },
+  openai: { name: 'OpenAI (preciso)', label: 'OpenAI API Key', placeholder: 'sk-...', models: ['gpt-4o-mini-transcribe', 'whisper-1'], needsKey: true },
+  'whisper-local': { name: 'Whisper local / whisper.cpp (gratis, sin internet)', label: null, placeholder: null, models: [], needsKey: false },
+}
+
+export const SETTINGS_CATEGORIES = [
+  { id: 'general',    label: 'General',              icon: '⚙' },
+  { id: 'llm',        label: 'LLM',                  icon: '🧠' },
+  { id: 'embedding',  label: 'Embedding',             icon: '🔗' },
+  { id: 'stt',        label: 'Speech to Text',        icon: '🎙' },
+  { id: 'ingesta',    label: 'Ingesta',               icon: '📥' },
+  { id: 'reference',  label: 'Papers de referencia',  icon: '📚' },
+]

@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('api', {
   getQuizResults:  (paperId)  => ipcRenderer.invoke('get-quiz-results', paperId),
   getSettings:     ()         => ipcRenderer.invoke('get-settings'),
   saveSettings:    (payload)  => ipcRenderer.invoke('save-settings', payload),
+  getAppVersion:   ()         => ipcRenderer.invoke('get-app-version'),
   checkOnboarding: ()         => ipcRenderer.invoke('check-onboarding'),
   completeOnboarding: (s)     => ipcRenderer.invoke('complete-onboarding', s),
 
@@ -64,6 +65,11 @@ contextBridge.exposeInMainWorld('api', {
   getClassPerformanceTrend:  (range) => ipcRenderer.invoke('get-class-performance-trend', range),
   getQuizPerformanceTrend:   (range) => ipcRenderer.invoke('get-quiz-performance-trend', range),
   getWeeklyStreak:           ()      => ipcRenderer.invoke('get-weekly-streak'),
+
+  getCostSummary:      (opts)   => ipcRenderer.invoke('get-cost-summary', opts),
+  getPricingStatus:    ()       => ipcRenderer.invoke('get-pricing-status'),
+  refreshPricing:      ()       => ipcRenderer.invoke('refresh-pricing'),
+  savePricingOverride: (data)   => ipcRenderer.invoke('save-pricing-override', data),
 
   setZoomFactor:   (f)        => webFrame.setZoomFactor(f),
   getZoomFactor:   ()         => webFrame.getZoomFactor(),

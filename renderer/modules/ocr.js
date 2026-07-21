@@ -54,7 +54,6 @@ export async function generateOcr() {
   if (!state.activePaper) return
   const btn      = document.getElementById('btn-ocr')
   const progress = document.getElementById('pv-ocr-progress')
-  const figures  = document.getElementById('chk-ocr-figures')?.checked
 
   const original = btn.textContent
   btn.disabled = true
@@ -69,7 +68,7 @@ export async function generateOcr() {
 
   let result
   try {
-    result = await window.api.generateOcr({ paperId: state.activePaper.id, interpretFigures: !!figures })
+    result = await window.api.generateOcr({ paperId: state.activePaper.id })
   } catch (err) {
     result = { success: false, error: err?.message }
   }

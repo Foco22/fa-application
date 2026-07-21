@@ -63,20 +63,13 @@ describe('transcribePdfToMarkdown — happy path', () => {
     expect(onProgress).toHaveBeenCalledWith(2, 2)
   })
 
-  it("records usage as action 'ocr' per page", async () => {
-    const llm = {
-      transcribePageToMarkdown: vi.fn(async (_b, _m, { onUsage }) => {
-        onUsage({ prompt_tokens: 10, completion_tokens: 20 })
-        return 'md'
-      }),
-    }
-    const record = vi.fn()
+  it('calls transcribePageToMarkdown with just the page image, no options object', async () => {
+    const llm = makeVisionLLM(['a', 'b'])
     await transcribePdfToMarkdown(Buffer.from('pdf'), {
       rasterizePdf: makeRasterizer(), llm, pdfParse: vi.fn(),
-      extractPagesText: makePagesExtractor(['fb1', 'fb2']), record,
+      extractPagesText: makePagesExtractor(['fb1', 'fb2']),
     })
-    expect(record).toHaveBeenCalledWith('ocr', { prompt_tokens: 10, completion_tokens: 20 })
-    expect(record).toHaveBeenCalledTimes(2)
+    expect(llm.transcribePageToMarkdown).toHaveBeenCalledWith('cA==', 'image/png')
   })
 })
 
@@ -144,35 +137,41 @@ describe('transcribePdfToMarkdown — total failure', () => {
   })
 })
 
-describe('transcribePdfToMarkdown — figure interpretation (opt-in)', () => {
-  it('does NOT call interpretFigureInDepth unless interpretFigures is true', async () => {
+describe('transcribePdfToMarkdown — figure interpretation (default behavior)', () => {
+  it('calls interpretFigureInDepth for every page whenever the provider supports it', async () => {
     const llm = {
       transcribePageToMarkdown: vi.fn().mockResolvedValue('md'),
-      interpretFigureInDepth: vi.fn().mockResolvedValue('fig'),
+      interpretFigureInDepth: vi.fn().mockResolvedValue('Figura: arquitectura'),
     }
-    await transcribePdfToMarkdown(Buffer.from('pdf'), {
-      rasterizePdf: makeRasterizer(), llm, pdfParse: vi.fn(),
-      extractPagesText: makePagesExtractor(['fb1', 'fb2']),
-    })
-    expect(llm.interpretFigureInDepth).not.toHaveBeenCalled()
-  })
-
-  it('interprets figures per page and records action ocr_figure when opted in', async () => {
-    const llm = {
-      transcribePageToMarkdown: vi.fn().mockResolvedValue('md'),
-      interpretFigureInDepth: vi.fn(async (_b, _m, { onUsage }) => {
-        onUsage({ prompt_tokens: 5, completion_tokens: 15 })
-        return 'Figura: arquitectura'
-      }),
-    }
-    const record = vi.fn()
     const result = await transcribePdfToMarkdown(Buffer.from('pdf'), {
       rasterizePdf: makeRasterizer(), llm, pdfParse: vi.fn(),
       extractPagesText: makePagesExtractor(['fb1', 'fb2']),
-      interpretFigures: true, record,
     })
     expect(llm.interpretFigureInDepth).toHaveBeenCalledTimes(2)
-    expect(record).toHaveBeenCalledWith('ocr_figure', { prompt_tokens: 5, completion_tokens: 15 })
+    expect(llm.interpretFigureInDepth).toHaveBeenCalledWith('cA==', 'image/png')
     expect(result.markdown).toContain('Figura: arquitectura')
+  })
+
+  it('skips figure interpretation when the provider does not implement it (e.g. DeepSeek)', async () => {
+    const llm = { transcribePageToMarkdown: vi.fn().mockResolvedValue('md') }
+    const result = await transcribePdfToMarkdown(Buffer.from('pdf'), {
+      rasterizePdf: makeRasterizer(), llm, pdfParse: vi.fn(),
+      extractPagesText: makePagesExtractor(['fb1', 'fb2']),
+    })
+    expect(result.success).toBe(true)
+    expect(result.markdown).not.toContain('figures')
+  })
+
+  it("a failed figure interpretation on one page doesn't break that page's OCR", async () => {
+    const llm = {
+      transcribePageToMarkdown: vi.fn().mockResolvedValue('md'),
+      interpretFigureInDepth: vi.fn().mockRejectedValue(new Error('boom')),
+    }
+    const result = await transcribePdfToMarkdown(Buffer.from('pdf'), {
+      rasterizePdf: makeRasterizer(), llm, pdfParse: vi.fn(),
+      extractPagesText: makePagesExtractor(['fb1', 'fb2']),
+    })
+    expect(result.success).toBe(true)
+    expect(result.markdown).toContain('md')
   })
 })

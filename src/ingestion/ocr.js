@@ -14,21 +14,12 @@
 
 const { extractPagesText: defaultExtractPagesText } = require('./extractor')
 
-function transcribeOptions(record, action) {
-  // El registro de costos ocurre dentro del método del proveedor (camino feliz):
-  // le pasamos un onUsage que reetiqueta el uso como 'ocr' u 'ocr_figure'.
-  if (!record) return {}
-  return { onUsage: (usage) => record(action, usage) }
-}
-
 async function transcribePdfToMarkdown(buffer, {
   rasterizePdf,
   llm,
   pdfParse,
   extractPagesText = defaultExtractPagesText,
   onProgress,
-  record,
-  interpretFigures = false,
 } = {}) {
   if (!llm || typeof llm.transcribePageToMarkdown !== 'function') {
     return { success: false, error: 'no-vision', markdown: null }
@@ -64,14 +55,15 @@ async function transcribePdfToMarkdown(buffer, {
     const { base64, mimeType } = pages[i]
 
     try {
-      const md = await llm.transcribePageToMarkdown(base64, mimeType, transcribeOptions(record, 'ocr'))
+      const md = await llm.transcribePageToMarkdown(base64, mimeType)
       parts.push(`<!-- page ${pageNum} · source: ocr -->\n${md}`)
 
-      // Interpretación profunda de figuras (opt-in): se anota como bloque de cita
-      // aparte, nunca mezclada con la transcripción del texto de la página.
-      if (interpretFigures && typeof llm.interpretFigureInDepth === 'function') {
+      // Interpretación profunda de figuras: corre siempre que el proveedor la
+      // soporte, como parte por defecto del OCR — no es un paso opt-in. Se
+      // anota como bloque de cita aparte, nunca mezclada con el texto de la página.
+      if (typeof llm.interpretFigureInDepth === 'function') {
         try {
-          const fig = await llm.interpretFigureInDepth(base64, mimeType, transcribeOptions(record, 'ocr_figure'))
+          const fig = await llm.interpretFigureInDepth(base64, mimeType)
           if (fig && fig.trim()) {
             parts.push(`<!-- page ${pageNum} · figures -->\n> ${fig.trim().replace(/\n/g, '\n> ')}`)
           }
