@@ -1,8 +1,11 @@
 // Orquestador de OCR del documento completo.
 //
-// Recorre las páginas rasterizadas en orden, pide a `llm.transcribePageToMarkdown`
-// la transcripción fiel de cada una, y concatena el resultado con un separador
-// que identifica la página y su fuente. NO lo llaman runFetch / index-files /
+// Rasteriza el PDF y pide a `llm.transcribePageToMarkdown` la transcripción
+// fiel de cada página, con hasta `concurrency` páginas en vuelo a la vez (cada
+// página es una llamada independiente a la API, así que no hay razón para
+// esperarlas una por una — en un paper de 20 páginas eso es 20x la latencia
+// de una sola llamada). El resultado se concatena en orden de página, no en
+// orden de finalización. NO lo llaman runFetch / index-files /
 // indexReferenceFolder: es una acción explícita del usuario (IPC generate-ocr).
 //
 // Garantías de diseño (§4 del PRD):
@@ -14,12 +17,15 @@
 
 const { extractPagesText: defaultExtractPagesText } = require('./extractor')
 
+const DEFAULT_CONCURRENCY = 4
+
 async function transcribePdfToMarkdown(buffer, {
   rasterizePdf,
   llm,
   pdfParse,
   extractPagesText = defaultExtractPagesText,
   onProgress,
+  concurrency = DEFAULT_CONCURRENCY,
 } = {}) {
   if (!llm || typeof llm.transcribePageToMarkdown !== 'function') {
     return { success: false, error: 'no-vision', markdown: null }
@@ -46,13 +52,17 @@ async function transcribePdfToMarkdown(buffer, {
     if (res && res.success) fallbackPages = res.pages || []
   } catch (_) { /* fallback opcional */ }
 
-  const parts = []
+  // pageParts[i] guarda los bloques de markdown de esa página (texto + figuras
+  // opcionales), indexado por página para poder concatenar en orden al final
+  // aunque las páginas terminen en cualquier orden.
+  const pageParts = new Array(pages.length)
   let fallbackUsed = false
+  let completed = 0
 
-  for (let i = 0; i < pages.length; i++) {
+  async function processPage(i) {
     const pageNum = i + 1
-    if (onProgress) onProgress(pageNum, pages.length)
     const { base64, mimeType } = pages[i]
+    const parts = []
 
     try {
       const md = await llm.transcribePageToMarkdown(base64, mimeType)
@@ -74,11 +84,27 @@ async function transcribePdfToMarkdown(buffer, {
       const fb = (fallbackPages[i] && fallbackPages[i].trim()) ? fallbackPages[i] : '[ilegible]'
       parts.push(`<!-- page ${pageNum} · source: pdf-parse fallback (vision error: ${err.message}) -->\n${fb}`)
     }
+
+    pageParts[i] = parts
+    completed++
+    if (onProgress) onProgress(completed, pages.length)
   }
+
+  // Pool de concurrencia acotada: cada worker toma la siguiente página libre
+  // hasta que no queden. Sin dependencias nuevas — es un patrón de ~5 líneas.
+  let nextIndex = 0
+  async function worker() {
+    while (nextIndex < pages.length) {
+      const i = nextIndex++
+      await processPage(i)
+    }
+  }
+  const workerCount = Math.max(1, Math.min(concurrency, pages.length))
+  await Promise.all(Array.from({ length: workerCount }, worker))
 
   return {
     success: true,
-    markdown: parts.join('\n\n'),
+    markdown: pageParts.flat().join('\n\n'),
     pageCount: pages.length,
     fallbackUsed,
   }

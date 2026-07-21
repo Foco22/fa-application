@@ -73,6 +73,103 @@ describe('transcribePdfToMarkdown — happy path', () => {
   })
 })
 
+describe('transcribePdfToMarkdown — concurrency', () => {
+  function makePages(n) {
+    return Array.from({ length: n }, (_, i) => ({ base64: `p${i}`, mimeType: 'image/png' }))
+  }
+
+  it('runs pages concurrently instead of strictly one at a time', async () => {
+    const pages = makePages(6)
+    let inFlight = 0, maxInFlight = 0
+    const llm = {
+      transcribePageToMarkdown: vi.fn(async () => {
+        inFlight++
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        await new Promise(r => setTimeout(r, 10))
+        inFlight--
+        return 'md'
+      }),
+    }
+    await transcribePdfToMarkdown(Buffer.from('pdf'), {
+      rasterizePdf: makeRasterizer(pages), llm, pdfParse: vi.fn(),
+      extractPagesText: makePagesExtractor(Array(6).fill('fb')),
+    })
+    expect(maxInFlight).toBeGreaterThan(1)
+  })
+
+  it('caps concurrency at the given `concurrency` option', async () => {
+    const pages = makePages(8)
+    let inFlight = 0, maxInFlight = 0
+    const llm = {
+      transcribePageToMarkdown: vi.fn(async () => {
+        inFlight++
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        await new Promise(r => setTimeout(r, 10))
+        inFlight--
+        return 'md'
+      }),
+    }
+    await transcribePdfToMarkdown(Buffer.from('pdf'), {
+      rasterizePdf: makeRasterizer(pages), llm, pdfParse: vi.fn(),
+      extractPagesText: makePagesExtractor(Array(8).fill('fb')),
+      concurrency: 3,
+    })
+    expect(maxInFlight).toBeLessThanOrEqual(3)
+  })
+
+  it('defaults to a concurrency of 4 when not specified', async () => {
+    const pages = makePages(8)
+    let inFlight = 0, maxInFlight = 0
+    const llm = {
+      transcribePageToMarkdown: vi.fn(async () => {
+        inFlight++
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        await new Promise(r => setTimeout(r, 10))
+        inFlight--
+        return 'md'
+      }),
+    }
+    await transcribePdfToMarkdown(Buffer.from('pdf'), {
+      rasterizePdf: makeRasterizer(pages), llm, pdfParse: vi.fn(),
+      extractPagesText: makePagesExtractor(Array(8).fill('fb')),
+    })
+    expect(maxInFlight).toBe(4)
+  })
+
+  it('keeps pages in order in the final markdown regardless of completion order', async () => {
+    const pages = makePages(4)
+    // La página 0 es la más lenta y la 3 la más rápida — si el orden final
+    // dependiera del orden de resolución, quedaría mezclado.
+    const delays = [30, 20, 10, 1]
+    const llm = {
+      transcribePageToMarkdown: vi.fn(async (base64) => {
+        const i = Number(base64.slice(1))
+        await new Promise(r => setTimeout(r, delays[i]))
+        return `md-${i}`
+      }),
+    }
+    const result = await transcribePdfToMarkdown(Buffer.from('pdf'), {
+      rasterizePdf: makeRasterizer(pages), llm, pdfParse: vi.fn(),
+      extractPagesText: makePagesExtractor(Array(4).fill('fb')),
+    })
+    const positions = [0, 1, 2, 3].map(i => result.markdown.indexOf(`md-${i}`))
+    expect(positions).toEqual([...positions].sort((a, b) => a - b))
+  })
+
+  it('reports progress as pages complete, not strictly in page order', async () => {
+    const pages = makePages(4)
+    const onProgress = vi.fn()
+    const llm = { transcribePageToMarkdown: vi.fn().mockResolvedValue('md') }
+    await transcribePdfToMarkdown(Buffer.from('pdf'), {
+      rasterizePdf: makeRasterizer(pages), llm, pdfParse: vi.fn(),
+      extractPagesText: makePagesExtractor(Array(4).fill('fb')),
+      onProgress,
+    })
+    expect(onProgress).toHaveBeenCalledTimes(4)
+    expect(onProgress).toHaveBeenCalledWith(4, 4)
+  })
+})
+
 describe('transcribePdfToMarkdown — per-page fallback', () => {
   it('falls back to pdf-parse text for a page whose vision call fails, marked explicitly', async () => {
     const llm = makeVisionLLM(['# Page one', new Error('rate_limit')])
