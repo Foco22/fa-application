@@ -284,3 +284,31 @@ describe('renderMarkdown — what the card actually shows', () => {
     expect(html.endsWith('<p>Texto normal.</p>')).toBe(true)
   })
 })
+
+// Modelos de visión a veces preservan el wrap de columna del PDF original
+// marcando el corte de línea con una barra invertida al final ("texto \").
+// Sin unir esas líneas, cada línea envuelta del PDF quedaba como su propio
+// <p> suelto con la barra visible en vez de fluir como un párrafo continuo.
+describe('renderMarkdown — line-continuation backslash (preserves PDF column wraps)', () => {
+  it('joins backslash-continued lines into a single flowing paragraph', () => {
+    const html = renderMarkdown('Primera línea \\\nsegunda línea \\\ntercera línea.')
+    expect(html).toBe('<p>Primera línea segunda línea tercera línea.</p>')
+  })
+
+  it('stops joining at a blank line — starts a new paragraph', () => {
+    const html = renderMarkdown('Primera \\\nsegunda.\n\nNuevo párrafo.')
+    expect(html).toBe('<p>Primera segunda.</p><p>Nuevo párrafo.</p>')
+  })
+
+  it('flushes the joined paragraph before a header that follows it', () => {
+    const html = renderMarkdown('Antes \\\nfin.\n# Header')
+    expect(html).toBe('<p>Antes fin.</p><h1>Header</h1>')
+  })
+
+  it('does not touch a real trailing backslash inside a code block (e.g. Python line continuation)', () => {
+    const html = renderMarkdown('```python\nx = 1 + \\\n    2\n```')
+    expect(html).toContain('x = 1 + \\')
+    expect(html).toContain('2')
+    expect(html).not.toContain('x = 1 + 2')
+  })
+})
