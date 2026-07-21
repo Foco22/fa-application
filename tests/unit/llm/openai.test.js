@@ -197,6 +197,65 @@ describe('OpenAI provider — summarizeAbstract', () => {
   })
 })
 
+// ─── transcribePageToMarkdown ─────────────────────────────────────────────────
+
+function makeVisionClient(text, usage = { prompt_tokens: 100, completion_tokens: 500 }) {
+  return {
+    chat: { completions: { create: vi.fn().mockResolvedValue({ choices: [{ message: { content: text } }], usage }) } }
+  }
+}
+
+describe('OpenAI provider — transcribePageToMarkdown', () => {
+  const B64 = 'aGVsbG8='
+
+  it('sends the page image as a data URL', async () => {
+    const mockClient = makeVisionClient('# Página')
+    await createOpenAIProvider('sk-test', null, mockClient).transcribePageToMarkdown(B64, 'image/png')
+    const args = mockClient.chat.completions.create.mock.calls[0][0]
+    const imgBlock = args.messages[0].content.find(b => b.type === 'image_url')
+    expect(imgBlock.image_url.url).toBe(`data:image/png;base64,${B64}`)
+  })
+
+  it('returns the transcribed markdown text', async () => {
+    const mockClient = makeVisionClient('## Sección\nTexto.')
+    const result = await createOpenAIProvider('sk-test', null, mockClient).transcribePageToMarkdown(B64)
+    expect(result).toBe('## Sección\nTexto.')
+  })
+
+  it('uses a large max_tokens for exhaustive transcription', async () => {
+    const mockClient = makeVisionClient('text')
+    await createOpenAIProvider('sk-test', null, mockClient).transcribePageToMarkdown(B64)
+    expect(mockClient.chat.completions.create.mock.calls[0][0].max_tokens).toBeGreaterThanOrEqual(4000)
+  })
+
+  it('reports usage via onUsage on success', async () => {
+    const mockClient = makeVisionClient('text', { prompt_tokens: 321, completion_tokens: 654 })
+    const onUsage = vi.fn()
+    await createOpenAIProvider('sk-test', null, mockClient).transcribePageToMarkdown(B64, 'image/png', { onUsage })
+    expect(onUsage).toHaveBeenCalledWith(expect.objectContaining({ prompt_tokens: 321, completion_tokens: 654 }))
+  })
+})
+
+describe('OpenAI provider — interpretFigureInDepth', () => {
+  it('returns the in-depth figure interpretation text', async () => {
+    const mockClient = makeVisionClient('La figura muestra...')
+    const result = await createOpenAIProvider('sk-test', null, mockClient).interpretFigureInDepth('aGk=')
+    expect(result).toBe('La figura muestra...')
+  })
+})
+
+describe('DeepSeek provider — no vision methods', async () => {
+  const { createDeepSeekProvider } = await import('../../../src/llm/providers/deepseek.js')
+  it('does not expose transcribePageToMarkdown (no vision support)', () => {
+    const llm = createDeepSeekProvider('sk-test')
+    expect(llm.transcribePageToMarkdown).toBeUndefined()
+  })
+  it('does not expose interpretFigureInDepth (no vision support)', () => {
+    const llm = createDeepSeekProvider('sk-test')
+    expect(llm.interpretFigureInDepth).toBeUndefined()
+  })
+})
+
 // ─── chat ─────────────────────────────────────────────────────────────────────
 
 describe('OpenAI provider — chat', () => {

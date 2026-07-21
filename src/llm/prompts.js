@@ -98,6 +98,43 @@ ${abstract}
 Return ONLY the summary text. No preamble, no quotes, no markdown.`
 }
 
+// Transcripción OCR fiel de UNA página de un paper. La regla central es no
+// inventar: ante la duda, marcar el hueco ([ilegible]) en vez de rellenar.
+function buildOcrPagePrompt() {
+  return `Transcribe FIELMENTE todo el texto visible de esta página de un paper científico a Markdown.
+
+REGLAS NO NEGOCIABLES:
+- Transcribe TODO el texto visible, sin resumir, sin omitir secciones, sin parafrasear.
+- Preserva la estructura: títulos, subtítulos, listas y notas al pie.
+- Tablas → sintaxis de tabla Markdown.
+- Fórmulas y ecuaciones → LaTeX ($...$ para inline, $$...$$ para display).
+- Figuras, diagramas o gráficos → NO los transcribas pixel a pixel. Anota su
+  presencia y contenido relevante en una línea marcada como cita, por ejemplo:
+  > [Figura 2: diagrama de arquitectura, describe brevemente lo que muestra]
+  Nunca mezcles esa anotación con el texto real de la página como si fuera prosa del paper.
+- Contenido ilegible, borroso o cortado → márcalo explícitamente con [ilegible].
+  NUNCA lo rellenes por inferencia. Ante la duda, marca el hueco, no inventes.
+- No agregues comentario editorial ni opiniones fuera de las anotaciones marcadas.
+  Tu salida es la transcripción de la página, nada más.
+
+Devuelve ÚNICAMENTE el Markdown de la transcripción, sin preámbulo.`
+}
+
+// Interpretación profunda de una figura concreta (opt-in). A diferencia del OCR
+// de página, aquí SÍ se pide análisis del contenido visual de la figura.
+function buildFigureInterpretationPrompt() {
+  return `Analiza en profundidad esta figura, diagrama o gráfico de un paper científico, en español.
+
+Describe con detalle:
+- Qué tipo de figura es (arquitectura, gráfico de resultados, esquema, etc.).
+- Qué muestra concretamente: ejes, series, componentes, flujos, relaciones.
+- Qué valores o tendencias son relevantes, si se pueden leer.
+- Qué conclusión o mensaje transmite la figura en el contexto del paper.
+
+Si algún elemento es ilegible o ambiguo, dilo explícitamente ([ilegible]) en vez
+de inventarlo. Devuelve solo el análisis en texto, sin preámbulo.`
+}
+
 function candidateAffiliationLines(text) {
   const keywords = [
     'university', 'institute', 'college', 'school of', 'department',
@@ -121,6 +158,8 @@ module.exports = {
   buildAffiliationsPrompt,
   buildMetadataPrompt,
   buildAbstractSummaryPrompt,
+  buildOcrPagePrompt,
+  buildFigureInterpretationPrompt,
   candidateAffiliationLines,
   parseJSONResponse,
 }

@@ -5,6 +5,8 @@ const {
   buildAffiliationsPrompt,
   buildMetadataPrompt,
   buildAbstractSummaryPrompt,
+  buildOcrPagePrompt,
+  buildFigureInterpretationPrompt,
   candidateAffiliationLines,
   parseJSONResponse,
 } = require('../prompts')
@@ -13,6 +15,15 @@ const DEFAULT_MODEL = 'claude-opus-4-8'
 
 function extractText(content) {
   return content.filter(b => b.type === 'text').map(b => b.text).join('')
+}
+
+// Normaliza el uso reportado por Anthropic (input/output_tokens) al esquema
+// común { prompt_tokens, completion_tokens } que consume el registro de costos.
+function normalizeUsage(usage) {
+  return {
+    prompt_tokens:     usage?.input_tokens  ?? 0,
+    completion_tokens: usage?.output_tokens ?? 0,
+  }
 }
 
 function createAnthropicProvider(apiKey, model = null, _client = null) {
@@ -81,6 +92,40 @@ function createAnthropicProvider(apiKey, model = null, _client = null) {
         ]}]
       })
       return extractText(response.content)
+    },
+
+    // OCR fiel de una página: transcripción exhaustiva a Markdown. max_tokens
+    // muy por encima de interpretImage (400) porque una página densa a dos
+    // columnas puede pasar los 1500-2000 tokens de salida. onUsage se llama solo
+    // en el camino feliz (una llamada fallida no se cobra).
+    async transcribePageToMarkdown(base64, mimeType = 'image/png', { onUsage } = {}) {
+      const response = await client.messages.create({
+        model: MODEL,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+          { type: 'text', text: buildOcrPagePrompt() }
+        ]}]
+      })
+      const text = extractText(response.content)
+      if (onUsage) onUsage(normalizeUsage(response.usage))
+      return text
+    },
+
+    // Interpretación profunda de una figura concreta (opt-in). Se contabiliza
+    // aparte del OCR (action_type 'ocr_figure') vía el onUsage inyectado.
+    async interpretFigureInDepth(base64, mimeType = 'image/png', { onUsage } = {}) {
+      const response = await client.messages.create({
+        model: MODEL,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+          { type: 'text', text: buildFigureInterpretationPrompt() }
+        ]}]
+      })
+      const text = extractText(response.content)
+      if (onUsage) onUsage(normalizeUsage(response.usage))
+      return text
     },
 
     async extractPaperMetadata(firstPageText) {

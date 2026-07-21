@@ -5,6 +5,8 @@ const {
   buildAffiliationsPrompt,
   buildMetadataPrompt,
   buildAbstractSummaryPrompt,
+  buildOcrPagePrompt,
+  buildFigureInterpretationPrompt,
   candidateAffiliationLines,
   parseJSONResponse,
 } = require('../prompts')
@@ -13,7 +15,7 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
   const client = _client || new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) })
   const MODEL = model || 'gpt-4o'
 
-  return {
+  const provider = {
     async streamSummary(paper, onChunk) {
       const params = {
         model: MODEL,
@@ -109,6 +111,48 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
       return response.choices[0].message.content
     },
   }
+
+  // Los métodos de visión OCR solo se exponen si el proveedor soporta visión.
+  // DeepSeek (supportsVision: false) queda sin ellos a propósito, de modo que
+  // el guard `if (!llm.transcribePageToMarkdown)` de los callers lo detecte.
+  if (supportsVision) {
+    // OCR fiel de una página a Markdown. max_tokens muy por encima de
+    // interpretImage (400): una página densa puede superar 1500-2000 tokens.
+    provider.transcribePageToMarkdown = async (base64, mimeType = 'image/png', { onUsage } = {}) => {
+      const response = await client.chat.completions.create({
+        model: MODEL,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: [
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+          { type: 'text', text: buildOcrPagePrompt() }
+        ]}]
+      })
+      const text = response.choices[0].message.content
+      if (onUsage && response.usage) {
+        onUsage({ prompt_tokens: response.usage.prompt_tokens, completion_tokens: response.usage.completion_tokens })
+      }
+      return text
+    }
+
+    // Interpretación profunda de una figura (opt-in, action_type 'ocr_figure').
+    provider.interpretFigureInDepth = async (base64, mimeType = 'image/png', { onUsage } = {}) => {
+      const response = await client.chat.completions.create({
+        model: MODEL,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: [
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+          { type: 'text', text: buildFigureInterpretationPrompt() }
+        ]}]
+      })
+      const text = response.choices[0].message.content
+      if (onUsage && response.usage) {
+        onUsage({ prompt_tokens: response.usage.prompt_tokens, completion_tokens: response.usage.completion_tokens })
+      }
+      return text
+    }
+  }
+
+  return provider
 }
 
 function createOpenAIProvider(apiKey, model = null, _client = null) {
