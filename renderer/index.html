@@ -189,7 +189,7 @@
           <div class="paper-hero">
             <div class="paper-badges">
               <span id="pv-status" class="status-badge"></span>
-              <span id="pv-text-source" class="status-badge" title="Fuente del texto que alimenta resumen, quiz, chat y Clase"></span>
+              <span id="pv-text-source" class="status-badge" data-i18n-title="fuente-del-texto-que-alimenta-resumen-quiz-chat-y"></span>
             </div>
             <h1 id="pv-title"></h1>
             <div class="paper-meta-row">
@@ -203,9 +203,9 @@
             <!-- OCR: transcripción fiel del PDF a Markdown (fuente de texto para IA) -->
             <div class="ocr-toolbar">
               <div class="ocr-toolbar-main">
-                <button id="btn-ocr" class="action-btn" title="Transcribir el PDF página por página con el LLM de visión">Generar OCR</button>
-                <button id="btn-ocr-reload" class="action-btn hidden" title="Recargar el texto desde ocr/&lt;id&gt;.md si lo editaste a mano">Recargar desde archivo</button>
-                <button id="btn-ocr-open" class="action-btn hidden" title="Abrir el archivo ocr/&lt;id&gt;.md">Abrir OCR</button>
+                <button id="btn-ocr" class="action-btn" data-i18n-title="generar-ocr-title" data-i18n="generar-ocr">Generar OCR</button>
+                <button id="btn-ocr-reload" class="action-btn hidden" data-i18n-title="recargar-desde-archivo-title" data-i18n="recargar-desde-archivo">Recargar desde archivo</button>
+                <button id="btn-ocr-open" class="action-btn hidden" data-i18n-title="abrir-ocr-title" data-i18n="abrir-ocr">Abrir OCR</button>
               </div>
               <div id="pv-ocr-progress" class="ocr-progress hidden"></div>
               <div id="pv-ocr-hint" class="ocr-hint hidden"></div>
@@ -1088,6 +1088,14 @@
     <div class="fetch-overlay-content">
       <span class="spinner spinner-lg"></span>
       <p id="fetch-overlay-text" data-i18n="buscando-papers-nuevos">Buscando papers nuevos…</p>
+    </div>
+  </div>
+
+  <!-- OCR loading overlay: blocks interaction with the rest of the app while a page-by-page OCR run is in progress -->
+  <div id="ocr-overlay" class="fetch-overlay hidden">
+    <div class="fetch-overlay-content">
+      <span class="spinner spinner-lg"></span>
+      <p id="ocr-overlay-text" data-i18n="preparando-transcripcion">Preparando transcripción…</p>
     </div>
   </div>
 

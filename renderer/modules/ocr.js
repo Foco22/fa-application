@@ -1,5 +1,6 @@
 import { state } from './state.js'
 import { toast } from './toast.js'
+import { t } from './language.js'
 
 // ¿El proveedor LLM activo puede hacer OCR? DeepSeek no soporta visión; sin
 // API key tampoco hay proveedor. Replica el criterio del guard del backend.
@@ -9,11 +10,11 @@ function providerSupportsVision(settings) {
 
 function ocrErrorMessage(error) {
   switch (error) {
-    case 'no-vision':    return 'El proveedor LLM actual no soporta visión (OCR).'
-    case 'no-pdf':       return 'No se encontró el PDF de este paper en el vault.'
-    case 'not-found':    return 'El paper ya no existe.'
-    case 'no-rasterizer':return 'No se pudo rasterizar el PDF.'
-    default:             return 'Error al generar OCR' + (error ? `: ${error}` : '.')
+    case 'no-vision':     return t('el-proveedor-llm-actual-no-soporta-vision-ocr')
+    case 'no-pdf':        return t('no-se-encontro-el-pdf-de-este-paper-en-el-vault')
+    case 'not-found':     return t('el-paper-ya-no-existe')
+    case 'no-rasterizer': return t('no-se-pudo-rasterizar-el-pdf')
+    default:              return t('error-al-generar-ocr') + (error ? `: ${error}` : '.')
   }
 }
 
@@ -28,12 +29,12 @@ export async function renderOcrSection(p) {
   if (!badge || !btn) return
 
   const isOcr = p.pdf_text_source === 'ocr'
-  badge.textContent = isOcr ? 'Texto: OCR' : 'Texto: extracción básica'
+  badge.textContent = t(isOcr ? 'texto-ocr' : 'texto-extraccion-basica')
   badge.className   = `status-badge ${isOcr ? 'badge-ocr' : 'badge-basic'}`
 
   progress.classList.add('hidden')
   progress.textContent = ''
-  btn.textContent = isOcr ? '↺ Regenerar OCR' : 'Generar OCR'
+  btn.textContent = t(isOcr ? 'regenerar-ocr' : 'generar-ocr')
   reloadBtn.classList.toggle('hidden', !isOcr)
   openBtn.classList.toggle('hidden', !isOcr)
 
@@ -41,13 +42,31 @@ export async function renderOcrSection(p) {
   const supportsVision = providerSupportsVision(settings)
   btn.disabled = !supportsVision
   if (!supportsVision) {
-    hint.textContent = settings.apiKey
-      ? 'El proveedor actual no soporta visión. Configura OpenAI o Anthropic para generar OCR.'
-      : 'Configura una API key de un proveedor con visión (OpenAI o Anthropic) para generar OCR.'
+    hint.textContent = t(settings.apiKey ? 'ocr-hint-no-vision' : 'ocr-hint-no-api-key')
     hint.classList.remove('hidden')
   } else {
     hint.classList.add('hidden')
   }
+}
+
+// Overlay de carga: bloquea toda interacción con la app mientras corre el OCR
+// (igual que #fetch-overlay durante el fetch semanal) y va mostrando la página
+// que se está transcribiendo, para que el usuario no toque nada a medias.
+function showOcrOverlay() {
+  const overlay = document.getElementById('ocr-overlay')
+  const text    = document.getElementById('ocr-overlay-text')
+  if (!overlay) return
+  text.textContent = t('preparando-transcripcion')
+  overlay.classList.remove('hidden')
+}
+
+function updateOcrOverlay(page, total) {
+  const text = document.getElementById('ocr-overlay-text')
+  if (text) text.textContent = t('transcribiendo-pagina').replace('{page}', page).replace('{total}', total)
+}
+
+function hideOcrOverlay() {
+  document.getElementById('ocr-overlay')?.classList.add('hidden')
 }
 
 export async function generateOcr() {
@@ -57,13 +76,15 @@ export async function generateOcr() {
 
   const original = btn.textContent
   btn.disabled = true
-  btn.textContent = 'Transcribiendo…'
-  progress.textContent = 'Preparando transcripción…'
+  btn.textContent = t('transcribiendo')
+  progress.textContent = t('preparando-transcripcion')
   progress.classList.remove('hidden')
+  showOcrOverlay()
 
   window.api.removeAllListeners('ocr-progress')
   window.api.onOcrProgress(({ page, total }) => {
-    progress.textContent = `Transcribiendo página ${page}/${total}…`
+    progress.textContent = t('transcribiendo-pagina').replace('{page}', page).replace('{total}', total)
+    updateOcrOverlay(page, total)
   })
 
   let result
@@ -72,6 +93,8 @@ export async function generateOcr() {
   } catch (err) {
     result = { success: false, error: err?.message }
   }
+
+  hideOcrOverlay()
 
   if (!result || !result.success) {
     progress.classList.add('hidden')
@@ -84,9 +107,7 @@ export async function generateOcr() {
   state.activePaper = await window.api.getPaper(state.activePaper.id)
   await renderOcrSection(state.activePaper)
   toast(
-    result.fallbackUsed
-      ? `OCR completado (${result.pageCount} págs.) — algunas páginas en fallback pdf-parse.`
-      : `OCR completado (${result.pageCount} págs.).`,
+    t(result.fallbackUsed ? 'ocr-completado-con-fallback' : 'ocr-completado-paginas').replace('{pages}', result.pageCount),
     result.fallbackUsed ? 'info' : 'success'
   )
 }
@@ -100,14 +121,14 @@ export async function reloadOcr() {
     result = { success: false, error: err?.message }
   }
   if (!result || !result.success) {
-    toast(result?.error === 'no-file'
-      ? 'No hay un archivo OCR en disco para este paper.'
-      : 'No se pudo recargar el OCR desde el archivo.', 'error')
+    toast(t(result?.error === 'no-file'
+      ? 'no-hay-archivo-ocr-en-disco-para-este-paper'
+      : 'no-se-pudo-recargar-el-ocr-desde-el-archivo'), 'error')
     return
   }
   state.activePaper = await window.api.getPaper(state.activePaper.id)
   await renderOcrSection(state.activePaper)
-  toast('Texto recargado desde el archivo editado.', 'success')
+  toast(t('texto-recargado-desde-el-archivo-editado'), 'success')
 }
 
 export function openOcrFile() {
