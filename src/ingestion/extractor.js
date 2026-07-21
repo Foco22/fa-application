@@ -1,5 +1,9 @@
 
 const MAX_CHARS = 30000
+// Techo mucho más alto para texto proveniente de OCR: el propósito de la feature
+// de OCR es no perder contenido, así que el truncado de 30K NO aplica. Este
+// límite existe solo como salvaguarda de tamaño de fila en SQLite (§8.3 del PRD).
+const OCR_MAX_CHARS = 200000
 
 async function extractText(buffer, pdfParse) {
   try {
@@ -10,6 +14,28 @@ async function extractText(buffer, pdfParse) {
     }
 
     return { success: true, text: text.slice(0, MAX_CHARS) }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
+}
+
+// Extrae el texto de CADA página por separado (via la opción pagerender de
+// pdf-parse), en orden. Lo usa el orquestador de OCR como fallback local por
+// página cuando la transcripción por visión de una página falla — sin recortar
+// el PDF entero. Nunca lanza: devuelve { success, pages } o { success:false, error }.
+async function extractPagesText(buffer, pdfParse) {
+  try {
+    const pages = []
+    const options = {
+      pagerender: (pageData) =>
+        pageData.getTextContent().then((tc) => {
+          const text = tc.items.map((it) => it.str).join(' ')
+          pages[pageData.pageNumber - 1] = text
+          return text
+        }),
+    }
+    await pdfParse(buffer, options)
+    return { success: true, pages }
   } catch (err) {
     return { success: false, error: err.message }
   }
@@ -58,6 +84,12 @@ function matchesUniversityInText(text, universityList) {
   return null
 }
 
-module.exports.extractAffiliationLines = extractAffiliationLines
-
-module.exports = { extractText, extractFirstPage, matchesUniversityInText }
+module.exports = {
+  extractText,
+  extractPagesText,
+  extractFirstPage,
+  matchesUniversityInText,
+  extractAffiliationLines,
+  MAX_CHARS,
+  OCR_MAX_CHARS,
+}

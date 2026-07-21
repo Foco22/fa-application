@@ -81,6 +81,9 @@ function registerReferenceHandlers({ ipcMain, db, deps }) {
             published_date: '',
             affiliations:   affiliationsJson,
             pdf_text:       extracted.success ? extracted.text : null,
+            // Indexado de referencia: pdf-parse liviano, igual que el fetch. El
+            // OCR es una acción posterior y explícita, nunca parte del indexado.
+            pdf_text_source: 'pdf-parse',
             summary:        null,
             quiz:           null,
             notes:          null,

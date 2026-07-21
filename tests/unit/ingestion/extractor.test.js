@@ -1,5 +1,20 @@
 import { describe, it, expect, vi } from 'vitest'
-import { extractText } from '../../../src/ingestion/extractor.js'
+import { extractText, extractPagesText, OCR_MAX_CHARS } from '../../../src/ingestion/extractor.js'
+
+// Simulate pdf-parse invoking options.pagerender once per page, in order.
+function makePagedPdfParse(pageTexts) {
+  return vi.fn(async (_buf, options) => {
+    let combined = ''
+    for (let i = 0; i < pageTexts.length; i++) {
+      const pageData = {
+        pageNumber: i + 1,
+        getTextContent: async () => ({ items: pageTexts[i].split(' ').map(str => ({ str })) }),
+      }
+      combined += await options.pagerender(pageData)
+    }
+    return { text: combined, numpages: pageTexts.length }
+  })
+}
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -65,5 +80,36 @@ describe('extractText', () => {
     await extractText(buf, mockParse)
 
     expect(mockParse).toHaveBeenCalledWith(buf)
+  })
+})
+
+// ─── extractPagesText (per-page fallback for OCR) ─────────────────────────────
+
+describe('extractPagesText', () => {
+  it('returns one text entry per page, in order', async () => {
+    const parse = makePagedPdfParse(['page one text', 'page two text', 'page three'])
+    const result = await extractPagesText(Buffer.from('%PDF'), parse)
+    expect(result.success).toBe(true)
+    expect(result.pages).toEqual(['page one text', 'page two text', 'page three'])
+  })
+
+  it('returns { success: false, error } when pdf-parse throws', async () => {
+    const parse = vi.fn().mockRejectedValue(new Error('corrupt'))
+    const result = await extractPagesText(Buffer.from('bad'), parse)
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('corrupt')
+  })
+
+  it('never throws', async () => {
+    const parse = vi.fn().mockRejectedValue(new Error('boom'))
+    await expect(extractPagesText(Buffer.from('bad'), parse)).resolves.toMatchObject({ success: false })
+  })
+})
+
+// ─── OCR_MAX_CHARS ────────────────────────────────────────────────────────────
+
+describe('OCR_MAX_CHARS', () => {
+  it('is a much higher ceiling than the 30000 pdf-parse truncation', () => {
+    expect(OCR_MAX_CHARS).toBeGreaterThanOrEqual(200000)
   })
 })

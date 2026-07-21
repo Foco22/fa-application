@@ -51,6 +51,31 @@ describe('savePaper / getPaper', () => {
   it('returns undefined for a non-existent id', () => {
     expect(db.getPaper('does-not-exist')).toBeUndefined()
   })
+
+  it('persists pdf_text_source and ocr_error when provided', () => {
+    const paper = {
+      id: '2401.00009', title: 'OCR paper', authors: '', abstract: '',
+      pdf_url: '', published_date: '', affiliations: '[]',
+      pdf_text: 'transcribed', summary: null, quiz: null, pdf_error: null,
+      status: 'ready', pdf_text_source: 'ocr', ocr_error: 'page 3 fallback'
+    }
+    db.savePaper(paper)
+    const result = db.getPaper('2401.00009')
+    expect(result.pdf_text_source).toBe('ocr')
+    expect(result.ocr_error).toBe('page 3 fallback')
+  })
+
+  it('defaults pdf_text_source and ocr_error to null when omitted', () => {
+    const paper = {
+      id: '2401.00010', title: 'Plain paper', authors: '', abstract: '',
+      pdf_url: '', published_date: '', affiliations: '[]',
+      pdf_text: null, summary: null, quiz: null, pdf_error: null, status: 'new'
+    }
+    db.savePaper(paper)
+    const result = db.getPaper('2401.00010')
+    expect(result.pdf_text_source).toBeNull()
+    expect(result.ocr_error).toBeNull()
+  })
 })
 
 describe('getPapers', () => {

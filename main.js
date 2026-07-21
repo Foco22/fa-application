@@ -11,6 +11,9 @@ const pdfParse = require('pdf-parse')
 
 const { openDatabase }        = require('./src/database')
 const { fetchPapers, getAffiliations, matchesUniversityList, downloadPdf, extractText, extractFirstPage, matchesUniversityInText } = require('./src/ingestion')
+const { extractPagesText, OCR_MAX_CHARS } = require('./src/ingestion/extractor')
+const { createRasterizer } = require('./src/ingestion/rasterizer')
+const { transcribePdfToMarkdown } = require('./src/ingestion/ocr')
 const { createLLM } = require('./src/llm')
 const { chatWithPaper }               = require('./src/chat')
 const { createScheduler }     = require('./src/scheduler')
@@ -29,6 +32,7 @@ const PDFS_DIR            = path.join(app.getPath('userData'), 'pdfs')
 const VAULT_DIR           = vaultMod.DEFAULT_VAULT_DIR
 const WHISPER_STREAM_BIN  = path.join(__dirname, 'tools/whisper.cpp/build/bin/whisper-stream')
 const WHISPER_MODELS_DIR  = path.join(__dirname, 'tools/whisper.cpp/models')
+const RASTERIZER_HTML     = path.join(__dirname, 'renderer', 'rasterizer.html')
 
 let mainWindow
 let db
@@ -111,8 +115,23 @@ app.whenReady().then(() => {
     copyPdfToRaw: (paper, src)     => vaultMod.copyPdfToRaw(VAULT_DIR, paper, src),
     slidesDir:       (paper)       => vaultMod.slidesDir(VAULT_DIR, paper),
     writeSlide:   (paper, filename, buf) => vaultMod.writeSlide(VAULT_DIR, paper, filename, buf),
+    ocrPath:      (paper)          => vaultMod.ocrPath(VAULT_DIR, paper),
+    writeOcr:     (paper, markdown) => vaultMod.writeOcr(VAULT_DIR, paper, markdown),
+    readOcr:      (paper)          => vaultMod.readOcr(VAULT_DIR, paper),
     deletePaperDir:  (paper)       => vaultMod.deletePaperDir(VAULT_DIR, paper),
   }
+
+  // Rasterizador: ventana oculta (show:false) que reutiliza pdfjs-dist para
+  // producir una imagen PNG por página. Se inyecta como deps.rasterizePdf; una
+  // ventana nueva por corrida, destruida al terminar (ver rasterizer.js).
+  const rasterizePdf = createRasterizer({
+    createWindow: () => new BrowserWindow({
+      show: false,
+      webPreferences: { nodeIntegration: false, contextIsolation: true }
+    }),
+    rasterizerHtml: RASTERIZER_HTML,
+    scale: 2,
+  })
 
   const settings = db.getAllSettings()
   const { runFetch } = registerHandlers({
@@ -130,6 +149,8 @@ app.whenReady().then(() => {
       whisperModelsDir:  fs.existsSync(WHISPER_MODELS_DIR) ? WHISPER_MODELS_DIR : null,
       shell, dialog,
       httpClient: axios, pdfParse, pdfsDir: PDFS_DIR, vault,
+      // OCR bajo demanda (IPC generate-ocr / reload-ocr-from-file en learning.js)
+      rasterizePdf, transcribePdfToMarkdown, extractPagesText, OCR_MAX_CHARS,
       writeFetchLog: (report) => fetchLogMod.writeFetchLog(VAULT_DIR, report)
     }
   })

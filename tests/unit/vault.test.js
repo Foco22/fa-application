@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import os   from 'os'
 import path from 'path'
 import fs   from 'fs'
-import { isoWeek, paperSlot, paperDir, ensureDirs, pdfPath, copyPdfToRaw, writeSummary, writeQuiz, slidesDir, writeSlide, backfillSlideDirs, migratePaperFolders, paperFolderName, sanitizeFolderName } from '../../src/vault.js'
+import { isoWeek, paperSlot, paperDir, ensureDirs, pdfPath, copyPdfToRaw, writeSummary, writeQuiz, slidesDir, writeSlide, backfillSlideDirs, migratePaperFolders, paperFolderName, sanitizeFolderName, ocrPath, writeOcr, readOcr } from '../../src/vault.js'
 
 let tmpDir
 
@@ -113,6 +113,11 @@ describe('ensureDirs', () => {
     const dir = paperDir(tmpDir, paper)
     expect(fs.existsSync(path.join(dir, 'slides'))).toBe(true)
   })
+  it('creates the ocr/ subdirectory', () => {
+    ensureDirs(tmpDir, paper)
+    const dir = paperDir(tmpDir, paper)
+    expect(fs.existsSync(path.join(dir, 'ocr'))).toBe(true)
+  })
   it('returns the paper dir path', () => {
     const returned = ensureDirs(tmpDir, paper)
     expect(returned).toBe(paperDir(tmpDir, paper))
@@ -152,6 +157,39 @@ describe('writeQuiz', () => {
     const parsed = JSON.parse(fs.readFileSync(p, 'utf8'))
     expect(parsed.questions).toHaveLength(1)
     expect(parsed.questions[0].question).toBe('Q1')
+  })
+})
+
+// ─── ocrPath / writeOcr / readOcr ────────────────────────────────────────────
+
+describe('ocrPath', () => {
+  it('returns <paperDir>/ocr/<id>.md', () => {
+    const p = ocrPath(tmpDir, paper)
+    expect(p).toBe(path.join(paperDir(tmpDir, paper), 'ocr', '2401.12345.md'))
+  })
+})
+
+describe('writeOcr / readOcr', () => {
+  it('writes the markdown to ocr/<id>.md and reads it back', () => {
+    ensureDirs(tmpDir, paper)
+    writeOcr(tmpDir, paper, '# OCR\n\nTranscribed content.')
+    const p = ocrPath(tmpDir, paper)
+    expect(fs.existsSync(p)).toBe(true)
+    expect(readOcr(tmpDir, paper)).toContain('Transcribed content.')
+  })
+
+  it('readOcr returns null when the file does not exist', () => {
+    const other = { id: 'ref-nope', title: 'No OCR Paper' }
+    expect(readOcr(tmpDir, other)).toBeNull()
+  })
+
+  it('routes reference papers into reference/<title>/ocr/', () => {
+    const ref = { id: 'ref-abc', title: 'Reference Paper' }
+    ensureDirs(tmpDir, ref)
+    writeOcr(tmpDir, ref, 'ref ocr text')
+    const p = ocrPath(tmpDir, ref)
+    expect(p).toBe(path.join(tmpDir, 'reference', 'Reference Paper', 'ocr', 'ref-abc.md'))
+    expect(fs.readFileSync(p, 'utf8')).toBe('ref ocr text')
   })
 })
 

@@ -19,6 +19,12 @@ contextBridge.exposeInMainWorld('api', {
   onSummaryError:  (cb) => ipcRenderer.on('summary-error', (_e, msg) => cb(msg)),
   onNewPapers:     (cb) => ipcRenderer.on('new-papers',    (_e, n) => cb(n)),
 
+  generateOcr:        (payload) => ipcRenderer.invoke('generate-ocr', payload),
+  reloadOcrFromFile:  (id)      => ipcRenderer.invoke('reload-ocr-from-file', id),
+  onOcrProgress:  (cb) => ipcRenderer.on('ocr-progress', (_e, p) => cb(p)),
+  onOcrDone:      (cb) => ipcRenderer.on('ocr-done',     (_e, p) => cb(p)),
+  onOcrError:     (cb) => ipcRenderer.on('ocr-error',    (_e, p) => cb(p)),
+
   chatMessage:     (payload)  => ipcRenderer.invoke('chat-message', payload),
   saveNotes:       (payload)  => ipcRenderer.invoke('save-notes', payload),
   saveHighlights:  (payload)  => ipcRenderer.invoke('save-highlights', payload),

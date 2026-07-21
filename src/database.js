@@ -92,26 +92,34 @@ function openDatabase(path) {
   // Migrate: add columns if they don't exist yet (existing DBs)
   try { db.exec('ALTER TABLE papers ADD COLUMN notes TEXT') } catch (_) {}
   try { db.exec('ALTER TABLE papers ADD COLUMN highlights TEXT') } catch (_) {}
+  // pdf_text_source: 'ocr' | 'pdf-parse' | null (papers previos a la feature).
+  // ocr_error: detalle si la corrida de OCR falló completamente (análogo a pdf_error).
+  try { db.exec('ALTER TABLE papers ADD COLUMN pdf_text_source TEXT') } catch (_) {}
+  try { db.exec('ALTER TABLE papers ADD COLUMN ocr_error TEXT') } catch (_) {}
   try { db.exec('ALTER TABLE reference_papers ADD COLUMN abstract_summary TEXT') } catch (_) {}
 
   const savePaper = db.prepare(`
     INSERT INTO papers (id, title, authors, abstract, pdf_url, published_date,
-      affiliations, pdf_text, summary, quiz, notes, pdf_error, status)
+      affiliations, pdf_text, summary, quiz, notes, pdf_error, status,
+      pdf_text_source, ocr_error)
     VALUES (@id, @title, @authors, @abstract, @pdf_url, @published_date,
-      @affiliations, @pdf_text, @summary, @quiz, @notes, @pdf_error, @status)
+      @affiliations, @pdf_text, @summary, @quiz, @notes, @pdf_error, @status,
+      @pdf_text_source, @ocr_error)
     ON CONFLICT(id) DO UPDATE SET
-      title          = excluded.title,
-      authors        = excluded.authors,
-      abstract       = excluded.abstract,
-      pdf_url        = excluded.pdf_url,
-      published_date = excluded.published_date,
-      affiliations   = excluded.affiliations,
-      pdf_text       = excluded.pdf_text,
-      summary        = excluded.summary,
-      quiz           = excluded.quiz,
-      notes          = excluded.notes,
-      pdf_error      = excluded.pdf_error,
-      status         = excluded.status
+      title           = excluded.title,
+      authors         = excluded.authors,
+      abstract        = excluded.abstract,
+      pdf_url         = excluded.pdf_url,
+      published_date  = excluded.published_date,
+      affiliations    = excluded.affiliations,
+      pdf_text        = excluded.pdf_text,
+      summary         = excluded.summary,
+      quiz            = excluded.quiz,
+      notes           = excluded.notes,
+      pdf_error       = excluded.pdf_error,
+      status          = excluded.status,
+      pdf_text_source = excluded.pdf_text_source,
+      ocr_error       = excluded.ocr_error
   `)
 
   const saveNotes      = db.prepare('UPDATE papers SET notes      = ? WHERE id = ?')
@@ -196,7 +204,7 @@ function openDatabase(path) {
   const getReferenceCount      = db.prepare('SELECT COUNT(*) AS n FROM reference_papers')
 
   return {
-    savePaper:         (paper) => savePaper.run({ notes: null, ...paper }),
+    savePaper:         (paper) => savePaper.run({ notes: null, pdf_text_source: null, ocr_error: null, ...paper }),
     getPaper:          (id) => getPaper.get(id),
     getPapers:         () => getPapers.all(),
     updatePaperStatus: (id, status) => updatePaperStatus.run(status, id),
