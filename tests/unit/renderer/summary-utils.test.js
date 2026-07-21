@@ -261,6 +261,23 @@ describe('renderMarkdown — what the card actually shows', () => {
     expect(html).toContain('<p>Primera línea.</p><p>Segunda línea.</p>')
   })
 
+  // `> [Figura N: descripción breve]` es la anotación de una sola línea que
+  // buildOcrPagePrompt pide para figuras dentro del texto normal de la página
+  // (src/llm/prompts.js) — no es lo mismo que la interpretación extensa de
+  // interpretFigureInDepth (```figure, sí colapsada). Es corta de por sí, así
+  // que se muestra directo, sin esconderla detrás de un click.
+  it('shows a short "[Figura N: ...]" page annotation directly, not collapsed', () => {
+    const html = renderMarkdown('> [Figura 4: Comparación de estrategias de enrutamiento.]')
+    expect(html).not.toContain('<details>')
+    expect(html).not.toContain('<summary>')
+    expect(html).toContain('[Figura 4: Comparación de estrategias de enrutamiento.]')
+  })
+
+  it('still collapses a multi-line quote even if the first line looks bracketed', () => {
+    const html = renderMarkdown('> [Figura 4: intro]\n> Segunda línea con más detalle.')
+    expect(html).toContain('<details>')
+  })
+
   it('does not leak a bare ">" as its own paragraph on a blank line inside a quote', () => {
     // Así queda una línea en blanco dentro del texto citado una vez que
     // ocr.js le antepone "> " a cada línea (incluidas las vacías).

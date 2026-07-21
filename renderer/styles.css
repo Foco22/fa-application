@@ -887,6 +887,11 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 /* Fórmulas LaTeX (KaTeX) — hereda el color de texto del tema; overflow-x
    evita que una ecuación ancha rompa el layout en vez de desbordar la app. */
 .markdown-preview .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+/* Anotación breve "[Figura N: ...]" dentro del texto de la página (no la
+   interpretación extensa, esa va en <details> — ver flushQuote en summary-utils.js) */
+.markdown-preview .figure-tag {
+  font-size: 13px; font-style: italic; color: var(--text-4);
+}
 
 /* ── Notes (live Markdown editor) ────────────────────────────────────────── */
 .notes-tab {
