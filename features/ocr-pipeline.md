@@ -84,7 +84,7 @@ La premisa del usuario es explícita: **no confía en el pipeline de extracción
     - Preservar estructura: títulos, subtítulos, listas, notas al pie.
     - Tablas → Markdown table syntax.
     - Fórmulas/ecuaciones → LaTeX (`$...$` / `$$...$$`).
-    - Figuras/diagramas/gráficos → no se transcriben pixel a pixel, pero se anota su presencia y contenido relevante de forma explícita y marcada como tal (ej. `> [Figura 2: diagrama de arquitectura, describe brevemente lo que muestra]`), nunca mezclado con el texto real de la página como si fuera prosa del paper.
+    - Figuras/diagramas/gráficos → no se transcriben pixel a pixel, pero se anota su presencia y contenido relevante de forma explícita y marcada como tal (ej. `> [Figura 2: diagrama de arquitectura, describe brevemente lo que muestra]`), nunca mezclado con el texto real de la página como si fuera prosa del paper. Esta anotación breve es el comportamiento por defecto; ver "Interpretación profunda de figuras" más abajo para el análisis detallado opcional.
     - Contenido ilegible o cortado → marcarlo explícitamente (ej. `[ilegible]`), **nunca** rellenarlo por inferencia. Esta es la regla central de la feature: ante la duda, marcar el hueco, no inventar.
     - Sin comentario editorial del modelo fuera de esas anotaciones marcadas — la salida es la transcripción, no una opinión sobre el paper.
 
@@ -114,6 +114,15 @@ La premisa del usuario es explícita: **no confía en el pipeline de extracción
     - `pdf_text_source` TEXT — `'ocr'` | `'pdf-parse'` (default para todo paper recién ingerido, hasta que se le corra OCR) | `null` (papers preexistentes antes de esta feature).
     - `ocr_error` TEXT — detalle si la corrida de OCR falló completamente (análogo a `pdf_error`, que ya existe para fallos de extracción/descarga).
   - El truncado fijo de 30.000 caracteres (`MAX_CHARS`) deja de aplicarse cuando la fuente es `'ocr'` — el propósito explícito de la feature es no perder contenido. Se mantiene un techo mucho más alto solo como salvaguarda de tamaño de fila en SQLite (ver §8.3), no como comportamiento esperado en el caso normal.
+
+- **Interpretación profunda de figuras — segunda pasada opcional** (Prioridad: Media)
+
+  - La anotación breve de figuras que genera `transcribePageToMarkdown` (`> [Figura N: ...]`, ver arriba) alcanza para saber que una figura existe, pero no para razonar sobre lo que muestra — un gráfico de barras con la métrica clave del paper queda reducido a una frase genérica.
+  - Nuevo método de proveedor `interpretFigureInDepth(pageImage, figureCaption)` en `anthropic.js`/`openai.js`, con el mismo patrón de cliente inyectable que `transcribePageToMarkdown`. Reenvía la misma imagen de página (no hay recorte automático de la figura — el modelo de visión no devuelve bounding boxes confiables) junto con la anotación breve como contexto, y pide explícitamente: tipo de gráfico, qué representan los ejes, tendencia o resultado clave, y valores numéricos legibles.
+  - El orquestador (`src/ingestion/ocr.js`) detecta las anotaciones `> [Figura N: ...]` en el Markdown ya generado y, **solo si el usuario activó esta opción**, dispara una llamada de visión adicional por figura y reemplaza la anotación de una línea por el bloque expandido, en el mismo lugar del documento.
+  - **Opt-in explícito, no automático**: checkbox "Interpretar figuras en detalle" en el diálogo de "Generar OCR" (desmarcado por defecto) — multiplica las llamadas de visión (una por figura, además de una por página), así que el costo debe ser una decisión consciente del usuario, con el mismo criterio que el OCR mismo tiene respecto al fetch semanal (§1.2, §2.2).
+  - Costo instrumentado bajo su propio `action_type: 'ocr_figure'` en `usage_events` (distinto de `'ocr'`), para que el dashboard de costos (`features/cost-tracking.md`) distinga cuánto se gastó en transcripción de texto vs. en interpretación de figuras.
+  - Fallo en la interpretación de una figura puntual no aborta la corrida ni degrada el resto del documento: se conserva la anotación breve original para esa figura, marcada igual que el fallback de página a `pdf-parse` — mismo principio central de la feature: nunca inventar, nunca bloquear el resto por un fallo parcial.
 
 - **Recarga desde archivo editado a mano** (Prioridad: Media)
 
@@ -191,6 +200,7 @@ El usuario recibe su fetch semanal de 3 papers, como siempre — rápido, sin ca
 - `src/llm/providers/anthropic.js` y `openai.js`: nuevo método `transcribePageToMarkdown`, instrumentado con `record('ocr', usage)` igual que el resto de los métodos (ver "Instrumentación de costos" en `CLAUDE.md`).
 - `src/ipc/class.js:54` ya tiene el guard `if (!llm.interpretImage) return { slides: [] }` para proveedores sin visión — el handler de `generate-ocr` replica el mismo patrón para `transcribePageToMarkdown`.
 - Nuevo `action_type: 'ocr'` en `usage_events`, consumido por el dashboard de `features/cost-tracking.md` sin cambios de esquema.
+- `interpretFigureInDepth` (interpretación profunda de figuras, opcional) sigue el mismo patrón: método nuevo en los mismos dos proveedores, mismo guard de "sin visión disponible", pero registrado como `action_type: 'ocr_figure'` — un `action_type` separado, no una variante de `'ocr'`, para que el dashboard pueda mostrarlo como su propia serie de costo.
 
 ### 8.2 Almacenamiento de datos y privacidad
 
@@ -238,6 +248,12 @@ El usuario recibe su fetch semanal de 3 papers, como siempre — rápido, sin ca
 - **Fase 3**: UI — botón, progreso, badge y recarga desde archivo editado (2-3 días)
 
   - Botón "Generar OCR" en la vista de un paper (ingerido o de referencia), indicador de progreso, badge "Texto: OCR/extracción básica" en `paper-view.js`, IPC `reload-ocr-from-file`.
+
+- **Fase 4 (opcional)**: Interpretación profunda de figuras (1-2 días)
+
+  - `interpretFigureInDepth` en Anthropic y OpenAI, con tests mockeando el cliente.
+  - Detección de anotaciones `> [Figura N: ...]` en el orquestador y reemplazo por el bloque expandido cuando la opción está activa.
+  - Checkbox "Interpretar figuras en detalle" en el diálogo de "Generar OCR", `action_type: 'ocr_figure'` instrumentado.
 
 ## 10. Historias de usuario
 
@@ -309,3 +325,14 @@ El usuario recibe su fetch semanal de 3 papers, como siempre — rápido, sin ca
   - El botón "Generar OCR" está disponible en la vista de un paper `ref-…`, igual que en un paper ingerido.
   - `index-files`/`indexReferenceFolder` no cambian: el `snippet` para el embedding de similitud sigue viniendo de la extracción liviana de la primera página, sin depender de si el paper tiene OCR o no.
   - Al pedir OCR sobre un paper de referencia, se comporta idéntico a uno ingerido: `ocr/<id>.md`, `pdf_text_source`, badge y recarga desde archivo funcionan igual.
+
+### 10.8. Entender el contenido de una figura, no solo saber que existe
+
+- **ID**: OCR-008
+- **Descripción**: Como usuario que está estudiando un paper con gráficos de resultados, quiero poder pedir una interpretación detallada de una figura específica (no solo una frase genérica), para entender la tendencia o el valor clave que muestra sin tener que inferirlo mirando el PDF original.
+- **Criterios de aceptación**:
+
+  - Con la opción "Interpretar figuras en detalle" activada al generar OCR, cada anotación `> [Figura N: ...]` se reemplaza por un bloque que describe tipo de gráfico, ejes, tendencia y valores clave.
+  - Sin esa opción activada, el comportamiento es exactamente el de hoy (OCR-001 a OCR-007): anotación breve de una línea.
+  - El costo de esta interpretación aparece por separado en el dashboard de costos (`action_type: 'ocr_figure'`), nunca mezclado con el costo de `'ocr'`.
+  - Si falla la interpretación de una figura puntual, el resto del documento (texto y otras figuras) no se ve afectado; esa figura conserva su anotación breve.
