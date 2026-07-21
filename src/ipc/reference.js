@@ -28,6 +28,16 @@ function registerReferenceHandlers({ ipcMain, db, deps }) {
     shell.openPath(filePath)
   })
 
+  // Abre ocr/<id>.md en el editor por defecto del sistema, para que el usuario
+  // pueda auditar/corregir la transcripción a mano (luego "Recargar desde archivo").
+  ipcMain.handle('open-ocr-file', (_e, paperId) => {
+    const paper = db.getPaper(paperId)
+    if (!paper) return { success: false, error: 'not-found' }
+    const p = vault.ocrPath(paper)
+    shell.openPath(p)
+    return { success: true, path: p }
+  })
+
   ipcMain.handle('get-reference-stats', () => ({ total: db.getReferenceCount() }))
 
   ipcMain.handle('index-reference-folder', async () => {

@@ -928,6 +928,24 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 .badge-ready       { background: var(--accent-dim);  color: var(--accent); }
 .badge-pdf_error   { background: var(--yellow-dim);  color: var(--orange); }
 .badge-error       { background: var(--red-dim);     color: var(--red); }
+.badge-ocr         { background: var(--accent-dim);  color: var(--accent); }
+.badge-basic       { background: var(--surface-3);   color: var(--text-4); }
+
+/* OCR toolbar (pestaña PDF) */
+.ocr-toolbar {
+  display: flex; flex-direction: column; gap: var(--sp-xs);
+  padding: var(--sp-sm) 0; margin-bottom: var(--sp-sm);
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+.ocr-toolbar-main { display: flex; align-items: center; gap: var(--sp-sm); flex-wrap: wrap; }
+.ocr-figure-opt {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-4); cursor: pointer;
+}
+.ocr-progress {
+  font-family: var(--font-mono); font-size: 12px; color: var(--accent);
+}
+.ocr-hint { font-size: 12px; color: var(--text-4); }
 
 .pv-section { margin-bottom: var(--sp-xl); }
 

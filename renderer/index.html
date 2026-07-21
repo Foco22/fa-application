@@ -184,6 +184,7 @@
           <div class="paper-hero">
             <div class="paper-badges">
               <span id="pv-status" class="status-badge"></span>
+              <span id="pv-text-source" class="status-badge" title="Fuente del texto que alimenta resumen, quiz, chat y Clase"></span>
             </div>
             <h1 id="pv-title"></h1>
             <div class="paper-meta-row">
@@ -219,6 +220,20 @@
                 <button id="btn-highlights-toggle" class="action-btn" title="Ver destacados">Destacados</button>
                 <button id="btn-pdf-expand" class="action-btn" title="Ampliar PDF">⤢ Ampliar</button>
               </div>
+            </div>
+
+            <!-- OCR: transcripción fiel del PDF a Markdown (fuente de texto para IA) -->
+            <div class="ocr-toolbar">
+              <div class="ocr-toolbar-main">
+                <button id="btn-ocr" class="action-btn" title="Transcribir el PDF página por página con el LLM de visión">Generar OCR</button>
+                <button id="btn-ocr-reload" class="action-btn hidden" title="Recargar el texto desde ocr/&lt;id&gt;.md si lo editaste a mano">Recargar desde archivo</button>
+                <button id="btn-ocr-open" class="action-btn hidden" title="Abrir el archivo ocr/&lt;id&gt;.md">Abrir OCR</button>
+                <label class="ocr-figure-opt" title="Además de transcribir, interpretar cada figura en profundidad (más costoso)">
+                  <input type="checkbox" id="chk-ocr-figures"> Interpretar figuras
+                </label>
+              </div>
+              <div id="pv-ocr-progress" class="ocr-progress hidden"></div>
+              <div id="pv-ocr-hint" class="ocr-hint hidden"></div>
             </div>
             <div class="pdf-body">
               <div class="pdf-container">

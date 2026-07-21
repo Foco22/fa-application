@@ -9,6 +9,7 @@ import { loadPdf } from './modules/pdf.js'
 import { flushNotesRender, onNotesClick, onNotesKeydown, onNotesInput, onNotesBlur } from './modules/notes.js'
 import { hideAnnotationPopup, setupAnnotationPopup, toggleHighlightsPanel, rebuildNotesFromHighlights } from './modules/highlights.js'
 import { startSummary } from './modules/summary.js'
+import { generateOcr, reloadOcr, openOcrFile } from './modules/ocr.js'
 import { generateQuiz } from './modules/quiz.js'
 import { sendChat, clearChat } from './modules/chat.js'
 import { openSettings, saveSettings } from './modules/settings.js'
@@ -261,6 +262,9 @@ function wireListeners() {
   document.getElementById('btn-highlights-toggle').addEventListener('click', toggleHighlightsPanel)
   document.getElementById('btn-rebuild-notes').addEventListener('click', rebuildNotesFromHighlights)
   document.getElementById('btn-summary').addEventListener('click', startSummary)
+  document.getElementById('btn-ocr').addEventListener('click', generateOcr)
+  document.getElementById('btn-ocr-reload').addEventListener('click', reloadOcr)
+  document.getElementById('btn-ocr-open').addEventListener('click', openOcrFile)
   document.getElementById('btn-quiz').addEventListener('click', generateQuiz)
   document.getElementById('pv-notes').addEventListener('click',   onNotesClick)
   document.getElementById('pv-notes').addEventListener('keydown', onNotesKeydown)

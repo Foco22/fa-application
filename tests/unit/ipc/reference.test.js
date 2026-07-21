@@ -74,6 +74,31 @@ function setup(dbOverrides = {}, depsOverrides = {}) {
   return { invoke, handlers, db, deps }
 }
 
+// ─── open-ocr-file ────────────────────────────────────────────────────────────
+
+describe('open-ocr-file', () => {
+  it('opens ocr/<id>.md via shell for an existing paper', async () => {
+    const paper = { id: 'ref-x', title: 'Ref X' }
+    const { invoke, deps } = setup(
+      { getPaper: vi.fn().mockReturnValue(paper) },
+      { vault: { dir: '/vault', ocrPath: vi.fn().mockReturnValue('/vault/reference/Ref X/ocr/ref-x.md') } }
+    )
+    const result = await invoke('open-ocr-file', 'ref-x')
+    expect(deps.shell.openPath).toHaveBeenCalledWith('/vault/reference/Ref X/ocr/ref-x.md')
+    expect(result.success).toBe(true)
+  })
+
+  it('returns not-found when the paper does not exist', async () => {
+    const { invoke, deps } = setup(
+      { getPaper: vi.fn().mockReturnValue(null) },
+      { vault: { dir: '/vault', ocrPath: vi.fn() } }
+    )
+    const result = await invoke('open-ocr-file', 'nope')
+    expect(result.success).toBe(false)
+    expect(deps.shell.openPath).not.toHaveBeenCalled()
+  })
+})
+
 // ─── get-reference-stats ──────────────────────────────────────────────────────
 
 describe('get-reference-stats', () => {

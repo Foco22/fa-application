@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('api', {
 
   generateOcr:        (payload) => ipcRenderer.invoke('generate-ocr', payload),
   reloadOcrFromFile:  (id)      => ipcRenderer.invoke('reload-ocr-from-file', id),
+  openOcrFile:        (id)      => ipcRenderer.invoke('open-ocr-file', id),
   onOcrProgress:  (cb) => ipcRenderer.on('ocr-progress', (_e, p) => cb(p)),
   onOcrDone:      (cb) => ipcRenderer.on('ocr-done',     (_e, p) => cb(p)),
   onOcrError:     (cb) => ipcRenderer.on('ocr-error',    (_e, p) => cb(p)),
