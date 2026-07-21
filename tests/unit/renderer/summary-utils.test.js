@@ -179,4 +179,36 @@ describe('renderMarkdown — what the card actually shows', () => {
     expect(html).toContain('<pre>')
     expect(html).toContain('print(1)')
   })
+
+  // El orquestador de OCR envuelve la interpretación de figuras en un bloque
+  // `>` (src/ingestion/ocr.js) — y esa interpretación suele traer su propio
+  // markdown (headers, listas). Un blockquote de una sola línea por línea no
+  // alcanza: hay que juntar las líneas `>` consecutivas y re-parsear el
+  // contenido como markdown real, no como texto plano.
+  it('merges consecutive quote lines into one <blockquote> instead of one per line', () => {
+    const html = renderMarkdown('> Primera línea.\n> Segunda línea.')
+    expect(html).toBe('<blockquote><p>Primera línea.</p><p>Segunda línea.</p></blockquote>')
+  })
+
+  it('does not leak a bare ">" as its own paragraph on a blank line inside a quote', () => {
+    // Así queda una línea en blanco dentro del texto citado una vez que
+    // ocr.js le antepone "> " a cada línea (incluidas las vacías).
+    const html = renderMarkdown('> Antes.\n>\n> Después.')
+    expect(html).not.toContain('<p>&gt;</p>')
+    expect(html).not.toContain('>&gt;<')
+  })
+
+  it('renders markdown nested inside a quoted block (headers, lists)', () => {
+    const html = renderMarkdown('> ### Descripción\n>\n> - item uno\n> - item dos')
+    expect(html).toContain('<blockquote>')
+    expect(html).toContain('<h3>Descripción</h3>')
+    expect(html).toContain('<li>item uno</li>')
+    expect(html).toContain('</blockquote>')
+    expect(html).not.toContain('###')
+  })
+
+  it('closes the blockquote once a non-quote line appears', () => {
+    const html = renderMarkdown('> Cita.\n\nTexto normal.')
+    expect(html).toBe('<blockquote><p>Cita.</p></blockquote><p>Texto normal.</p>')
+  })
 })

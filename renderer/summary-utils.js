@@ -84,6 +84,7 @@ export function renderMarkdown(text) {
   let html = ''
   let inUl = false, inOl = false, inCode = false, codeLang = '', codeLines = []
   let tableRows = []
+  let quoteLines = []
 
   const closeList = () => {
     if (inUl) { html += '</ul>'; inUl = false }
@@ -107,6 +108,18 @@ export function renderMarkdown(text) {
     html += `<div class="code-block"><div class="code-header">${langSpan}<button class="copy-btn">Copiar</button></div><pre><code${cls}>${body}</code></pre></div>`
     codeLines = []; codeLang = ''
   }
+  // Junta líneas `>` consecutivas y reprocesa el contenido citado como markdown
+  // real (recursivo), en vez de tratarlo como texto plano línea por línea. Sin
+  // esto, un blockquote con su propio header/lista adentro (ej. la interpretación
+  // de figuras del OCR, src/ingestion/ocr.js) queda con "###"/"-" sin renderizar,
+  // y una línea vacía citada (queda como ">" suelto tras el trim) se filtra
+  // como texto visible en vez de ser un salto de párrafo dentro de la cita.
+  const flushQuote = () => {
+    if (!quoteLines.length) return
+    const inner = quoteLines.map(l => l.replace(/^>\s?/, '')).join('\n')
+    html += `<blockquote>${renderMarkdown(inner)}</blockquote>`
+    quoteLines = []
+  }
   // tableRows[0] = encabezado, tableRows[1] = fila separadora (se descarta),
   // el resto son filas del cuerpo — el orden lo garantiza la sintaxis Markdown.
   const flushTable = () => {
@@ -126,6 +139,7 @@ export function renderMarkdown(text) {
       if (!inCode) {
         closeList()
         flushTable()
+        flushQuote()
         inCode   = true
         codeLang = raw.trim().slice(3).trim()
       } else {
@@ -141,10 +155,22 @@ export function renderMarkdown(text) {
 
     if (isTableRow(line)) {
       closeList()
+      flushQuote()
       tableRows.push(line)
       continue
     }
     if (tableRows.length) flushTable()
+
+    // Ancla solo a ">" (con o sin espacio después): una línea originalmente
+    // vacía dentro de una cita multi-línea le llega a este parser como ">"
+    // suelto una vez que se le recorta el espacio final al hacer trim().
+    if (/^>/.test(line)) {
+      closeList()
+      flushTable()
+      quoteLines.push(line)
+      continue
+    }
+    if (quoteLines.length) flushQuote()
 
     if (!line) { closeList(); continue }
 
@@ -163,8 +189,6 @@ export function renderMarkdown(text) {
       closeList(); html += `<h2>${mdInline(line.slice(3))}</h2>`
     } else if (/^# /.test(line)) {
       closeList(); html += `<h1>${mdInline(line.slice(2))}</h1>`
-    } else if (/^> /.test(line)) {
-      closeList(); html += `<blockquote>${mdInline(line.slice(2))}</blockquote>`
     } else if (/^[-*]\s+/.test(line)) {
       if (!inUl) { closeList(); html += '<ul>'; inUl = true }
       html += `<li>${mdInline(line.replace(/^[-*]\s+/, ''))}</li>`
@@ -178,6 +202,7 @@ export function renderMarkdown(text) {
   }
   if (inCode) flushCode()
   flushTable()
+  flushQuote()
   closeList()
   return html
 }
