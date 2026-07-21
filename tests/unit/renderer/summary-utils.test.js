@@ -120,4 +120,35 @@ describe('renderMarkdown — what the card actually shows', () => {
     expect(html).toContain('&lt;sup&gt;')
     expect(html).not.toContain('<sup>')
   })
+
+  // El OCR transcribe tablas del paper a sintaxis Markdown (§4 del PRD) — si el
+  // renderer no las soporta, la tabla queda como una línea con pipes sueltos.
+  it('renders a markdown table as <table><thead>/<tbody>', () => {
+    const html = renderMarkdown('| Modelo | BLEU |\n| --- | --- |\n| Transformer | 28.4 |\n| ConvS2S | 25.2 |')
+    expect(html).toContain('<table>')
+    expect(html).toContain('<thead><tr><th>Modelo</th><th>BLEU</th></tr></thead>')
+    expect(html).toContain('<tbody>')
+    expect(html).toContain('<tr><td>Transformer</td><td>28.4</td></tr>')
+    expect(html).toContain('<tr><td>ConvS2S</td><td>25.2</td></tr>')
+    expect(html).toContain('</table>')
+  })
+
+  it('renders inline formatting inside table cells', () => {
+    const html = renderMarkdown('| Modelo | Nota |\n| --- | --- |\n| **Transformer** | usa `attention` |')
+    expect(html).toContain('<td><strong>Transformer</strong></td>')
+    expect(html).toContain('<td>usa <code>attention</code></td>')
+  })
+
+  it('ends the table and resumes normal paragraphs once the pipe rows stop', () => {
+    const html = renderMarkdown('| A | B |\n| --- | --- |\n| 1 | 2 |\n\nTexto después de la tabla.')
+    expect(html).toContain('</table>')
+    expect(html).toContain('<p>Texto después de la tabla.</p>')
+    expect(html.indexOf('</table>')).toBeLessThan(html.indexOf('<p>Texto después'))
+  })
+
+  it('renders a standalone --- line as <hr>, not a table or paragraph', () => {
+    const html = renderMarkdown('Antes.\n\n---\n\nDespués.')
+    expect(html).toContain('<hr>')
+    expect(html).not.toContain('<p>---</p>')
+  })
 })

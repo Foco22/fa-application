@@ -70,10 +70,20 @@ function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+// Una fila `| a | b |` — el separador (`| --- | --- |`) es solo otra fila más
+// para este chequeo; se descarta por posición (siempre la fila 1) al armar la tabla.
+function isTableRow(line) {
+  return /^\|.*\|$/.test(line)
+}
+function splitTableRow(line) {
+  return line.slice(1, -1).split('|').map(c => c.trim())
+}
+
 export function renderMarkdown(text) {
   const lines = (text || '').split('\n')
   let html = ''
   let inUl = false, inOl = false, inCode = false, codeLang = '', codeLines = []
+  let tableRows = []
 
   const closeList = () => {
     if (inUl) { html += '</ul>'; inUl = false }
@@ -86,11 +96,25 @@ export function renderMarkdown(text) {
     html += `<div class="code-block"><div class="code-header">${langSpan}<button class="copy-btn">Copiar</button></div><pre><code${cls}>${body}</code></pre></div>`
     codeLines = []; codeLang = ''
   }
+  // tableRows[0] = encabezado, tableRows[1] = fila separadora (se descarta),
+  // el resto son filas del cuerpo — el orden lo garantiza la sintaxis Markdown.
+  const flushTable = () => {
+    if (!tableRows.length) return
+    const header = splitTableRow(tableRows[0])
+    html += `<table><thead><tr>${header.map(c => `<th>${mdInline(c)}</th>`).join('')}</tr></thead><tbody>`
+    for (const row of tableRows.slice(2)) {
+      const cells = splitTableRow(row)
+      html += `<tr>${cells.map(c => `<td>${mdInline(c)}</td>`).join('')}</tr>`
+    }
+    html += '</tbody></table>'
+    tableRows = []
+  }
 
   for (const raw of lines) {
     if (/^```/.test(raw.trim())) {
       if (!inCode) {
         closeList()
+        flushTable()
         inCode   = true
         codeLang = raw.trim().slice(3).trim()
       } else {
@@ -103,9 +127,19 @@ export function renderMarkdown(text) {
     if (inCode) { codeLines.push(raw); continue }
 
     const line = raw.trim()
+
+    if (isTableRow(line)) {
+      closeList()
+      tableRows.push(line)
+      continue
+    }
+    if (tableRows.length) flushTable()
+
     if (!line) { closeList(); continue }
 
-    if (/^#### /.test(line)) {
+    if (/^-{3,}$/.test(line)) {
+      closeList(); html += '<hr>'; continue
+    } else if (/^#### /.test(line)) {
       closeList(); html += `<h4>${mdInline(line.slice(5))}</h4>`
     } else if (/^### /.test(line)) {
       closeList(); html += `<h3>${mdInline(line.slice(4))}</h3>`
@@ -127,6 +161,7 @@ export function renderMarkdown(text) {
     }
   }
   if (inCode) flushCode()
+  flushTable()
   closeList()
   return html
 }
