@@ -73,6 +73,56 @@ describe('transcribePdfToMarkdown — happy path', () => {
   })
 })
 
+describe('transcribePdfToMarkdown — strips a fence the LLM wraps its whole answer in', () => {
+  // Modelos de visión suelen envolver TODA la transcripción en un fence
+  // ```markdown ... ``` aunque el prompt pida solo el Markdown — el mismo hábito
+  // que ya se maneja para JSON en parseJSONResponse (src/llm/prompts.js).
+  it('strips a ```markdown fence wrapping the whole page', async () => {
+    const llm = makeVisionLLM(['```markdown\n# Título\n\nTexto de la página.\n```', 'segunda página'])
+    const result = await transcribePdfToMarkdown(Buffer.from('pdf'), {
+      rasterizePdf: makeRasterizer(), llm, pdfParse: vi.fn(),
+      extractPagesText: makePagesExtractor(['fb1', 'fb2']),
+    })
+    expect(result.markdown).toContain('# Título')
+    expect(result.markdown).toContain('Texto de la página.')
+    expect(result.markdown).not.toContain('```')
+  })
+
+  it('strips a bare ``` fence with no language tag', async () => {
+    const llm = makeVisionLLM(['```\n# Título\n```', 'segunda página'])
+    const result = await transcribePdfToMarkdown(Buffer.from('pdf'), {
+      rasterizePdf: makeRasterizer(), llm, pdfParse: vi.fn(),
+      extractPagesText: makePagesExtractor(['fb1', 'fb2']),
+    })
+    expect(result.markdown).toContain('# Título')
+    expect(result.markdown).not.toContain('```')
+  })
+
+  it('leaves a genuine inner code block (pseudocode in the transcription) untouched', async () => {
+    const withInnerFence = '# Algoritmo\n\n```python\nfor x in xs:\n    pass\n```\n\nTexto después.'
+    const llm = makeVisionLLM([withInnerFence, 'segunda página'])
+    const result = await transcribePdfToMarkdown(Buffer.from('pdf'), {
+      rasterizePdf: makeRasterizer(), llm, pdfParse: vi.fn(),
+      extractPagesText: makePagesExtractor(['fb1', 'fb2']),
+    })
+    expect(result.markdown).toContain('```python')
+    expect(result.markdown).toContain('for x in xs:')
+  })
+
+  it('also strips a wrapping fence from the figure interpretation', async () => {
+    const llm = {
+      transcribePageToMarkdown: vi.fn().mockResolvedValue('md'),
+      interpretFigureInDepth: vi.fn().mockResolvedValue('```markdown\nFigura: arquitectura\n```'),
+    }
+    const result = await transcribePdfToMarkdown(Buffer.from('pdf'), {
+      rasterizePdf: makeRasterizer(), llm, pdfParse: vi.fn(),
+      extractPagesText: makePagesExtractor(['fb1', 'fb2']),
+    })
+    expect(result.markdown).toContain('Figura: arquitectura')
+    expect(result.markdown).not.toContain('```')
+  })
+})
+
 describe('transcribePdfToMarkdown — concurrency', () => {
   function makePages(n) {
     return Array.from({ length: n }, (_, i) => ({ base64: `p${i}`, mimeType: 'image/png' }))

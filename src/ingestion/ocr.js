@@ -19,6 +19,17 @@ const { extractPagesText: defaultExtractPagesText } = require('./extractor')
 
 const DEFAULT_CONCURRENCY = 4
 
+// Los modelos de visión suelen envolver TODA la respuesta en un fence
+// ```markdown ... ``` aunque el prompt pida solo el Markdown de la página —
+// el mismo hábito que parseJSONResponse ya maneja para JSON (src/llm/prompts.js).
+// Solo saca el fence si envuelve la respuesta entera (ancla a inicio/fin), así
+// un bloque de código legítimo dentro de la transcripción (ej. pseudocódigo)
+// queda intacto.
+function stripWrappingFence(text) {
+  return (text || '').trim()
+    .replace(/^```[a-z]*\s*\n?/i, '').replace(/\n?```$/, '').trim()
+}
+
 async function transcribePdfToMarkdown(buffer, {
   rasterizePdf,
   llm,
@@ -65,7 +76,7 @@ async function transcribePdfToMarkdown(buffer, {
     const parts = []
 
     try {
-      const md = await llm.transcribePageToMarkdown(base64, mimeType)
+      const md = stripWrappingFence(await llm.transcribePageToMarkdown(base64, mimeType))
       parts.push(`<!-- page ${pageNum} · source: ocr -->\n${md}`)
 
       // Interpretación profunda de figuras: corre siempre que el proveedor la
@@ -73,9 +84,9 @@ async function transcribePdfToMarkdown(buffer, {
       // anota como bloque de cita aparte, nunca mezclada con el texto de la página.
       if (typeof llm.interpretFigureInDepth === 'function') {
         try {
-          const fig = await llm.interpretFigureInDepth(base64, mimeType)
-          if (fig && fig.trim()) {
-            parts.push(`<!-- page ${pageNum} · figures -->\n> ${fig.trim().replace(/\n/g, '\n> ')}`)
+          const fig = stripWrappingFence(await llm.interpretFigureInDepth(base64, mimeType))
+          if (fig) {
+            parts.push(`<!-- page ${pageNum} · figures -->\n> ${fig.replace(/\n/g, '\n> ')}`)
           }
         } catch (_) { /* la figura es opcional: su fallo no rompe el OCR */ }
       }

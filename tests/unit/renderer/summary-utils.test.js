@@ -151,4 +151,32 @@ describe('renderMarkdown — what the card actually shows', () => {
     expect(html).toContain('<hr>')
     expect(html).not.toContain('<p>---</p>')
   })
+
+  // El orquestador de OCR intercala marcadores <!-- page N · source: ocr --> entre
+  // páginas (src/ingestion/ocr.js) — son metadata interna, no contenido del paper,
+  // y un comentario HTML real no se ve al renderizarse.
+  it('hides a full-line HTML comment instead of showing it as text', () => {
+    const html = renderMarkdown('Antes.\n\n<!-- page 1 · source: ocr -->\n\nDespués.')
+    expect(html).not.toContain('page 1')
+    expect(html).not.toContain('&lt;!--')
+    expect(html).toBe('<p>Antes.</p><p>Después.</p>')
+  })
+
+  // Defensa en el render: contenido YA guardado en la DB antes de que el
+  // orquestador empezara a sacar el fence en origen (src/ingestion/ocr.js)
+  // sigue teniendo el ```markdown envolvente — esto lo hace verse bien igual,
+  // sin depender de volver a pagar por una transcripción.
+  it('treats a ```markdown fenced block as real markdown, not a code block', () => {
+    const html = renderMarkdown('```markdown\n# Título\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n```')
+    expect(html).toContain('<h1>Título</h1>')
+    expect(html).toContain('<table>')
+    expect(html).not.toContain('<pre>')
+    expect(html).not.toContain('code-block')
+  })
+
+  it('still renders a real code block for any other language tag', () => {
+    const html = renderMarkdown('```python\nprint(1)\n```')
+    expect(html).toContain('<pre>')
+    expect(html).toContain('print(1)')
+  })
 })

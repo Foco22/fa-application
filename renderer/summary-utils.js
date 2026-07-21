@@ -90,6 +90,17 @@ export function renderMarkdown(text) {
     if (inOl) { html += '</ol>'; inOl = false }
   }
   const flushCode = () => {
+    // El modelo a veces envuelve TODA su respuesta en un fence ```markdown en
+    // vez de mandar el texto plano — no es código real, es su propio Markdown
+    // de vuelta. Se reprocesa como markdown normal en lugar de mostrarlo como
+    // un bloque de código gigante. Defensa en el render: cubre también
+    // contenido guardado antes de que el orquestador empezara a sacar este
+    // mismo fence en origen (src/ingestion/ocr.js).
+    if (codeLang === 'markdown' || codeLang === 'md') {
+      html += renderMarkdown(codeLines.join('\n'))
+      codeLines = []; codeLang = ''
+      return
+    }
     const body     = escapeHtml(codeLines.join('\n'))
     const cls      = codeLang ? ` class="language-${escapeHtml(codeLang)}"` : ''
     const langSpan = codeLang ? `<span class="code-lang">${escapeHtml(codeLang)}</span>` : '<span></span>'
@@ -136,6 +147,11 @@ export function renderMarkdown(text) {
     if (tableRows.length) flushTable()
 
     if (!line) { closeList(); continue }
+
+    // Comentario HTML de línea completa (ej. los marcadores <!-- page N ... -->
+    // que el orquestador de OCR intercala entre páginas) — metadata interna, no
+    // contenido del paper; un comentario HTML real tampoco se ve al renderizarse.
+    if (/^<!--.*-->$/.test(line)) { closeList(); continue }
 
     if (/^-{3,}$/.test(line)) {
       closeList(); html += '<hr>'; continue
