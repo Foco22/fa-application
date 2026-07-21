@@ -78,7 +78,7 @@ export const STATUS_KEYS = {
   error:       'estado-error',
 }
 
-export const TABS = ['pdf', 'abstract', 'resumen', 'notas', 'quiz']
+export const TABS = ['pdf', 'abstract', 'resumen', 'notas', 'quiz', 'ocr']
 
 export const LLM_PROVIDERS = {
   openai:    { label: 'OpenAI API Key',    placeholder: 'sk-...',   models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o3-mini'] },

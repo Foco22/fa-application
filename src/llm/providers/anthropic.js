@@ -5,6 +5,8 @@ const {
   buildAffiliationsPrompt,
   buildMetadataPrompt,
   buildAbstractSummaryPrompt,
+  buildOcrPagePrompt,
+  buildFigureInterpretationPrompt,
   candidateAffiliationLines,
   parseJSONResponse,
 } = require('../prompts')
@@ -103,6 +105,39 @@ function createAnthropicProvider(apiKey, model = null, _client = null, onUsage =
         ]}]
       })
       record('vision', response.usage)
+      return extractText(response.content)
+    },
+
+    // OCR fiel de una página: transcripción exhaustiva a Markdown. max_tokens
+    // muy por encima de interpretImage (400) porque una página densa a dos
+    // columnas puede pasar los 1500-2000 tokens de salida.
+    async transcribePageToMarkdown(base64, mimeType = 'image/png') {
+      const response = await client.messages.create({
+        model: MODEL,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+          { type: 'text', text: buildOcrPagePrompt() }
+        ]}]
+      })
+      record('ocr', response.usage)
+      return extractText(response.content)
+    },
+
+    // Interpretación profunda de una figura concreta (siempre corre como parte
+    // del OCR — ver src/ingestion/ocr.js). Se contabiliza aparte del texto de
+    // página bajo su propio action_type ('ocr_figure') para que el dashboard
+    // de costos distinga cuánto se gastó en cada cosa.
+    async interpretFigureInDepth(base64, mimeType = 'image/png') {
+      const response = await client.messages.create({
+        model: MODEL,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+          { type: 'text', text: buildFigureInterpretationPrompt() }
+        ]}]
+      })
+      record('ocr_figure', response.usage)
       return extractText(response.content)
     },
 

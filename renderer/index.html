@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../node_modules/katex/dist/katex.min.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -189,6 +190,7 @@
           <div class="paper-hero">
             <div class="paper-badges">
               <span id="pv-status" class="status-badge"></span>
+              <span id="pv-text-source" class="status-badge" data-i18n-title="fuente-del-texto-que-alimenta-resumen-quiz-chat-y"></span>
             </div>
             <h1 id="pv-title"></h1>
             <div class="paper-meta-row">
@@ -197,6 +199,17 @@
             </div>
             <div class="paper-meta-row paper-meta-affil">
               <span id="pv-affil" class="meta-chip"></span>
+            </div>
+
+            <!-- OCR: transcripción fiel del PDF a Markdown (fuente de texto para IA) -->
+            <div class="ocr-toolbar">
+              <div class="ocr-toolbar-main">
+                <button id="btn-ocr" class="action-btn" data-i18n-title="generar-ocr-title" data-i18n="generar-ocr">Generar OCR</button>
+                <button id="btn-ocr-reload" class="action-btn hidden" data-i18n-title="recargar-desde-archivo-title" data-i18n="recargar-desde-archivo">Recargar desde archivo</button>
+                <button id="btn-ocr-open" class="action-btn hidden" data-i18n-title="abrir-ocr-title" data-i18n="abrir-ocr">Abrir OCR</button>
+              </div>
+              <div id="pv-ocr-progress" class="ocr-progress hidden"></div>
+              <div id="pv-ocr-hint" class="ocr-hint hidden"></div>
             </div>
           </div>
 
@@ -207,6 +220,7 @@
             <button class="tab-btn active" data-tab="resumen" data-i18n="resumen">Resumen</button>
             <button class="tab-btn" data-tab="notas" data-i18n="notas">Notas</button>
             <button class="tab-btn" data-tab="quiz" data-i18n="quiz">Quiz</button>
+            <button id="tab-btn-ocr" class="tab-btn hidden" data-tab="ocr" data-i18n="tab-ocr">OCR</button>
             <button class="tab-btn" data-tab="clase" data-i18n="clase">Clase</button>
           </div>
 
@@ -225,6 +239,7 @@
                 <button id="btn-pdf-expand" class="action-btn" title="Ampliar PDF" data-i18n-title="ampliar-pdf" data-i18n="ampliar">⤢ Ampliar</button>
               </div>
             </div>
+
             <div class="pdf-body">
               <div class="pdf-container">
                 <div id="pdf-placeholder" class="pdf-placeholder">
@@ -316,6 +331,13 @@
                 <button id="btn-quiz" class="action-btn" data-i18n="generar">Generar</button>
               </div>
               <div id="pv-quiz"></div>
+            </section>
+          </div>
+
+          <!-- Tab: OCR — vista renderizada de ocr/<id>.md, no el archivo crudo -->
+          <div id="tab-ocr" class="tab-panel hidden">
+            <section class="pv-section">
+              <div id="pv-ocr-content" class="markdown-preview"></div>
             </section>
           </div>
 
@@ -1078,6 +1100,14 @@
     </div>
   </div>
 
+  <!-- OCR loading overlay: blocks interaction with the rest of the app while a page-by-page OCR run is in progress -->
+  <div id="ocr-overlay" class="fetch-overlay hidden">
+    <div class="fetch-overlay-content">
+      <span class="spinner spinner-lg"></span>
+      <p id="ocr-overlay-text" data-i18n="preparando-transcripcion">Preparando transcripción…</p>
+    </div>
+  </div>
+
   <!-- Confirm class modal -->
   <div id="class-confirm-overlay" class="confirm-overlay hidden">
     <div class="confirm-modal">
@@ -1109,6 +1139,7 @@
 
   <script src="../node_modules/pdfjs-dist/build/pdf.min.js"></script>
   <script src="../node_modules/chart.js/dist/chart.umd.js"></script>
+  <script src="../node_modules/katex/dist/katex.min.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>

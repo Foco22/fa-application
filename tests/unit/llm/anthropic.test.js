@@ -187,6 +187,62 @@ describe('Anthropic provider — summarizeAbstract', () => {
   })
 })
 
+// ─── transcribePageToMarkdown ─────────────────────────────────────────────────
+
+function makeVisionClient(text, usage = { input_tokens: 100, output_tokens: 500 }) {
+  return {
+    messages: {
+      stream: vi.fn(),
+      create: vi.fn().mockResolvedValue({ content: [textBlock(text)], usage }),
+    }
+  }
+}
+
+describe('Anthropic provider — transcribePageToMarkdown', () => {
+  const B64 = 'aGVsbG8='
+
+  it('sends the page image as a base64 image block', async () => {
+    const mockClient = makeVisionClient('# Página\nTexto transcripto.')
+    await createAnthropicProvider('sk-test', null, mockClient).transcribePageToMarkdown(B64, 'image/png')
+    const args = mockClient.messages.create.mock.calls[0][0]
+    const imgBlock = args.messages[0].content.find(b => b.type === 'image')
+    expect(imgBlock.source).toMatchObject({ type: 'base64', media_type: 'image/png', data: B64 })
+  })
+
+  it('returns the transcribed markdown text', async () => {
+    const mockClient = makeVisionClient('## Sección 1\nContenido.')
+    const result = await createAnthropicProvider('sk-test', null, mockClient).transcribePageToMarkdown(B64)
+    expect(result).toBe('## Sección 1\nContenido.')
+  })
+
+  it('uses a much larger max_tokens than interpretImage (exhaustive transcription)', async () => {
+    const mockClient = makeVisionClient('text')
+    await createAnthropicProvider('sk-test', null, mockClient).transcribePageToMarkdown(B64)
+    const args = mockClient.messages.create.mock.calls[0][0]
+    expect(args.max_tokens).toBeGreaterThanOrEqual(4000)
+  })
+
+  it('propagates the error when the call throws, so the orchestrator can fall back to pdf-parse', async () => {
+    const mockClient = { messages: { create: vi.fn().mockRejectedValue(new Error('rate limit')), stream: vi.fn() } }
+    await expect(
+      createAnthropicProvider('sk-test', null, mockClient).transcribePageToMarkdown(B64, 'image/png')
+    ).rejects.toThrow('rate limit')
+  })
+})
+
+// ─── interpretFigureInDepth ───────────────────────────────────────────────────
+
+describe('Anthropic provider — interpretFigureInDepth', () => {
+  const B64 = 'aGVsbG8='
+
+  it('returns the in-depth interpretation text', async () => {
+    const mockClient = makeVisionClient('La figura 2 muestra la arquitectura...')
+    const result = await createAnthropicProvider('sk-test', null, mockClient).interpretFigureInDepth(B64)
+    expect(result).toBe('La figura 2 muestra la arquitectura...')
+  })
+
+})
+
 // ─── chat ─────────────────────────────────────────────────────────────────────
 
 describe('Anthropic provider — chat', () => {

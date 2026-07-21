@@ -77,6 +77,20 @@ describe('anthropic provider — usage recording', () => {
     const llm = createAnthropicProvider('sk-test', null, makeClient())
     await expect(llm.chat([{ role: 'user', content: 'hi' }])).resolves.toBe('hola')
   })
+
+  // El OCR y la interpretación de figuras se contabilizan bajo su propio
+  // action_type cada uno, para que el dashboard distinga cuánto se gastó en
+  // transcribir texto de página vs. interpretar figuras.
+  it('records transcribePageToMarkdown and interpretFigureInDepth under their own action_type', async () => {
+    const onUsage = vi.fn()
+    const llm = createAnthropicProvider('sk-test', 'claude-opus-4-8', makeClient(), onUsage)
+
+    await llm.transcribePageToMarkdown('base64', 'image/png')
+    await llm.interpretFigureInDepth('base64', 'image/png')
+
+    const actions = onUsage.mock.calls.map(c => c[0].action_type)
+    expect(actions).toEqual(['ocr', 'ocr_figure'])
+  })
 })
 
 // ─── OpenAI ───────────────────────────────────────────────────────────────────
@@ -147,6 +161,17 @@ describe('openai provider — usage recording', () => {
     await llm.summarizeAbstract('abstract')
 
     expect(onUsage.mock.calls.map(c => c[0].action_type)).toEqual(['chat', 'abstract_summary'])
+  })
+
+  it('records transcribePageToMarkdown and interpretFigureInDepth under their own action_type', async () => {
+    const onUsage = vi.fn()
+    const llm = createOpenAIProvider('sk-test', 'gpt-4o', makeClient(), onUsage)
+
+    await llm.transcribePageToMarkdown('base64', 'image/png')
+    await llm.interpretFigureInDepth('base64', 'image/png')
+
+    const actions = onUsage.mock.calls.map(c => c[0].action_type)
+    expect(actions).toEqual(['ocr', 'ocr_figure'])
   })
 })
 

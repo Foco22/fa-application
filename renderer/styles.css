@@ -835,6 +835,64 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 }
 @keyframes blink { 50% { opacity: 0; } }
 
+/* ── Markdown preview (OCR tab) — rendered like an editor's .md preview pane,
+   not a plain-text dump. No white-space:pre-wrap here: renderMarkdown() already
+   emits real <p>/<h1>/<table> tags, so wrapping would double up its spacing. */
+.markdown-preview {
+  font-size: 15px; line-height: 1.75; color: var(--text-2); letter-spacing: -0.1px;
+}
+.markdown-preview h1, .markdown-preview h2 {
+  font-family: var(--font-display); font-weight: 700; color: var(--text);
+  padding-bottom: var(--sp-sm); border-bottom: 1px solid var(--border-2);
+  letter-spacing: -0.3px;
+}
+.markdown-preview h1 { font-size: 26px; margin: var(--sp-xl) 0 var(--sp-md); }
+.markdown-preview h2 { font-size: 20px; margin: var(--sp-xl) 0 var(--sp-sm); }
+.markdown-preview h3 { font-size: 16px; font-weight: 600; color: var(--text); margin: var(--sp-lg) 0 var(--sp-xs); }
+.markdown-preview h4 { font-size: 14px; font-weight: 600; color: var(--text-2); margin: var(--sp-md) 0 var(--sp-xs); }
+.markdown-preview h1:first-child, .markdown-preview h2:first-child,
+.markdown-preview h3:first-child, .markdown-preview h4:first-child { margin-top: 0; }
+.markdown-preview p { margin: 0 0 var(--sp-md); }
+.markdown-preview p:last-child { margin-bottom: 0; }
+.markdown-preview ul, .markdown-preview ol { margin: 0 0 var(--sp-md); padding-left: 24px; }
+.markdown-preview li { margin-bottom: 6px; line-height: 1.75; }
+.markdown-preview strong { color: var(--text); font-weight: 600; }
+.markdown-preview code {
+  font-family: var(--font-mono); font-size: 0.87em;
+  background: var(--surface-2); color: var(--accent);
+  padding: 2px 6px; border-radius: var(--r-xs);
+}
+.markdown-preview hr { border: none; border-top: 1px solid var(--border); margin: var(--sp-xl) 0; }
+.markdown-preview table { width: 100%; border-collapse: collapse; margin: 0 0 var(--sp-lg); font-size: 13.5px; }
+.markdown-preview th, .markdown-preview td { border: 1px solid var(--border-2); padding: 7px 12px; text-align: left; }
+.markdown-preview th { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.markdown-preview tr:nth-child(even) td { background: var(--surface-1); }
+/* Interpretación de figuras del OCR (```figure → <details>, ver summary-utils.js)
+   — colapsada por defecto, solo el resumen clickeable es siempre visible. */
+.markdown-preview details {
+  margin: 0 0 var(--sp-md);
+  border: 1px solid var(--border-2); border-radius: var(--r-xs);
+  background: var(--surface-1);
+}
+.markdown-preview summary {
+  cursor: pointer; padding: var(--sp-sm) var(--sp-md);
+  font-size: 13px; color: var(--text-3); user-select: none;
+}
+.markdown-preview summary:hover { color: var(--text-2); }
+.markdown-preview details[open] summary { border-bottom: 1px solid var(--border-2); }
+.markdown-preview details > *:not(summary) { padding: 0 var(--sp-md); }
+.markdown-preview details > p:last-child,
+.markdown-preview details > ul:last-child,
+.markdown-preview details > ol:last-child { padding-bottom: var(--sp-md); }
+/* Fórmulas LaTeX (KaTeX) — hereda el color de texto del tema; overflow-x
+   evita que una ecuación ancha rompa el layout en vez de desbordar la app. */
+.markdown-preview .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+/* Anotación breve "[Figura N: ...]" dentro del texto de la página (no la
+   interpretación extensa, esa va en <details> — ver flushQuote en summary-utils.js) */
+.markdown-preview .figure-tag {
+  font-size: 13px; font-style: italic; color: var(--text-4);
+}
+
 /* ── Notes (live Markdown editor) ────────────────────────────────────────── */
 .notes-tab {
   display: flex; flex-direction: column;
@@ -938,6 +996,20 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 .badge-ready       { background: var(--accent-dim);  color: var(--accent); }
 .badge-pdf_error   { background: var(--yellow-dim);  color: var(--orange); }
 .badge-error       { background: var(--red-dim);     color: var(--red); }
+.badge-ocr         { background: var(--accent-dim);  color: var(--accent); }
+.badge-basic       { background: var(--surface-3);   color: var(--text-4); }
+
+/* OCR toolbar (paper-hero, debajo de Universidad/Instituto) */
+.ocr-toolbar {
+  display: flex; flex-direction: column; gap: var(--sp-xs);
+  padding-top: var(--sp-sm); margin-top: var(--sp-sm);
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+.ocr-toolbar-main { display: flex; align-items: center; gap: var(--sp-sm); flex-wrap: wrap; }
+.ocr-progress {
+  font-family: var(--font-mono); font-size: 12px; color: var(--accent);
+}
+.ocr-hint { font-size: 12px; color: var(--text-4); }
 
 .pv-section { margin-bottom: var(--sp-xl); }
 

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<!--
+  Ventana oculta (show: false) usada por src/ingestion/rasterizer.js para
+  rasterizar un PDF a una imagen PNG por página, reutilizando pdfjs-dist (el
+  mismo motor que la pestaña "File"). El proceso main invoca
+  window.__rasterizePdf(base64Pdf, scale) vía executeJavaScript y recibe
+  [{ base64, mimeType }] en orden de página.
+-->
+<html>
+<head>
+  <meta charset="utf-8" />
+  <script src="../node_modules/pdfjs-dist/build/pdf.min.js"></script>
+</head>
+<body>
+<script>
+  // Worker local (sin red). Si falla, pdfjs cae al fake worker en el hilo main.
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '../node_modules/pdfjs-dist/build/pdf.worker.min.js'
+  } catch (_) {}
+
+  function base64ToUint8Array(b64) {
+    const bin = atob(b64)
+    const len = bin.length
+    const bytes = new Uint8Array(len)
+    for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i)
+    return bytes
+  }
+
+  // Devuelve [{ base64, mimeType }] — una entrada por página, en orden.
+  window.__rasterizePdf = async function (base64Pdf, scale) {
+    const data = base64ToUint8Array(base64Pdf)
+    const pdf = await pdfjsLib.getDocument({ data }).promise
+    const pages = []
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i)
+      const viewport = page.getViewport({ scale: scale || 2 })
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.ceil(viewport.width)
+      canvas.height = Math.ceil(viewport.height)
+      const ctx = canvas.getContext('2d')
+      await page.render({ canvasContext: ctx, viewport }).promise
+      const dataUrl = canvas.toDataURL('image/png')
+      pages.push({ base64: dataUrl.split(',')[1], mimeType: 'image/png' })
+      // liberar el canvas de esta página antes de la siguiente
+      canvas.width = canvas.height = 0
+    }
+    return pages
+  }
+</script>
+</body>
+</html>

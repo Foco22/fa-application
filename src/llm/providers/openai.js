@@ -5,6 +5,8 @@ const {
   buildAffiliationsPrompt,
   buildMetadataPrompt,
   buildAbstractSummaryPrompt,
+  buildOcrPagePrompt,
+  buildFigureInterpretationPrompt,
   candidateAffiliationLines,
   parseJSONResponse,
 } = require('../prompts')
@@ -26,7 +28,7 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
     })
   }
 
-  return {
+  const provider = {
     async streamSummary(paper, onChunk) {
       const params = {
         model: MODEL,
@@ -135,6 +137,43 @@ function createOpenAICompatibleProvider(apiKey, { baseURL, model, jsonMode = fal
       return response.choices[0].message.content
     },
   }
+
+  // Los métodos de visión OCR solo se exponen si el proveedor soporta visión.
+  // DeepSeek (supportsVision: false) queda sin ellos a propósito, de modo que
+  // el guard `if (!llm.transcribePageToMarkdown)` de los callers lo detecte.
+  if (supportsVision) {
+    // OCR fiel de una página a Markdown. max_tokens muy por encima de
+    // interpretImage (400): una página densa puede superar 1500-2000 tokens.
+    provider.transcribePageToMarkdown = async (base64, mimeType = 'image/png') => {
+      const response = await client.chat.completions.create({
+        model: MODEL,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: [
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+          { type: 'text', text: buildOcrPagePrompt() }
+        ]}]
+      })
+      record('ocr', response.usage)
+      return response.choices[0].message.content
+    }
+
+    // Interpretación profunda de una figura (siempre corre como parte del OCR
+    // — ver src/ingestion/ocr.js — contabilizada aparte bajo 'ocr_figure').
+    provider.interpretFigureInDepth = async (base64, mimeType = 'image/png') => {
+      const response = await client.chat.completions.create({
+        model: MODEL,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: [
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+          { type: 'text', text: buildFigureInterpretationPrompt() }
+        ]}]
+      })
+      record('ocr_figure', response.usage)
+      return response.choices[0].message.content
+    }
+  }
+
+  return provider
 }
 
 function createOpenAIProvider(apiKey, model = null, _client = null, onUsage = null, language = 'es') {

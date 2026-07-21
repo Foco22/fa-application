@@ -78,6 +78,7 @@ function ensureDirs(vaultDir, paper) {
   fs.mkdirSync(path.join(dir, 'raw'),    { recursive: true })
   fs.mkdirSync(path.join(dir, 'assets'), { recursive: true })
   fs.mkdirSync(path.join(dir, 'slides'), { recursive: true })
+  fs.mkdirSync(path.join(dir, 'ocr'),    { recursive: true })
   return dir
 }
 
@@ -95,6 +96,28 @@ function writeQuiz(vaultDir, paper, quiz) {
   const dir = path.join(paperDir(vaultDir, paper), 'assets')
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, 'quiz.json'), JSON.stringify(quiz, null, 2), 'utf8')
+}
+
+// OCR fiel del PDF, un Markdown legible/editable por el usuario en ocr/<id>.md,
+// junto a raw/, assets/ y slides/. Sigue el patrón de writeSummary/writeQuiz.
+function ocrPath(vaultDir, paper) {
+  return path.join(paperDir(vaultDir, paper), 'ocr', `${paper.id}.md`)
+}
+
+function writeOcr(vaultDir, paper, markdown) {
+  const dest = ocrPath(vaultDir, paper)
+  fs.mkdirSync(path.dirname(dest), { recursive: true })
+  fs.writeFileSync(dest, markdown, 'utf8')
+  return dest
+}
+
+// Lee el Markdown de OCR desde disco (fuente "legible por humanos"). Devuelve
+// null si el archivo no existe. Lo usa "Recargar desde archivo" para resincronizar
+// papers.pdf_text con lo que el usuario editó a mano, sin llamar al LLM.
+function readOcr(vaultDir, paper) {
+  const src = ocrPath(vaultDir, paper)
+  if (!fs.existsSync(src)) return null
+  return fs.readFileSync(src, 'utf8')
 }
 
 // Copia un PDF de origen (ej. la carpeta Downloads del usuario) a raw/<id>.pdf
@@ -224,5 +247,6 @@ module.exports = {
   isoWeek, paperSlot, paperDir,
   isReferencePaper, sanitizeFolderName, paperFolderName, referenceFolderName,
   ensureDirs, pdfPath, copyPdfToRaw, writeSummary, writeQuiz, slidesDir, writeSlide,
+  ocrPath, writeOcr, readOcr,
   backfillSlideDirs, migratePaperFolders, deletePaperDir
 }

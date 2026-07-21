@@ -792,3 +792,26 @@ describe('runFetch — fetch log', () => {
     expect(overflow).toMatchObject({ decision: 'rejected', stage: 'maxpapers_cutoff' })
   })
 })
+
+// ─── OCR-002: el fetch NUNCA dispara OCR ────────────────────────────────────────
+
+describe('runFetch — never triggers OCR (OCR-002)', () => {
+  it('does not call transcribePageToMarkdown on any candidate', async () => {
+    const transcribePageToMarkdown = vi.fn()
+    const { db, deps, mainWindow } = makeCtx({
+      llm: { extractAffiliationsWithAI: vi.fn().mockResolvedValue(['MIT']), transcribePageToMarkdown },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(transcribePageToMarkdown).not.toHaveBeenCalled()
+  })
+
+  it('saves ingested papers with pdf_text_source = "pdf-parse"', async () => {
+    const { db, deps, mainWindow } = makeCtx()
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ pdf_text_source: 'pdf-parse' }))
+  })
+})

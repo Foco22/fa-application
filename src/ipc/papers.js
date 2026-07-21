@@ -182,6 +182,9 @@ async function runFetch({ db, deps, mainWindow }) {
       ...paper,
       affiliations: affiliationsJson,
       pdf_text:     extracted.success ? extracted.text : null,
+      // La ingesta SIEMPRE usa pdf-parse liviano — el OCR es una acción posterior
+      // y explícita del usuario, nunca parte del fetch (§4/§8 del PRD).
+      pdf_text_source: 'pdf-parse',
       status:       extracted.success ? 'ready' : 'pdf_error',
       pdf_error:    extracted.success ? null : extracted.error
     }

@@ -5,6 +5,7 @@ import { renderQuizSection } from './quiz.js'
 import { renderNotesSection } from './notes.js'
 import { syncNotesFromHighlights, renderHighlightsPanel } from './highlights.js'
 import { updateChatContext } from './chat.js'
+import { renderOcrSection } from './ocr.js'
 import { t } from './language.js'
 
 let _renderVault   = () => {}
@@ -73,6 +74,7 @@ export function renderPaperView() {
   renderSummarySection(p)
   renderQuizSection(p)
   renderNotesSection(p)
+  renderOcrSection(p)
   if (p.highlights) syncNotesFromHighlights()
   if (state.highlightsPanelOpen) renderHighlightsPanel()
 }
