@@ -1,4 +1,12 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
+import katex from 'katex'
+
+// El script clásico <script src="node_modules/katex/dist/katex.min.js"> del
+// index.html real deja esto mismo en window — acá lo simulamos con el paquete
+// de Node, que expone la misma API (renderToString no necesita DOM).
+window.katex = katex
+
 import { parseSummary, renderMarkdown } from '../../../renderer/summary-utils.js'
 
 // Simulates exactly what DeepSeek returns for "Attention Is All You Need"
@@ -178,6 +186,65 @@ describe('renderMarkdown — what the card actually shows', () => {
     const html = renderMarkdown('```python\nprint(1)\n```')
     expect(html).toContain('<pre>')
     expect(html).toContain('print(1)')
+  })
+
+  // El orquestador de OCR envuelve la interpretación de figuras en un fence
+  // ```figure (src/ingestion/ocr.js) — es contexto extra, no el texto de la
+  // página, así que arranca colapsado como un <details> nativo, no un bloque
+  // siempre visible.
+  it('renders a ```figure fence as a collapsed <details>, not a code block or blockquote', () => {
+    const html = renderMarkdown('```figure\nLa figura muestra la arquitectura.\n```')
+    expect(html).toContain('<details>')
+    expect(html).toContain('<summary>')
+    expect(html).not.toMatch(/<details[^>]*\sopen/)
+    expect(html).not.toContain('<pre>')
+    expect(html).not.toContain('<blockquote>')
+    expect(html).toContain('<p>La figura muestra la arquitectura.</p>')
+    expect(html).toContain('</details>')
+  })
+
+  it('re-parses markdown nested inside a ```figure fence (headers, lists)', () => {
+    const html = renderMarkdown('```figure\n### Descripción\n\n- item uno\n```')
+    expect(html).toContain('<h3>Descripción</h3>')
+    expect(html).toContain('<li>item uno</li>')
+    expect(html).not.toContain('###')
+  })
+
+  // El OCR transcribe fórmulas a LaTeX ($...$ inline, $$...$$ display — §4 del
+  // PRD). Antes se mostraban como texto crudo con \frac, \sqrt, etc. literales.
+  describe('LaTeX (KaTeX real, no texto crudo)', () => {
+    it('renders inline $...$ math with real KaTeX markup', () => {
+      const html = renderMarkdown('El valor de $d_k$ es 64.')
+      expect(html).toContain('class="katex"')
+      expect(html).not.toContain('$d_k$')
+      expect(html).not.toContain('&lt;span')
+    })
+
+    it('renders a multi-line $$ ... $$ display block (the shape the OCR prompt produces)', () => {
+      const html = renderMarkdown('$$\n\\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V\n$$')
+      expect(html).toContain('katex-display')
+      // KaTeX SÍ incluye el LaTeX original en la anotación MathML (accesibilidad,
+      // copiar/pegar) — lo que no debe quedar es el bloque como texto plano sin
+      // renderizar, envuelto en <p> con los "$$" literales.
+      expect(html).not.toContain('<p>$$</p>')
+      expect(html).not.toMatch(/<p>\\text\{Attention\}/)
+    })
+
+    it('renders a single-line $$...$$ display block', () => {
+      const html = renderMarkdown('$$E = mc^2$$')
+      expect(html).toContain('katex-display')
+      expect(html).not.toContain('$$')
+    })
+
+    it('does not throw on stray/unpaired $ characters in ordinary text', () => {
+      expect(() => renderMarkdown('Cuesta $5 y después $10, sin cerrar.')).not.toThrow()
+    })
+
+    it('resumes normal paragraphs after a display block ends', () => {
+      const html = renderMarkdown('$$\nx^2\n$$\n\nTexto después.')
+      expect(html).toContain('katex-display')
+      expect(html).toContain('<p>Texto después.</p>')
+    })
   })
 
   // El orquestador de OCR envuelve la interpretación de figuras en un bloque

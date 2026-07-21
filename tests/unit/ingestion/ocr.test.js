@@ -109,7 +109,7 @@ describe('transcribePdfToMarkdown — strips a fence the LLM wraps its whole ans
     expect(result.markdown).toContain('for x in xs:')
   })
 
-  it('also strips a wrapping fence from the figure interpretation', async () => {
+  it("strips the LLM's own wrapping fence before re-wrapping the figure in a single ```figure fence", async () => {
     const llm = {
       transcribePageToMarkdown: vi.fn().mockResolvedValue('md'),
       interpretFigureInDepth: vi.fn().mockResolvedValue('```markdown\nFigura: arquitectura\n```'),
@@ -118,8 +118,10 @@ describe('transcribePdfToMarkdown — strips a fence the LLM wraps its whole ans
       rasterizePdf: makeRasterizer(), llm, pdfParse: vi.fn(),
       extractPagesText: makePagesExtractor(['fb1', 'fb2']),
     })
-    expect(result.markdown).toContain('Figura: arquitectura')
-    expect(result.markdown).not.toContain('```')
+    // Un solo fence ```figure limpio — si no se hubiera sacado el fence propio
+    // del LLM primero, quedaría "```figure\n```markdown\nFigura: ...".
+    expect(result.markdown).toContain('```figure\nFigura: arquitectura\n```')
+    expect(result.markdown).not.toContain('markdown')
   })
 })
 

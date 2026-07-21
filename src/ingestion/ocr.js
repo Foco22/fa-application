@@ -80,13 +80,15 @@ async function transcribePdfToMarkdown(buffer, {
       parts.push(`<!-- page ${pageNum} · source: ocr -->\n${md}`)
 
       // Interpretación profunda de figuras: corre siempre que el proveedor la
-      // soporte, como parte por defecto del OCR — no es un paso opt-in. Se
-      // anota como bloque de cita aparte, nunca mezclada con el texto de la página.
+      // soporte, como parte por defecto del OCR — no es un paso opt-in. Va en
+      // un fence ```figure aparte (renderMarkdown la muestra colapsada, click
+      // para expandir — es contexto extra, no texto real de la página, nunca
+      // se mezcla con la transcripción).
       if (typeof llm.interpretFigureInDepth === 'function') {
         try {
           const fig = stripWrappingFence(await llm.interpretFigureInDepth(base64, mimeType))
           if (fig) {
-            parts.push(`<!-- page ${pageNum} · figures -->\n> ${fig.replace(/\n/g, '\n> ')}`)
+            parts.push(`<!-- page ${pageNum} · figures -->\n\`\`\`figure\n${fig}\n\`\`\``)
           }
         } catch (_) { /* la figura es opcional: su fallo no rompe el OCR */ }
       }

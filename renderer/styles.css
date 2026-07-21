@@ -873,6 +873,26 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 .markdown-preview th, .markdown-preview td { border: 1px solid var(--border-2); padding: 7px 12px; text-align: left; }
 .markdown-preview th { background: var(--surface-2); color: var(--text); font-weight: 600; }
 .markdown-preview tr:nth-child(even) td { background: var(--surface-1); }
+/* Interpretación de figuras del OCR (```figure → <details>, ver summary-utils.js)
+   — colapsada por defecto, solo el resumen clickeable es siempre visible. */
+.markdown-preview details {
+  margin: 0 0 var(--sp-md);
+  border: 1px solid var(--border-2); border-radius: var(--r-xs);
+  background: var(--surface-1);
+}
+.markdown-preview summary {
+  cursor: pointer; padding: var(--sp-sm) var(--sp-md);
+  font-size: 13px; color: var(--text-3); user-select: none;
+}
+.markdown-preview summary:hover { color: var(--text-2); }
+.markdown-preview details[open] summary { border-bottom: 1px solid var(--border-2); }
+.markdown-preview details > *:not(summary) { padding: 0 var(--sp-md); }
+.markdown-preview details > p:last-child,
+.markdown-preview details > ul:last-child,
+.markdown-preview details > ol:last-child { padding-bottom: var(--sp-md); }
+/* Fórmulas LaTeX (KaTeX) — hereda el color de texto del tema; overflow-x
+   evita que una ecuación ancha rompa el layout en vez de desbordar la app. */
+.markdown-preview .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
 
 /* ── Notes (live Markdown editor) ────────────────────────────────────────── */
 .notes-tab {

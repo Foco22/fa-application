@@ -323,4 +323,5 @@ export default {
   'texto-recargado-desde-el-archivo-editado': 'Text reloaded from the edited file.',
   'transcribiendo': 'Transcribing…',
   'transcribiendo-pagina': 'Transcribing page {page}/{total}…',
+  'ver-interpretacion-de-figura': '🖼 Figure interpretation (click to expand)',
 }
