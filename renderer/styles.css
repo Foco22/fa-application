@@ -862,12 +862,6 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
   background: var(--surface-2); color: var(--accent);
   padding: 2px 6px; border-radius: var(--r-xs);
 }
-.markdown-preview blockquote {
-  border-left: 3px solid var(--accent);
-  padding: 2px 14px; margin: 0 0 var(--sp-md);
-  color: var(--text-3); background: var(--accent-dim);
-  border-radius: 0 var(--r-xs) var(--r-xs) 0;
-}
 .markdown-preview hr { border: none; border-top: 1px solid var(--border); margin: var(--sp-xl) 0; }
 .markdown-preview table { width: 100%; border-collapse: collapse; margin: 0 0 var(--sp-lg); font-size: 13.5px; }
 .markdown-preview th, .markdown-preview td { border: 1px solid var(--border-2); padding: 7px 12px; text-align: left; }

@@ -247,14 +247,18 @@ describe('renderMarkdown — what the card actually shows', () => {
     })
   })
 
-  // El orquestador de OCR envuelve la interpretación de figuras en un bloque
-  // `>` (src/ingestion/ocr.js) — y esa interpretación suele traer su propio
-  // markdown (headers, listas). Un blockquote de una sola línea por línea no
-  // alcanza: hay que juntar las líneas `>` consecutivas y re-parsear el
-  // contenido como markdown real, no como texto plano.
-  it('merges consecutive quote lines into one <blockquote> instead of one per line', () => {
+  // El orquestador de OCR envolvía la interpretación de figuras en un bloque
+  // `>` (formato viejo — ahora usa un fence ```figure, ver el describe de
+  // arriba), y ese texto ya guardado en la DB de papers existentes sigue en
+  // este formato. Se renderiza igual de colapsado que ```figure — el usuario
+  // no debería tener que pagar de nuevo por OCR solo para que se vea bien.
+  it('renders a blockquote as a collapsed <details>, not an always-visible blockquote', () => {
     const html = renderMarkdown('> Primera línea.\n> Segunda línea.')
-    expect(html).toBe('<blockquote><p>Primera línea.</p><p>Segunda línea.</p></blockquote>')
+    expect(html).toContain('<details>')
+    expect(html).toContain('<summary>')
+    expect(html).not.toMatch(/<details[^>]*\sopen/)
+    expect(html).not.toContain('<blockquote>')
+    expect(html).toContain('<p>Primera línea.</p><p>Segunda línea.</p>')
   })
 
   it('does not leak a bare ">" as its own paragraph on a blank line inside a quote', () => {
@@ -267,15 +271,16 @@ describe('renderMarkdown — what the card actually shows', () => {
 
   it('renders markdown nested inside a quoted block (headers, lists)', () => {
     const html = renderMarkdown('> ### Descripción\n>\n> - item uno\n> - item dos')
-    expect(html).toContain('<blockquote>')
+    expect(html).toContain('<details>')
     expect(html).toContain('<h3>Descripción</h3>')
     expect(html).toContain('<li>item uno</li>')
-    expect(html).toContain('</blockquote>')
+    expect(html).toContain('</details>')
     expect(html).not.toContain('###')
   })
 
-  it('closes the blockquote once a non-quote line appears', () => {
+  it('closes the quote block once a non-quote line appears', () => {
     const html = renderMarkdown('> Cita.\n\nTexto normal.')
-    expect(html).toBe('<blockquote><p>Cita.</p></blockquote><p>Texto normal.</p>')
+    expect(html).toContain('<p>Cita.</p>')
+    expect(html.endsWith('<p>Texto normal.</p>')).toBe(true)
   })
 })
