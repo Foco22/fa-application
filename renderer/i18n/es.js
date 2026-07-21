@@ -315,6 +315,7 @@ export default {
   'ocr-hint-no-api-key': 'Configura una API key de un proveedor con visión (OpenAI o Anthropic) para generar OCR.',
   'ocr-hint-no-vision': 'El proveedor actual no soporta visión. Configura OpenAI o Anthropic para generar OCR.',
   'preparando-transcripcion': 'Preparando transcripción…',
+  'tab-ocr': 'OCR',
   'recargar-desde-archivo': 'Recargar desde archivo',
   'recargar-desde-archivo-title': 'Recargar el texto desde ocr/<id>.md si lo editaste a mano',
   'regenerar-ocr': '↺ Regenerar OCR',

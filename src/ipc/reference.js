@@ -28,16 +28,6 @@ function registerReferenceHandlers({ ipcMain, db, deps }) {
     shell.openPath(filePath)
   })
 
-  // Abre ocr/<id>.md en el editor por defecto del sistema, para que el usuario
-  // pueda auditar/corregir la transcripción a mano (luego "Recargar desde archivo").
-  ipcMain.handle('open-ocr-file', (_e, paperId) => {
-    const paper = db.getPaper(paperId)
-    if (!paper) return { success: false, error: 'not-found' }
-    const p = vault.ocrPath(paper)
-    shell.openPath(p)
-    return { success: true, path: p }
-  })
-
   // `stale` = referencias indexadas con otro modelo de embeddings. Sus vectores
   // no son comparables con los del modelo activo, así que no cuentan para el
   // filtro hasta que se reindexen.

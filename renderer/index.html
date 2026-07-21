@@ -219,6 +219,7 @@
             <button class="tab-btn active" data-tab="resumen" data-i18n="resumen">Resumen</button>
             <button class="tab-btn" data-tab="notas" data-i18n="notas">Notas</button>
             <button class="tab-btn" data-tab="quiz" data-i18n="quiz">Quiz</button>
+            <button id="tab-btn-ocr" class="tab-btn hidden" data-tab="ocr" data-i18n="tab-ocr">OCR</button>
             <button class="tab-btn" data-tab="clase" data-i18n="clase">Clase</button>
           </div>
 
@@ -329,6 +330,13 @@
                 <button id="btn-quiz" class="action-btn" data-i18n="generar">Generar</button>
               </div>
               <div id="pv-quiz"></div>
+            </section>
+          </div>
+
+          <!-- Tab: OCR — vista renderizada de ocr/<id>.md, no el archivo crudo -->
+          <div id="tab-ocr" class="tab-panel hidden">
+            <section class="pv-section">
+              <div id="pv-ocr-content" class="summary-body"></div>
             </section>
           </div>
 

@@ -1,6 +1,14 @@
 import { state } from './state.js'
 import { toast } from './toast.js'
 import { t } from './language.js'
+import { renderMarkdown } from '../summary-utils.js'
+
+// Inyectado desde app.js para evitar el ciclo de imports app.js↔ocr.js (mismo
+// patrón que initPaperView con _switchTab — ver renderer/modules/language.js).
+let _switchTab = () => {}
+export function initOcr({ switchTab }) {
+  _switchTab = switchTab
+}
 
 // ¿El proveedor LLM activo puede hacer OCR? DeepSeek no soporta visión; sin
 // API key tampoco hay proveedor. Replica el criterio del guard del backend.
@@ -24,6 +32,7 @@ export async function renderOcrSection(p) {
   const btn       = document.getElementById('btn-ocr')
   const reloadBtn = document.getElementById('btn-ocr-reload')
   const openBtn   = document.getElementById('btn-ocr-open')
+  const tabBtn    = document.getElementById('tab-btn-ocr')
   const hint      = document.getElementById('pv-ocr-hint')
   const progress  = document.getElementById('pv-ocr-progress')
   if (!badge || !btn) return
@@ -37,6 +46,7 @@ export async function renderOcrSection(p) {
   btn.textContent = t(isOcr ? 'regenerar-ocr' : 'generar-ocr')
   reloadBtn.classList.toggle('hidden', !isOcr)
   openBtn.classList.toggle('hidden', !isOcr)
+  tabBtn?.classList.toggle('hidden', !isOcr)
 
   const settings = await window.api.getSettings()
   const supportsVision = providerSupportsVision(settings)
@@ -131,7 +141,12 @@ export async function reloadOcr() {
   toast(t('texto-recargado-desde-el-archivo-editado'), 'success')
 }
 
+// Muestra el OCR renderizado (headers, tablas, LaTeX-como-texto, etc.) en su
+// propia pestaña dentro de la app — no abre ocr/<id>.md con el editor del
+// sistema, que lo mostraría como texto plano sin formato.
 export function openOcrFile() {
   if (!state.activePaper) return
-  window.api.openOcrFile(state.activePaper.id)
+  const content = document.getElementById('pv-ocr-content')
+  if (content) content.innerHTML = renderMarkdown(state.activePaper.pdf_text || '')
+  _switchTab('ocr')
 }
