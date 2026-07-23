@@ -60,8 +60,9 @@ describe('t', () => {
     expect(t('clave-que-no-existe')).toBe('clave-que-no-existe')
   })
 
-  it('cae al español si el idioma pedido no existe', () => {
-    expect(t('guardar', 'klingon')).toBe('Guardar')
+  // El default del sistema es inglés, no español (ver features/first-run-profile.md).
+  it('cae al inglés si el idioma pedido no existe', () => {
+    expect(t('guardar', 'klingon')).toBe('Save')
   })
 })
 
@@ -102,9 +103,10 @@ describe('applyLanguage', () => {
     expect(document.body.innerHTML).toBe(once)
   })
 
-  it('cae al idioma de fábrica si le pasan uno desconocido', () => {
+  it('cae al idioma de fábrica (inglés) si le pasan uno desconocido', () => {
     expect(applyLanguage('klingon')).toBe(DEFAULT_LANGUAGE)
-    expect(document.querySelector('[data-i18n="guardar"]').textContent).toBe('Guardar')
+    expect(DEFAULT_LANGUAGE).toBe('en')
+    expect(document.querySelector('[data-i18n="guardar"]').textContent).toBe('Save')
   })
 
   it('marca el idioma en el <html> para que lo vean CSS y lectores de pantalla', () => {

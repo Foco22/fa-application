@@ -50,7 +50,7 @@
   --r-pill: 9999px;
 
   /* ── Layout ──────────────────────────────────────────────────────────── */
-  --activity-w: 48px;
+  --activity-w: 56px;
   --vault-w:    clamp(180px, 16vw, 260px);
   --chat-w:     clamp(240px, 22vw, 360px);
   --topbar-h:   44px;   /* Apple global-nav height */
@@ -91,11 +91,12 @@ html, body {
 
 /* ── Buttons — Apple grammar ─────────────────────────────────────────────── */
 button {
-  cursor: pointer; border: none; font-family: var(--font-ui);
+  cursor: pointer; border: none; outline: none; font-family: var(--font-ui);
   font-size: 14px; letter-spacing: -0.224px;
   transition: transform .12s ease, opacity .12s ease, background .12s ease;
 }
 button:active { transform: scale(0.95); }
+button:focus, button:focus-visible { outline: none; }
 
 /* Primary pill — Apple button-primary on dark ───────────────────────────── */
 .btn-primary {
@@ -176,39 +177,48 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 .hint { font-size: 13px; color: var(--text-3); margin-bottom: var(--sp-sm); letter-spacing: -0.1px; }
 .field-error { font-size: 12px; color: var(--red); margin-top: 4px; }
 
-/* ── Onboarding ──────────────────────────────────────────────────────────── */
+/* ── Pantalla de bienvenida (primer arranque) ─────────────────────────────── */
 #onboarding {
-  background: var(--bg);
+  background: #000;
   display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
 }
 
-.wizard {
-  background: var(--surface-1);
-  border: 1px solid var(--border-2);
-  border-radius: var(--r-lg);          /* Apple store-utility-card radius */
-  padding: var(--sp-xxl) 52px;
-  width: 700px; max-height: 88vh; overflow-y: auto;
-  box-shadow: 0 32px 80px rgba(0,0,0,.7);
+.welcome-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  display: block;
 }
 
-.wizard-progress { display: flex; align-items: center; justify-content: center; margin-bottom: var(--sp-xxl); }
-.step-dot {
-  width: 28px; height: 28px; border-radius: var(--r-pill);
-  background: var(--surface-2); border: 1px solid var(--border-2);
-  color: var(--text-3); font-size: 12px; font-weight: 600;
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  font-family: var(--font-mono);
+.welcome-card {
+  position: relative; z-index: 1;
+  background: transparent;
+  width: 260px;
+  display: flex; flex-direction: column; align-items: center;
 }
-.step-dot.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.step-dot.done   { background: var(--green);  border-color: var(--green);  color: #fff; }
-.step-line       { flex: 1; height: 1px; background: var(--border); max-width: 80px; }
 
-.wizard-step h2 {
+.welcome-logo-wrap {
+  position: absolute; z-index: 1;
+  top: 120px; left: 50%; transform: translateX(-50%);
+}
+.welcome-logo { width: 64px; height: 64px; object-fit: contain; }
+
+.welcome-title {
   font-family: var(--font-display);
-  font-size: 26px; font-weight: 600; letter-spacing: -0.374px;
-  line-height: 1.1; margin-bottom: 6px;
+  font-size: 24px; font-weight: 600; letter-spacing: -0.374px;
+  line-height: 1.1; margin-bottom: var(--sp-lg); text-align: center;
 }
-.wizard-nav { display: flex; justify-content: space-between; align-items: center; margin-top: var(--sp-xl); }
+
+.welcome-name-input { text-align: center; font-size: 16px; margin-bottom: 4px; }
+/* El foco azul de acento (regla global de input:focus) desentona flotando
+   sobre el fondo animado: acá el foco no resalta el borde, queda transparente. */
+.welcome-name-input:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+.welcome-card .field-error { text-align: center; }
+
+.welcome-accept-btn { margin-top: var(--sp-lg); width: 100%; }
 
 /* ── Category / University grids ─────────────────────────────────────────── */
 /* ── Custom tooltip (dark — replaces native white title box) ─────────────── */
@@ -263,6 +273,10 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
   object-fit: contain;
 }
 .fetch-status { font-size: 12px; color: var(--text-3); letter-spacing: -0.12px; }
+.user-greeting {
+  font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px;
+}
 
 /* ── Window controls (frameless) ─────────────────────────────────────────── */
 .win-controls {
@@ -292,16 +306,50 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
   padding: 6px 0;
 }
 .activity-top, .activity-bottom { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.activity-bottom { margin-bottom: 16px; }
 
 .activity-btn {
-  width: 40px; height: 40px; border-radius: var(--r-sm);
+  width: 46px; height: 46px; border-radius: var(--r-sm);
   background: transparent; color: var(--text-3);
   display: flex; align-items: center; justify-content: center;
   transition: color .15s, background .15s;
   position: relative;
 }
+.activity-btn svg { width: 26px; height: 26px; stroke-width: 1.75; }
 .activity-btn:hover { color: var(--text-2); background: rgba(255,255,255,.06); }
 .activity-btn.active { color: var(--text); }
+
+/* Tooltip propio — reemplaza el title nativo del OS, que trae su propio
+   borde y no se puede re-estilizar ni quitar via CSS. */
+.activity-btn[data-tooltip] { overflow: visible; }
+.activity-btn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #1e1e1e;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.1px;
+  white-space: nowrap;
+  padding: 5px 9px;
+  border-radius: var(--r-xs);
+  border: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease;
+  z-index: 100;
+}
+.activity-btn[data-tooltip]:hover::after { opacity: 1; }
+
+.settings-pending-dot {
+  position: absolute; top: 6px; right: 6px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); border: 1.5px solid #111111;
+}
 
 .act-fetch-btn { color: var(--accent); }
 .act-fetch-btn:hover { color: var(--accent); background: var(--accent-dim); }

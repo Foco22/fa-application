@@ -1,6 +1,8 @@
 import { CATEGORIES, CATEGORY_LABELS, DEFAULT_UNIVERSITIES, DEFAULT_RESEARCH_CENTERS, LLM_PROVIDERS, EMBEDDING_PROVIDERS, STT_PROVIDERS } from './constants.js'
 import { toast } from './toast.js'
 import { changeLanguage, t } from './language.js'
+import { renderGreeting } from './topbar.js'
+import { updateConfigIndicator } from './config-status.js'
 
 export function buildCategoriesGrid(containerId, selectedList) {
   const container = document.getElementById(containerId)
@@ -136,7 +138,8 @@ export async function openSettings() {
   switchSettingsCategory('general')
 
   // General
-  document.getElementById('s-language').value = s.language || 'es'
+  document.getElementById('s-username').value = s.userName || ''
+  document.getElementById('s-language').value = s.language || 'en'
   window.api.getAppVersion().then(v => {
     document.getElementById('s-app-version').textContent = v ? `Versión ${v}` : t('version-no-disponible')
   }).catch(() => {
@@ -213,6 +216,7 @@ export async function saveSettings() {
   const sttProvider        = document.getElementById('s-transcription-provider').value
 
   const settings = {
+    userName:              document.getElementById('s-username').value.trim(),
     language:              document.getElementById('s-language').value,
 
     llmProvider:           activeBtn?.dataset.provider || 'openai',
@@ -250,6 +254,9 @@ export async function saveSettings() {
   // siempre el que quedó persistido — el mismo que leen las notificaciones del
   // proceso main —, nunca un valor pendiente en el formulario.
   await changeLanguage(settings.language)
+
+  renderGreeting(settings.userName)
+  updateConfigIndicator(settings)
 
   toast(t('configuracion-guardada'), 'success')
 }

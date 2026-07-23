@@ -26,7 +26,7 @@ const PAPER = {
 const SETTINGS = {
   apiKey: 'sk-ant-test', categoryList: 'cs.AI', authorList: '',
   universityList: 'MIT\nStanford', maxPapers: '3',
-  fetchDay: 'monday', fetchHour: '09:00', onboardingDone: 'true',
+  fetchDay: 'monday', fetchHour: '09:00', userName: 'Francisco',
   semanticScholarApiKey: ''
 }
 
@@ -102,25 +102,25 @@ describe('save-settings', () => {
 // ─── check-onboarding ────────────────────────────────────────────────────────
 
 describe('check-onboarding', () => {
-  it('returns true when onboardingDone is "true"', async () => {
+  it('returns true when userName is set', async () => {
     const { ipcMain, invoke } = makeIpcMain()
-    const db = { getSetting: vi.fn().mockReturnValue('true'), getAllSettings: vi.fn().mockReturnValue(SETTINGS) }
+    const db = { getSetting: vi.fn().mockReturnValue('Francisco'), getAllSettings: vi.fn().mockReturnValue(SETTINGS) }
     registerHandlers({ ipcMain, db, deps: {} })
 
     expect(await invoke('check-onboarding')).toBe(true)
   })
 
-  it('returns false when onboardingDone is "false"', async () => {
+  it('returns false when userName is not set', async () => {
     const { ipcMain, invoke } = makeIpcMain()
-    const db = { getSetting: vi.fn().mockReturnValue('false'), getAllSettings: vi.fn().mockReturnValue(SETTINGS) }
+    const db = { getSetting: vi.fn().mockReturnValue(undefined), getAllSettings: vi.fn().mockReturnValue(SETTINGS) }
     registerHandlers({ ipcMain, db, deps: {} })
 
     expect(await invoke('check-onboarding')).toBe(false)
   })
 
-  it('returns false when onboardingDone is not set', async () => {
+  it('returns false when userName is an empty string', async () => {
     const { ipcMain, invoke } = makeIpcMain()
-    const db = { getSetting: vi.fn().mockReturnValue(undefined), getAllSettings: vi.fn().mockReturnValue(SETTINGS) }
+    const db = { getSetting: vi.fn().mockReturnValue(''), getAllSettings: vi.fn().mockReturnValue(SETTINGS) }
     registerHandlers({ ipcMain, db, deps: {} })
 
     expect(await invoke('check-onboarding')).toBe(false)
