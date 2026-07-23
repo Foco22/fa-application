@@ -160,7 +160,7 @@ async function showApp() {
   // El idioma guardado se aplica ANTES del primer render: si no, la UI parpadea
   // en español y recién después pasa a inglés.
   const settings = await window.api.getSettings()
-  applyLanguage(settings.language || 'es')
+  applyLanguage(settings.language || 'en')
   onLanguageChange(refreshActiveView)
   renderGreeting(settings.userName)
   updateConfigIndicator(settings)
@@ -385,8 +385,15 @@ document.addEventListener('click', (e) => {
 
 async function boot() {
   const done = await window.api.checkOnboarding()
-  if (!done) showOnboarding()
-  else await showApp()
+  if (!done) {
+    // La pantalla de bienvenida corre antes de que exista ningún settings
+    // guardado — el default del sistema es inglés, no español.
+    const settings = await window.api.getSettings()
+    applyLanguage(settings.language || 'en')
+    showOnboarding()
+  } else {
+    await showApp()
+  }
 }
 
 boot()

@@ -2,7 +2,7 @@ import es from './i18n/es.js'
 import en from './i18n/en.js'
 
 export const DICTIONARIES = { es, en }
-export const DEFAULT_LANGUAGE = 'es'
+export const DEFAULT_LANGUAGE = 'en'
 
 let current = DEFAULT_LANGUAGE
 
@@ -31,6 +31,9 @@ export function applyLanguage(lang, root = document) {
   })
   root.querySelectorAll('[data-i18n-title]').forEach(el => {
     el.title = t(el.dataset.i18nTitle)
+  })
+  root.querySelectorAll('[data-i18n-tooltip]').forEach(el => {
+    el.dataset.tooltip = t(el.dataset.i18nTooltip)
   })
 
   if (root.documentElement) root.documentElement.lang = current

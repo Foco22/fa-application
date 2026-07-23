@@ -139,7 +139,7 @@ export async function openSettings() {
 
   // General
   document.getElementById('s-username').value = s.userName || ''
-  document.getElementById('s-language').value = s.language || 'es'
+  document.getElementById('s-language').value = s.language || 'en'
   window.api.getAppVersion().then(v => {
     document.getElementById('s-app-version').textContent = v ? `Versión ${v}` : t('version-no-disponible')
   }).catch(() => {
