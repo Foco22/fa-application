@@ -47,3 +47,54 @@ describe('get-app-version', () => {
     expect(deps.getAppVersion).toHaveBeenCalled()
   })
 })
+
+describe('check-onboarding (gate = presencia de userName, no un flag aparte)', () => {
+  it('returns true when userName is set', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = makeDb({ getSetting: vi.fn().mockReturnValue('Francisco') })
+    registerSettingsHandlers({ ipcMain, db, deps: {} })
+    expect(await invoke('check-onboarding')).toBe(true)
+    expect(db.getSetting).toHaveBeenCalledWith('userName')
+  })
+
+  it('returns false when userName is not set', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = makeDb({ getSetting: vi.fn().mockReturnValue(undefined) })
+    registerSettingsHandlers({ ipcMain, db, deps: {} })
+    expect(await invoke('check-onboarding')).toBe(false)
+  })
+
+  it('returns false when userName is an empty string', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = makeDb({ getSetting: vi.fn().mockReturnValue('') })
+    registerSettingsHandlers({ ipcMain, db, deps: {} })
+    expect(await invoke('check-onboarding')).toBe(false)
+  })
+
+  // Instalación migrada: onboardingDone (flag viejo) ya no es lo que se lee.
+  it('ignores onboardingDone entirely — solo mira userName', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const stored = { onboardingDone: 'true' }
+    const db = makeDb({ getSetting: vi.fn((key) => stored[key]) })
+    registerSettingsHandlers({ ipcMain, db, deps: {} })
+    expect(await invoke('check-onboarding')).toBe(false)
+  })
+})
+
+describe('complete-onboarding', () => {
+  it('saves only userName, nada más', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = makeDb()
+    registerSettingsHandlers({ ipcMain, db, deps: {} })
+    await invoke('complete-onboarding', { userName: 'Francisco' })
+    expect(db.saveSetting).toHaveBeenCalledWith('userName', 'Francisco')
+    expect(db.saveSetting).toHaveBeenCalledOnce()
+  })
+
+  it('returns { success: true }', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = makeDb()
+    registerSettingsHandlers({ ipcMain, db, deps: {} })
+    expect(await invoke('complete-onboarding', { userName: 'Francisco' })).toEqual({ success: true })
+  })
+})

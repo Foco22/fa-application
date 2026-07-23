@@ -13,6 +13,8 @@ import { generateOcr, reloadOcr, openOcrFile, initOcr } from './modules/ocr.js'
 import { generateQuiz } from './modules/quiz.js'
 import { sendChat, clearChat } from './modules/chat.js'
 import { openSettings, saveSettings, switchSettingsCategory } from './modules/settings.js'
+import { renderGreeting } from './modules/topbar.js'
+import { updateConfigIndicator } from './modules/config-status.js'
 import { enterClassMode, exitClassMode, initClass } from './modules/class.js'
 import { openLearningDashboard, closeLearningDashboard, initLearningDashboard } from './modules/learning-dashboard.js'
 import { openCostsDashboard, closeCostsDashboard, initCostsDashboard } from './modules/costs-dashboard.js'
@@ -160,6 +162,8 @@ async function showApp() {
   const settings = await window.api.getSettings()
   applyLanguage(settings.language || 'es')
   onLanguageChange(refreshActiveView)
+  renderGreeting(settings.userName)
+  updateConfigIndicator(settings)
 
   state.papers    = await window.api.getPapers()
   state.refPapers = await window.api.getReferenceList()

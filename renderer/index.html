@@ -12,86 +12,21 @@
 </head>
 <body>
 
-  <!-- ── Onboarding wizard ─────────────────────────────────────────────── -->
+  <!-- ── Pantalla de bienvenida (primer arranque) ─────────────────────────
+       Reemplaza el wizard de 4 pasos: solo pide un nombre y entra directo al
+       layout principal. Categorías/universidades/autores/API key se
+       configuran cuando el usuario quiera, desde Settings (ver
+       features/first-run-profile.md). ────────────────────────────────── -->
   <div id="onboarding" class="fullscreen hidden">
-    <div class="wizard">
-      <div class="wizard-progress">
-        <span class="step-dot active" data-step="1">1</span>
-        <span class="step-line"></span>
-        <span class="step-dot" data-step="2">2</span>
-        <span class="step-line"></span>
-        <span class="step-dot" data-step="3">3</span>
-        <span class="step-line"></span>
-        <span class="step-dot" data-step="4">4</span>
+    <canvas id="welcome-canvas" class="welcome-canvas"></canvas>
+    <div class="welcome-card">
+      <div class="welcome-logo-wrap">
+        <img src="../icon.png" class="welcome-logo" alt="logo"/>
       </div>
-
-      <div id="step-1" class="wizard-step active">
-        <h2 data-i18n="que-temas-te-interesan">¿Qué temas te interesan?</h2>
-        <p class="hint" data-i18n="elige-al-menos-una-categoria">Elige al menos una categoría</p>
-        <div id="categories-grid" class="categories-grid"></div>
-        <p id="step1-error" class="field-error hidden" data-i18n="selecciona-al-menos-una-categoria">Selecciona al menos una categoría.</p>
-        <div class="wizard-nav"><span></span><button id="step1-next" class="btn-primary" data-i18n="siguiente">Siguiente →</button></div>
-      </div>
-
-      <div id="step-2" class="wizard-step hidden">
-        <h2 data-i18n="de-que-universidades">¿De qué universidades?</h2>
-        <p class="hint" data-i18n="todas-activas-por-defecto">Todas activas por defecto</p>
-        <div id="universities-grid" class="universities-grid"></div>
-        <div class="wizard-nav">
-          <button id="step2-back" class="btn-ghost" data-i18n="atras">← Atrás</button>
-          <button id="step2-next" class="btn-primary" data-i18n="siguiente">Siguiente →</button>
-        </div>
-      </div>
-
-      <div id="step-3" class="wizard-step hidden">
-        <h2 data-i18n="autores-a-seguir">¿Autores a seguir?</h2>
-        <p class="hint" data-i18n="opcional-un-apellido-por-linea">Opcional — un apellido por línea</p>
-        <textarea id="author-input" rows="7" placeholder="LeCun&#10;Bengio&#10;Hinton" data-i18n-placeholder="lecun-10-bengio-10-hinton"></textarea>
-        <div class="wizard-nav">
-          <button id="step3-back" class="btn-ghost" data-i18n="atras">← Atrás</button>
-          <button id="step3-next" class="btn-primary" data-i18n="siguiente">Siguiente →</button>
-        </div>
-      </div>
-
-      <div id="step-4" class="wizard-step hidden">
-        <h2 data-i18n="configuracion">Configuración</h2>
-        <div class="form-group">
-          <label for="wiz-api-key" data-i18n="openai-api-key">OpenAI API Key</label>
-          <input type="password" id="wiz-api-key" placeholder="sk-..." data-i18n-placeholder="sk-2">
-          <p id="step4-error" class="field-error hidden" data-i18n="la-api-key-es-obligatoria">La API key es obligatoria.</p>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="wiz-fetch-day" data-i18n="dia">Día</label>
-            <select id="wiz-fetch-day">
-              <option value="monday" data-i18n="lunes">Lunes</option>
-              <option value="tuesday" data-i18n="martes">Martes</option>
-              <option value="wednesday" data-i18n="miercoles">Miércoles</option>
-              <option value="thursday" data-i18n="jueves">Jueves</option>
-              <option value="friday" data-i18n="viernes">Viernes</option>
-              <option value="saturday" data-i18n="sabado">Sábado</option>
-              <option value="sunday" data-i18n="domingo">Domingo</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="wiz-fetch-hour" data-i18n="hora">Hora</label>
-            <input type="time" id="wiz-fetch-hour" value="09:00">
-          </div>
-          <div class="form-group">
-            <label for="wiz-max-papers" data-i18n="max">Máx.</label>
-            <select id="wiz-max-papers">
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3" selected>3</option>
-              <option value="5">5</option>
-            </select>
-          </div>
-        </div>
-        <div class="wizard-nav">
-          <button id="step4-back" class="btn-ghost" data-i18n="atras">← Atrás</button>
-          <button id="step4-finish" class="btn-primary" data-i18n="comenzar">✓ Comenzar</button>
-        </div>
-      </div>
+      <h2 class="welcome-title" data-i18n="como-te-llamas">¿Cómo te llamas?</h2>
+      <input type="text" id="welcome-name" class="welcome-name-input" maxlength="40" placeholder="Francisco" data-i18n-placeholder="placeholder-francisco">
+      <p id="welcome-name-error" class="field-error hidden" data-i18n="escribe-tu-nombre">Escribe tu nombre.</p>
+      <button id="welcome-accept" class="btn-primary welcome-accept-btn" data-i18n="aceptar">Aceptar</button>
     </div>
   </div>
 
@@ -104,6 +39,7 @@
         <div class="app-logo-wrap">
           <img src="../icon.png" class="app-logo" alt="logo"/>
         </div>
+        <span id="user-greeting" class="user-greeting"></span>
       </div>
       <div class="topbar-center">
         <span id="fetch-status" class="fetch-status"></span>
@@ -160,6 +96,7 @@
               <path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"/>
               <path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
             </svg>
+            <span id="settings-pending-dot" class="settings-pending-dot hidden"></span>
           </button>
         </div>
       </nav>
@@ -904,6 +841,13 @@
         <!-- General -->
         <div class="settings-pane" id="settings-pane-general">
           <h2 class="settings-pane-title" data-i18n="general">General</h2>
+          <div class="settings-section">
+            <h3 data-i18n="perfil">Perfil</h3>
+            <div class="form-group">
+              <label data-i18n="tu-nombre">Tu nombre</label>
+              <input type="text" id="s-username" maxlength="40" placeholder="Francisco" data-i18n-placeholder="placeholder-francisco">
+            </div>
+          </div>
           <div class="settings-section">
             <h3 data-i18n="idioma">Idioma</h3>
             <div class="form-group">
