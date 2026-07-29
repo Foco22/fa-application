@@ -210,32 +210,7 @@ function wireListeners() {
   document.getElementById('act-settings').addEventListener('click', openSettings)
   document.getElementById('act-exit').addEventListener('click', showOnboarding)
 
-  // Zoom controls
-  const ZOOM_STEP = 0.1
-  const ZOOM_MIN  = 0.6
-  const ZOOM_MAX  = 2.0
   const contentScroll = document.getElementById('content-scroll')
-  const zoomLabel     = document.getElementById('zoom-level')
-
-  let zoomLevel = parseFloat(localStorage.getItem('readingZoom') || '1')
-
-  function applyZoom(z) {
-    zoomLevel = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z))
-    contentScroll.style.zoom = zoomLevel
-    zoomLabel.textContent = Math.round(zoomLevel * 100) + '%'
-    localStorage.setItem('readingZoom', zoomLevel)
-  }
-
-  applyZoom(zoomLevel)
-
-  document.getElementById('btn-zoom-in').addEventListener('click',  () => applyZoom(zoomLevel + ZOOM_STEP))
-  document.getElementById('btn-zoom-out').addEventListener('click', () => applyZoom(zoomLevel - ZOOM_STEP))
-
-  contentScroll.addEventListener('wheel', (e) => {
-    if (!e.ctrlKey) return
-    e.preventDefault()
-    applyZoom(zoomLevel + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP))
-  }, { passive: false })
 
   // --- Zoom de toda la interfaz (barra izquierda + chat + lectura) ---
   // Usa el zoom real del navegador (webFrame): reajusta el layout y siempre
