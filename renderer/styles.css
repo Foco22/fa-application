@@ -179,7 +179,7 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 
 /* ── Pantalla de bienvenida (primer arranque) ─────────────────────────────── */
 #onboarding {
-  background: #000;
+  background: #1a1a1a;
   display: flex; align-items: center; justify-content: center;
   overflow: hidden;
 }
@@ -251,7 +251,7 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 /* ── Topbar — Apple global-nav style ─────────────────────────────────────── */
 .topbar {
   height: var(--topbar-h);
-  background: rgba(0,0,0,.8);
+  background: rgba(26,26,26,.8);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 1px solid var(--border);
@@ -301,7 +301,7 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 /* ── Activity bar ────────────────────────────────────────────────────────── */
 .activity-bar {
   width: var(--activity-w); flex-shrink: 0;
-  background: #111111; border-right: 1px solid var(--border);
+  background: #1a1a1a; border-right: 1px solid var(--border);
   display: flex; flex-direction: column; justify-content: space-between;
   padding: 6px 0;
 }

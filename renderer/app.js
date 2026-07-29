@@ -208,6 +208,7 @@ function wireListeners() {
     document.getElementById('vault-panel').classList.toggle('collapsed')
   })
   document.getElementById('act-settings').addEventListener('click', openSettings)
+  document.getElementById('act-exit').addEventListener('click', showOnboarding)
 
   // Zoom controls
   const ZOOM_STEP = 0.1

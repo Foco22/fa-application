@@ -43,7 +43,7 @@ export function prefersReducedMotion() {
 }
 
 function drawFrame(ctx, canvas, particles) {
-  ctx.fillStyle = '#000'
+  ctx.fillStyle = '#1a1a1a'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.fillStyle = '#fff'
   particles.forEach(p => {
