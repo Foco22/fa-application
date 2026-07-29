@@ -12,8 +12,9 @@ $sc.WorkingDirectory = $appDir
 $sc.WindowStyle      = 1
 $sc.Description       = "Ra"
 
-# Use the Electron exe as the icon if present
-$icon = Join-Path $appDir "node_modules\electron\dist\electron.exe"
+# Prefer the app's own icon; fall back to the Electron exe if it's missing
+$icon = Join-Path $appDir "icon.ico"
+if (-not (Test-Path $icon)) { $icon = Join-Path $appDir "node_modules\electron\dist\electron.exe" }
 if (Test-Path $icon) { $sc.IconLocation = $icon }
 
 $sc.Save()

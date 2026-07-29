@@ -30,6 +30,7 @@ const { createWhisperStream } = require('./src/transcription/whisper-stream')
 const vaultMod                = require('./src/vault')
 const fetchLogMod             = require('./src/ingestion/fetchLog')
 
+const APP_ICON            = path.join(__dirname, process.platform === 'win32' ? 'icon.ico' : 'icon.png')
 const DB_PATH             = path.join(app.getPath('userData'), 'papers.db')
 const PDFS_DIR            = path.join(app.getPath('userData'), 'pdfs')
 const VAULT_DIR           = vaultMod.DEFAULT_VAULT_DIR
@@ -50,7 +51,7 @@ function createWindow() {
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: '#000000',
-    icon: path.join(__dirname, 'icon.png'),
+    icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
