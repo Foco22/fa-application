@@ -2,7 +2,7 @@ const fs   = require('fs')
 const path = require('path')
 const os   = require('os')
 
-const DEFAULT_VAULT_DIR = path.join(os.homedir(), 'Documents', 'PaperLearning', 'vault')
+const DEFAULT_VAULT_DIR = path.join(os.homedir(), 'Documents', 'Ra', 'vault')
 
 // TODO el cálculo va en UTC, a propósito.
 //

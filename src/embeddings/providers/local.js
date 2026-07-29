@@ -5,7 +5,7 @@ const DEFAULT_LOCAL_MODEL = 'Xenova/all-MiniLM-L6-v2'
 
 // Por defecto Transformers.js cachea los pesos dentro de node_modules, que en
 // una app empaquetada vive dentro del asar (solo lectura). Se cachea en HOME.
-const DEFAULT_CACHE_DIR = path.join(os.homedir(), '.cache', 'paper-learning', 'models')
+const DEFAULT_CACHE_DIR = path.join(os.homedir(), '.cache', 'ra', 'models')
 
 // Transformers.js es ESM-only; este proyecto es CommonJS, así que se carga con
 // import() dinámico dentro del loader (require() sobre él falla).

@@ -1,4 +1,4 @@
-# Paper Learning
+# Ra
 
 Desktop app (Electron, Linux) that automatically fetches scientific papers from ArXiv, summarizes them with an LLM, and generates quizzes to reinforce what you read.
 

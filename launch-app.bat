@@ -1,5 +1,5 @@
 @echo off
-REM Launcher for Paper Learning (runs from source, picks up code changes on next launch)
+REM Launcher for Ra (runs from source, picks up code changes on next launch)
 cd /d "%~dp0"
 
 REM better-sqlite3 es nativo y solo puede estar compilado para UN runtime a la vez:
@@ -20,7 +20,7 @@ if not "%ABI_OK%"=="0" (
 
   REM Ventana visible a proposito: un launcher mudo durante 2 minutos es
   REM indistinguible de una app rota, que es justo el problema que se arregla aca.
-  start "Paper Learning - preparando" /wait cmd /c "echo Recompilando better-sqlite3 para Electron (1-2 min, solo esta vez)... && node_modules\.bin\electron-rebuild.cmd -f -w better-sqlite3 || pause"
+  start "Ra - preparando" /wait cmd /c "echo Recompilando better-sqlite3 para Electron (1-2 min, solo esta vez)... && node_modules\.bin\electron-rebuild.cmd -f -w better-sqlite3 || pause"
 )
 
 call node_modules\.bin\electron.cmd . 2>> "%~dp0launch-error.log"

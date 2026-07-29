@@ -1,4 +1,4 @@
-# Correr Paper Learning en Windows
+# Correr Ra en Windows
 
 ## Requisitos
 

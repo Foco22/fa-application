@@ -64,7 +64,7 @@ La premisa del usuario es explícita: **no confía en el pipeline de extracción
 
   - `vault.ensureDirs()` (`src/vault.js:76-82`) crea también `ocr/` junto a `raw/`, `assets/`, `slides/` — vacía hasta que el usuario pida OCR para ese paper, igual que `assets/` puede existir sin `summary.md` hasta que se genera el resumen.
   - Nueva función `vault.ocrPath(paper)` → `<paperDir>/ocr/<id>.md`, y `vault.writeOcr(paper, markdown)`, siguiendo el mismo patrón que `writeSummary`/`writeQuiz` (`src/vault.js:88-98`).
-  - El archivo es Markdown plano, legible y editable por el usuario en cualquier editor — el vault ya vive en disco (`~/Documents/PaperLearning/vault`), no hay nada propietario en el formato.
+  - El archivo es Markdown plano, legible y editable por el usuario en cualquier editor — el vault ya vive en disco (`~/Documents/Ra/vault`), no hay nada propietario en el formato.
   - **Aplica también a los papers de la colección de referencia** (carpeta `reference/` del vault — `vault.paperDir()` los distingue por el prefijo `ref-` en `src/vault.js:67-74`, pero usan el mismo `ensureDirs()`). Un paper de referencia es, ante todo, un paper: el usuario puede abrirlo, chatear con él o pedirle un resumen igual que a uno ingerido por fetch, así que puede pedirle la misma transcripción fiel — no es un PDF de segunda clase solo porque entró por la puerta de indexado de similitud.
 
 - **Rasterización del PDF a imágenes por página** (Prioridad: Alta)
