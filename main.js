@@ -191,7 +191,7 @@ app.whenReady().then(() => {
       // El idioma se relee de la DB en cada notificación: el scheduler puede
       // dispararse horas después de que el usuario cambió el idioma.
       new Notification({
-        title: 'Paper Learning',
+        title: 'Ra',
         body: newPapersMessage(result.length, db.getSetting('language'))
       }).show()
     }

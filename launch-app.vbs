@@ -1,4 +1,4 @@
-' Launches Paper Learning without showing a console window.
+' Launches Ra without showing a console window.
 ' Espera el resultado: si la app no arranca, avisa en vez de no hacer nada —
 ' el modo silencioso hacia que un crash al iniciar se viera como "el acceso
 ' directo no funciona".
@@ -19,6 +19,6 @@ If exitCode <> 0 Then
     detail = vbCrLf & vbCrLf & Left(logFile.ReadAll, 800)
     logFile.Close
   End If
-  MsgBox "Paper Learning no pudo iniciar (codigo " & exitCode & ")." & detail, _
-         vbExclamation, "Paper Learning"
+  MsgBox "Ra no pudo iniciar (codigo " & exitCode & ")." & detail, _
+         vbExclamation, "Ra"
 End If

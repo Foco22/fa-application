@@ -1,4 +1,4 @@
-# Paper Learning — Sistema de Aprendizaje Continuo
+# Ra — Sistema de Aprendizaje Continuo
 
 Aplicación de escritorio Linux construida con **Electron.js** para ingestar, resumir y estudiar papers científicos de forma continua y estructurada.
 
