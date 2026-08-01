@@ -178,7 +178,15 @@ initOnboarding({ showApp })
 
 /* ── Event wiring ───────────────────────────────────────────────────────── */
 
+// "Salir" vuelve a la pantalla de login y completarlo de nuevo llama a showApp()
+// otra vez — sin esta guarda, wireListeners() re-engancharía cada listener del
+// DOM encima del que ya estaba, duplicando handlers (ej. nextSlide() corriendo
+// dos veces por click, saltándose una slide).
+let _wired = false
+
 function wireListeners() {
+  if (_wired) return
+  _wired = true
   initClass()
   initLearningDashboard()
   initCostsDashboard()
