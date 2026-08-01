@@ -45,11 +45,6 @@
         <span id="fetch-status" class="fetch-status"></span>
       </div>
       <div class="topbar-right">
-        <div class="zoom-controls">
-          <button id="btn-zoom-out" class="icon-btn-sm" title="Reducir (Ctrl −)" data-i18n-title="reducir-ctrl">A−</button>
-          <span id="zoom-level" class="zoom-level">100%</span>
-          <button id="btn-zoom-in"  class="icon-btn-sm" title="Ampliar (Ctrl +)" data-i18n-title="ampliar-ctrl">A+</button>
-        </div>
         <div class="win-controls">
           <button class="win-btn win-min"   id="btn-win-min"   title="Minimizar" data-i18n-title="minimizar">−</button>
           <button class="win-btn win-max"   id="btn-win-max"   title="Maximizar" data-i18n-title="maximizar">□</button>
@@ -97,6 +92,11 @@
               <path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
             </svg>
             <span id="settings-pending-dot" class="settings-pending-dot hidden"></span>
+          </button>
+          <button class="activity-btn" id="act-exit" data-tooltip="Salir" data-i18n-tooltip="salir">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75"/>
+            </svg>
           </button>
         </div>
       </nav>
