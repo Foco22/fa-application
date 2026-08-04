@@ -37,24 +37,28 @@ algo** — el filtro real casi nunca "aprueba", solo rechaza.
 
 ## Ajustes acordados
 
-### 1. Afiliación pasa de filtro a señal de ranking (sin bloquear nunca)
+### 1. Afiliación deja de bloquear — pasa a ser una marca, no un filtro
 
-- Deja de rechazar candidatos. Se sigue calculando (LLM sobre la primera
-  página del PDF, o regex de fallback — lógica existente, sin cambios ahí),
-  pero en vez de `continue` cuando no matchea, suma un bonus al `rankScore`
-  (mismo patrón que el bonus de `kwRef`/`kwInterest`, +0.1).
-- **Se mueve más temprano en el pipeline**: hoy el PDF (y por lo tanto la
-  afiliación) recién se descarga para los 3 finalistas. Para que la señal
-  influya en *quiénes* llegan a ser finalistas, tiene que calcularse antes
-  del corte a `maxPapers` — o al menos antes de armar el orden final, no
-  después.
-- **UI**: los papers con afiliación en `universityList`/`researchCenterList`
-  llevan una marca (★ o similar — **sin emoji**) junto al título/universidad
-  en el vault, para que el usuario sepa cuáles leer primero. No hay badge
-  para los que no matchean — ausencia de estrella, no una marca negativa.
+- **Mismo alcance y costo que hoy**: se sigue revisando (descarga de PDF +
+  IA sobre la primera página) solo para los `maxPapers` finalistas que ya
+  eligió el rerank — no se expande a más candidatos. Decisión tomada a
+  propósito para no multiplicar descargas/llamadas a IA por semana.
+  Consecuencia aceptada: con este alcance, la afiliación **no reordena
+  nada** (para cuando se calcula, ya no hay otro candidato con el que
+  compararla) — es una marca informativa, no un bonus de ranking. Si más
+  adelante se quiere que además influya en quién entra al cupo, hay que
+  revisar afiliación para un pool más grande que `maxPapers` (fuera de
+  alcance por ahora, ver nota de costo más abajo).
+- En vez de rechazar/`continue` cuando no matchea, **el paper se guarda
+  siempre**. Se agrega un flag (ej. `matched_affiliation`) que indica si la
+  afiliación estaba en `universityList`/`researchCenterList`.
+- **UI**: estrella (★ — **sin emoji**) junto al título/universidad en el
+  vault cuando `matched_affiliation` es true. Ausencia de estrella para el
+  resto — no es una marca negativa, solo no tiene el dato.
 - **Consecuencia**: el fallback de emergencia ([papers.js:267-274](src/ipc/papers.js#L267))
-  deja de tener motivo de existir — se elimina. `saved.length` debería llegar
-  a `maxPapers` con candidatos que de verdad pasaron el filtro de interés.
+  y todo el tracking de `orgRejects` dejan de tener motivo de existir — se
+  eliminan. `saved.length` llega a `maxPapers` siempre que haya esa
+  cantidad de candidatos que pasaron el filtro de interés + rerank.
 
 ### 2. Se elimina `PRERANK_CAP` — un solo rerank
 
@@ -70,7 +74,7 @@ algo** — el filtro real casi nunca "aprueba", solo rechaza.
   cuesta es tiempo, y esto corre una vez por semana en background.
 - `rankScore` (el score grosero de embeddings) deja de usarse para ordenar o
   cortar candidatos — como mucho queda para el caso borde sin `rerankQuery`
-  (ver abajo) y para el bonus de afiliación del punto 1.
+  (ver abajo).
 
 ### Fuera de alcance por ahora
 
@@ -79,11 +83,15 @@ algo** — el filtro real casi nunca "aprueba", solo rechaza.
   no ordena ni corta nada — el único orden real lo pone el rerank.
 - Engordar la colección de referencia (hoy 5 papers) — ayudaría a la calidad
   del ranking, pero es un cambio de contenido del usuario, no de código.
+- Revisar afiliación para un pool más grande que `maxPapers` (para que
+  además influya en quién entra al cupo, no solo en la estrella) — se
+  decidió a propósito mantener el mismo costo de hoy (~`maxPapers` descargas
+  + llamadas a IA por semana); revisar si vale la pena más adelante.
 
 ## Pendiente (TDD — tests antes de implementar)
 
-- [ ] `src/ipc/papers.js` — mover el cálculo de afiliación antes del corte a
-      `maxPapers`; sumar bonus a `rankScore` en vez de `continue`/reject;
+- [ ] `src/ipc/papers.js` — dejar de rechazar/`continue` cuando la afiliación
+      no matchea; guardar siempre con un flag `matched_affiliation`;
       eliminar el bloque de fallback y `orgRejects`
 - [ ] `src/ipc/papers.js` — eliminar `PRERANK_CAP` y el corte a top-15; todos
       los que pasan el filtro de interés van al rerank
