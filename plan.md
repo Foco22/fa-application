@@ -56,25 +56,27 @@ algo** — el filtro real casi nunca "aprueba", solo rechaza.
   deja de tener motivo de existir — se elimina. `saved.length` debería llegar
   a `maxPapers` con candidatos que de verdad pasaron el filtro de interés.
 
-### 2. Se saca (o se sube mucho) `PRERANK_CAP`
+### 2. Se elimina `PRERANK_CAP` — un solo rerank
 
-- El cross-encoder corre local (`@xenova/transformers`, gratis, sin costo de
-  API) — lo único que cuesta es tiempo, y esto corre una vez por semana en
-  background.
-- Se elimina el corte a top-15 antes del rerank, o se reemplaza por un tope
-  defensivo alto (a definir en implementación — ej. 60, mismo espíritu que
-  `FETCH_POOL_CAP=300` en `arxiv.js`: salvavidas, no diseño) para cubrir el
-  caso de categorías absurdamente amplias.
-- Con esto, el cross-encoder ve a *todos* (o casi todos) los que pasaron el
-  filtro de interés, no solo los que sobrevivieron a una métrica más ruidosa.
+- Se saca por completo el corte a top-15 antes del rerank. No queda un
+  "pre-orden" que decida quién llega al rerank — **un solo paso de ranking**,
+  no dos.
+- Todos los candidatos que pasan el filtro de interés (el OR de las 4
+  señales) van directo al rerank, sin importar cuántos sean.
+- El rerank sigue siendo el **mismo modelo local que ya está integrado**
+  ([src/rerank/index.js](src/rerank/index.js), cross-encoder
+  `mxbai-rerank-xsmall-v1` vía `@xenova/transformers`) — no se agrega
+  ninguna dependencia ni proveedor nuevo. Corre local y gratis; lo único que
+  cuesta es tiempo, y esto corre una vez por semana en background.
+- `rankScore` (el score grosero de embeddings) deja de usarse para ordenar o
+  cortar candidatos — como mucho queda para el caso borde sin `rerankQuery`
+  (ver abajo) y para el bonus de afiliación del punto 1.
 
 ### Fuera de alcance por ahora
 
-- Unificar la base de comparación del pre-orden con la del rerank (usar el
-  mismo `rerankQuery` concatenado en ambos pasos) — con el punto 2 hecho, el
-  pre-orden dejaría de filtrar nada (solo ordenaría), así que esta
-  inconsistencia deja de importar en la práctica. Revisar si igual conviene
-  más adelante.
+- La inconsistencia entre bases de comparación (13 anchors sueltos vs. query
+  concatenado) deja de importar: con el punto 2, el score de embeddings ya
+  no ordena ni corta nada — el único orden real lo pone el rerank.
 - Engordar la colección de referencia (hoy 5 papers) — ayudaría a la calidad
   del ranking, pero es un cambio de contenido del usuario, no de código.
 
@@ -83,7 +85,8 @@ algo** — el filtro real casi nunca "aprueba", solo rechaza.
 - [ ] `src/ipc/papers.js` — mover el cálculo de afiliación antes del corte a
       `maxPapers`; sumar bonus a `rankScore` en vez de `continue`/reject;
       eliminar el bloque de fallback y `orgRejects`
-- [ ] `src/ipc/papers.js` — sacar o subir `PRERANK_CAP`
+- [ ] `src/ipc/papers.js` — eliminar `PRERANK_CAP` y el corte a top-15; todos
+      los que pasan el filtro de interés van al rerank
 - [ ] `src/database.js` / vault — persistir si un paper matcheó afiliación
       (para poder pintar la estrella sin volver a calcular nada)
 - [ ] `renderer/` — estrella junto al paper en el vault cuando matchea
