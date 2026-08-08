@@ -80,6 +80,7 @@ export default {
   'acercar': 'Zoom in',
   'actualizar-precios': '↻ Refresh prices',
   'agregar-foto': '+ Add photo',
+  'afiliacion-en-tu-lista': 'Affiliation is in your university/center list',
   'agregar-foto-2': 'Add photo',
   'alejar': 'Zoom out',
   'ampliar': '⤢ Expand',

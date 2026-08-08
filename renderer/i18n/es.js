@@ -81,6 +81,7 @@ export default {
   'acercar': 'Acercar',
   'actualizar-precios': '↻ Actualizar precios',
   'agregar-foto': '+ Agregar foto',
+  'afiliacion-en-tu-lista': 'Afiliación en tu lista de universidades/centros',
   'agregar-foto-2': 'Agregar foto',
   'alejar': 'Alejar',
   'ampliar': '⤢ Ampliar',

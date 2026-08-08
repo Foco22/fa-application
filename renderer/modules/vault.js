@@ -122,12 +122,20 @@ export function renderVault() {
           const isActive    = state.activePaper?.id === p.id
           const isPaperOpen = isActive
 
+          // Estrella: la afiliación de autores coincide con universityList/
+          // researchCenterList (matched_affiliation = 1). No es un filtro, solo
+          // indica qué leer primero — 0/null (no matcheó o no se evaluó) no
+          // llevan marca (ver plan.md v3).
+          const star = p.matched_affiliation === 1
+            ? `<span class="affiliation-star" title="${escAttr(t('afiliacion-en-tu-lista'))}">★</span> `
+            : ''
+
           const paperEl = document.createElement('div')
           paperEl.className = 'tree-paper' + (isActive ? ' active' : '')
           paperEl.dataset.id = p.id
           paperEl.innerHTML = `
             <span class="tree-arrow">${isPaperOpen ? '▾' : '▸'}</span>
-            <span class="tree-label" title="${escAttr(p.title || p.id)}">${p.title || p.id}</span>
+            <span class="tree-label" title="${escAttr(p.title || p.id)}">${star}${p.title || p.id}</span>
           `
           paperEl.addEventListener('click', (e) => {
             e.stopPropagation()

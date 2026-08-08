@@ -90,14 +90,14 @@ algo** — el filtro real casi nunca "aprueba", solo rechaza.
 
 ## Pendiente (TDD — tests antes de implementar)
 
-- [ ] `src/ipc/papers.js` — dejar de rechazar/`continue` cuando la afiliación
+- [x] `src/ipc/papers.js` — dejar de rechazar/`continue` cuando la afiliación
       no matchea; guardar siempre con un flag `matched_affiliation`;
       eliminar el bloque de fallback y `orgRejects`
-- [ ] `src/ipc/papers.js` — eliminar `PRERANK_CAP` y el corte a top-15; todos
+- [x] `src/ipc/papers.js` — eliminar `PRERANK_CAP` y el corte a top-15; todos
       los que pasan el filtro de interés van al rerank
-- [ ] `src/database.js` / vault — persistir si un paper matcheó afiliación
+- [x] `src/database.js` / vault — persistir si un paper matcheó afiliación
       (para poder pintar la estrella sin volver a calcular nada)
-- [ ] `renderer/` — estrella junto al paper en el vault cuando matchea
+- [x] `renderer/` — estrella junto al paper en el vault cuando matchea
       afiliación
-- [ ] Actualizar `INGESTA.md` con la sección v3 una vez implementado, igual
+- [x] Actualizar `INGESTA.md` con la sección v3 una vez implementado, igual
       que se hizo con v2

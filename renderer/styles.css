@@ -460,6 +460,8 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+.affiliation-star { color: var(--yellow); font-size: 10px; }
+
 .tree-sub-arrow { font-size: 13px; color: var(--text-4); flex-shrink: 0; }
 
 .vault-item {

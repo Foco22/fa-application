@@ -76,6 +76,27 @@ describe('savePaper / getPaper', () => {
     expect(result.pdf_text_source).toBeNull()
     expect(result.ocr_error).toBeNull()
   })
+
+  it('persists matched_affiliation when the paper matched an affiliation', () => {
+    const paper = {
+      id: '2401.00011', title: 'Matched paper', authors: '', abstract: '',
+      pdf_url: '', published_date: '', affiliations: '[]',
+      pdf_text: null, summary: null, quiz: null, pdf_error: null, status: 'ready',
+      matched_affiliation: 1
+    }
+    db.savePaper(paper)
+    expect(db.getPaper('2401.00011').matched_affiliation).toBe(1)
+  })
+
+  it('defaults matched_affiliation to null when omitted (not evaluated)', () => {
+    const paper = {
+      id: '2401.00012', title: 'Unevaluated paper', authors: '', abstract: '',
+      pdf_url: '', published_date: '', affiliations: '[]',
+      pdf_text: null, summary: null, quiz: null, pdf_error: null, status: 'ready'
+    }
+    db.savePaper(paper)
+    expect(db.getPaper('2401.00012').matched_affiliation).toBeNull()
+  })
 })
 
 describe('getPapers', () => {

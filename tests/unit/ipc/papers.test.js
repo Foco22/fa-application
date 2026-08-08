@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
-import { runFetch, selectCandidates, PRERANK_CAP } from '../../../src/ipc/papers.js'
+import { runFetch, selectCandidates } from '../../../src/ipc/papers.js'
 import { scoreEmbeddingAgainst, hasEmbeddingConfig } from '../../../src/embeddings/index.js'
 import { extractKeywords, keywordOverlap } from '../../../src/ingestion/keywords.js'
 
@@ -313,14 +313,14 @@ describe('runFetch — selection phase: keywordList', () => {
   })
 })
 
-// ─── pre-rank cap + rerank ─────────────────────────────────────────────────────
+// ─── rerank (no cap — a single ranking pass) ──────────────────────────────────
 
-describe('selectCandidates — pre-rank cap and rerank', () => {
+describe('selectCandidates — rerank', () => {
   function makeCandidates(n) {
     return Array.from({ length: n }, (_, i) => ({ ...PAPER, id: `p${i}`, abstract: `abstract ${i} about ai` }))
   }
 
-  it('caps the candidates handed to the reranker at PRERANK_CAP', async () => {
+  it('sends every interest-filter survivor to the reranker, with no cap', async () => {
     const candidates = makeCandidates(30)
     const db = { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[1,0]', snippet: '', abstract_summary: 'profile' }]) }
     const rerankSpy = vi.fn().mockImplementation(async (_q, docs) => docs.map((_, index) => ({ index, score: 1 })))
@@ -336,7 +336,7 @@ describe('selectCandidates — pre-rank cap and rerank', () => {
     await selectCandidates(candidates, { db, deps, settings: { ...SETTINGS }, embProvider, similarityThreshold: 0.6 })
 
     expect(rerankSpy).toHaveBeenCalledOnce()
-    expect(rerankSpy.mock.calls[0][1]).toHaveLength(PRERANK_CAP)
+    expect(rerankSpy.mock.calls[0][1]).toHaveLength(30)
   })
 
   it('orders survivors according to the reranker score, not the original order', async () => {
@@ -396,11 +396,8 @@ describe('runFetch — PDF download failure', () => {
 
 // ─── org filter ───────────────────────────────────────────────────────────────
 
-describe('runFetch — org filter', () => {
-  it('saves the paper as a fallback when AI affiliations do not match and it is the only candidate', async () => {
-    // No other candidate could take its place — better one imperfect paper than
-    // an empty week. See "runFetch — org filter fallback" below for the cases
-    // where a real match exists among the candidates instead.
+describe('runFetch — org filter (affiliation no longer blocks, only tags)', () => {
+  it('saves the paper even when AI affiliation does not match, with matched_affiliation: 0', async () => {
     const { db, deps, mainWindow } = makeCtx({
       llm: { extractAffiliationsWithAI: vi.fn().mockResolvedValue(['Harvard']) },
     })
@@ -408,20 +405,20 @@ describe('runFetch — org filter', () => {
     await runFetch({ db, deps, mainWindow })
 
     expect(fs.unlinkSync).not.toHaveBeenCalled()
-    expect(db.savePaper).toHaveBeenCalledOnce()
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ matched_affiliation: 0 }))
   })
 
-  it('accepts paper when AI affiliation matches org filter', async () => {
+  it('saves the paper with matched_affiliation: 1 when AI affiliation matches org filter', async () => {
     const { db, deps, mainWindow } = makeCtx({
       llm: { extractAffiliationsWithAI: vi.fn().mockResolvedValue(['Stanford University']) },
     })
 
     await runFetch({ db, deps, mainWindow })
 
-    expect(db.savePaper).toHaveBeenCalledOnce()
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ matched_affiliation: 1 }))
   })
 
-  it('passes when org filter is empty regardless of affiliations', async () => {
+  it('saves with matched_affiliation: null when org filter is empty — nothing to evaluate against', async () => {
     const { db, deps, mainWindow } = makeCtx({
       settings: { universityList: '', researchCenterList: '' },
       llm:      { extractAffiliationsWithAI: vi.fn().mockResolvedValue(['Unknown University']) },
@@ -429,7 +426,7 @@ describe('runFetch — org filter', () => {
 
     await runFetch({ db, deps, mainWindow })
 
-    expect(db.savePaper).toHaveBeenCalledOnce()
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ matched_affiliation: null }))
   })
 
   it('falls back to matchesUniversityInText when no LLM is available', async () => {
@@ -442,7 +439,7 @@ describe('runFetch — org filter', () => {
     expect(deps.matchesUniversityInText).toHaveBeenCalledWith('first page MIT', ['MIT', 'Stanford'])
   })
 
-  it('saves as fallback via the matchesUniversityInText path too, when it is the only candidate', async () => {
+  it('saves via the matchesUniversityInText path too, with matched_affiliation: 0 on no match', async () => {
     const { db, deps, mainWindow } = makeCtx({
       settings: { apiKey: '' },
       deps:     { matchesUniversityInText: vi.fn().mockReturnValue(false) },
@@ -451,18 +448,18 @@ describe('runFetch — org filter', () => {
     await runFetch({ db, deps, mainWindow })
 
     expect(fs.unlinkSync).not.toHaveBeenCalled()
-    expect(db.savePaper).toHaveBeenCalledOnce()
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ matched_affiliation: 0 }))
   })
 
-  it('rejects and deletes PDF when first page fails and org filter is active', async () => {
+  it('saves with matched_affiliation: null (not rejected) when first page extraction fails and org filter is active', async () => {
     const { db, deps, mainWindow } = makeCtx({
       deps: { extractFirstPage: vi.fn().mockResolvedValue({ success: false, error: 'corrupt' }) }
     })
 
     await runFetch({ db, deps, mainWindow })
 
-    expect(fs.unlinkSync).toHaveBeenCalledWith('/tmp/2401.00001.pdf')
-    expect(db.savePaper).not.toHaveBeenCalled()
+    expect(fs.unlinkSync).not.toHaveBeenCalled()
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ matched_affiliation: null }))
   })
 
   it('continues when first page fails but org filter is empty', async () => {
@@ -478,9 +475,9 @@ describe('runFetch — org filter', () => {
   })
 })
 
-// ─── org filter — fallback when ALL candidates fail ───────────────────────────
+// ─── org filter — every finalist is saved, matched or not ────────────────────
 
-describe('runFetch — org filter fallback', () => {
+describe('runFetch — every finalist is saved regardless of affiliation match', () => {
   function makeTwoCandidateCtx(affiliationsPerCall, overrides = {}) {
     const papers = [{ ...PAPER, id: 'p1' }, { ...PAPER, id: 'p2' }]
     const extractAffiliationsWithAI = vi.fn()
@@ -497,33 +494,34 @@ describe('runFetch — org filter fallback', () => {
     })
   }
 
-  it('does not trigger the fallback when at least one candidate passes — the rejected one is still deleted', async () => {
+  it('saves both candidates when one matches and the other does not — neither PDF is deleted', async () => {
     const { db, deps, mainWindow } = makeTwoCandidateCtx([['Harvard'], ['Stanford University']])
 
     await runFetch({ db, deps, mainWindow })
 
-    expect(fs.unlinkSync).toHaveBeenCalledWith('/tmp/p1.pdf')
-    expect(db.savePaper).toHaveBeenCalledOnce()
-    expect(db.savePaper.mock.calls[0][0].id).toBe('p2')
+    expect(fs.unlinkSync).not.toHaveBeenCalled()
+    expect(db.savePaper).toHaveBeenCalledTimes(2)
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1', matched_affiliation: 0 }))
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ id: 'p2', matched_affiliation: 1 }))
   })
 
-  it('saves the best-ranked candidate as a fallback when ALL selected candidates fail the org filter', async () => {
+  it('saves both candidates when NEITHER matches the org filter', async () => {
     const { db, deps, mainWindow } = makeTwoCandidateCtx([['Harvard'], ['Oxford']])
 
     await runFetch({ db, deps, mainWindow })
 
-    expect(db.savePaper).toHaveBeenCalledOnce()
-    expect(db.savePaper.mock.calls[0][0].id).toBe('p1') // best-ranked = first in selection order
-    expect(fs.unlinkSync).toHaveBeenCalledWith('/tmp/p2.pdf')
-    expect(fs.unlinkSync).not.toHaveBeenCalledWith('/tmp/p1.pdf')
+    expect(db.savePaper).toHaveBeenCalledTimes(2)
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1', matched_affiliation: 0 }))
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ id: 'p2', matched_affiliation: 0 }))
+    expect(fs.unlinkSync).not.toHaveBeenCalled()
   })
 
-  it('sends the new-papers notification for a fallback save', async () => {
+  it('sends the new-papers notification with the full count, not just the matched ones', async () => {
     const { db, deps, mainWindow } = makeTwoCandidateCtx([['Harvard'], ['Oxford']])
 
     await runFetch({ db, deps, mainWindow })
 
-    expect(mainWindow.webContents.send).toHaveBeenCalledWith('new-papers', 1)
+    expect(mainWindow.webContents.send).toHaveBeenCalledWith('new-papers', 2)
   })
 })
 
@@ -673,24 +671,6 @@ describe('selectCandidates — diagnostics report', () => {
     expect(report[0].reason).toMatch(/sin/i)
   })
 
-  it('marks candidates that pass the interest filter but fall outside PRERANK_CAP as rejected at rerank_cap', async () => {
-    const candidates = Array.from({ length: 20 }, (_, i) => ({ ...PAPER, id: `p${i}`, abstract: `abstract ${i} about ai` }))
-    const db = { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[1,0]', snippet: '', abstract_summary: 'profile' }]) }
-    const deps = {
-      scoreEmbeddingAgainst, embedKeywordList: vi.fn().mockResolvedValue([]), extractKeywords, keywordOverlap,
-      createReranker: vi.fn().mockReturnValue({
-        rerank: vi.fn().mockImplementation(async (_q, docs) => docs.map((_, index) => ({ index, score: 1 - index * 0.01 }))),
-      }),
-    }
-    const embProvider = { generateEmbedding: vi.fn().mockResolvedValue([1, 0]) }
-
-    const { report } = await selectCandidates(candidates, { db, deps, settings: { ...SETTINGS }, embProvider, similarityThreshold: 0.6 })
-
-    const cutOff = report.filter(e => e.stage === 'rerank_cap')
-    expect(cutOff).toHaveLength(20 - PRERANK_CAP)
-    expect(cutOff[0].decision).toBe('rejected')
-  })
-
   it('fills rerank rank/score for survivors', async () => {
     const candidates = [0, 1, 2].map(i => ({ ...PAPER, id: `p${i}`, abstract: `abstract ${i} about ai` }))
     const db = { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[1,0]', snippet: '', abstract_summary: 'profile' }]) }
@@ -741,7 +721,7 @@ describe('runFetch — fetch log', () => {
     expect(report.entries[0].reason).toContain('timeout')
   })
 
-  it('marks the entry for a paper rejected by the org filter, including the AI-detected affiliation, when another candidate is saved instead', async () => {
+  it('marks the entry for a paper saved despite not matching the org filter, including the AI-detected affiliation', async () => {
     const papers = [{ ...PAPER, id: 'p1' }, { ...PAPER, id: 'p2' }]
     const { db, deps, mainWindow } = makeCtx({
       deps: {
@@ -758,12 +738,13 @@ describe('runFetch — fetch log', () => {
     await runFetch({ db, deps, mainWindow })
 
     const report = deps.writeFetchLog.mock.calls[0][0]
-    const rejected = report.entries.find(e => e.id === 'p1')
-    expect(rejected).toMatchObject({ decision: 'rejected', stage: 'org_filter' })
-    expect(rejected.university).toContain('Harvard')
+    const unmatched = report.entries.find(e => e.id === 'p1')
+    expect(unmatched).toMatchObject({ decision: 'saved', stage: 'saved' })
+    expect(unmatched.orgFilter).toMatchObject({ passed: false })
+    expect(unmatched.university).toContain('Harvard')
   })
 
-  it('marks a fallback-saved entry with a reason mentioning the fallback', async () => {
+  it('marks a saved entry with a plain "Guardado" reason — no more "fallback" wording', async () => {
     const { db, deps, mainWindow } = makeCtx({
       llm: { extractAffiliationsWithAI: vi.fn().mockResolvedValue(['Harvard']) },
     })
@@ -772,7 +753,7 @@ describe('runFetch — fetch log', () => {
 
     const report = deps.writeFetchLog.mock.calls[0][0]
     expect(report.entries[0]).toMatchObject({ decision: 'saved', stage: 'saved' })
-    expect(report.entries[0].reason).toMatch(/fallback/i)
+    expect(report.entries[0].reason).not.toMatch(/fallback/i)
   })
 
   it('marks survivors beyond maxPapers as rejected at the maxpapers_cutoff stage', async () => {
