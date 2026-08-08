@@ -2,9 +2,10 @@
 
 # Cómo funciona la ingesta de papers
 
-> Este documento describe el pipeline **actual** (v1, ya implementado) y, al final,
-> el **rediseño acordado** (v2, hybrid search + rerank) que todavía no está
-> implementado — sirve como spec para cuando se implemente siguiendo TDD.
+> Este documento describe la evolución del pipeline: v1 (filtro simple), v2
+> (hybrid search + rerank con tope de 15) y v3 (afiliación deja de bloquear,
+> se saca el tope y queda un solo rerank). Las tres están implementadas — v3
+> es la más reciente, ver su sección al final para el estado actual real.
 
 ## Números clave
 
@@ -109,8 +110,8 @@ Trae **50 papers** ordenados por fecha descendente.
 
 | Filtro | ¿Cuándo activo? |
 |---|---|
-| Similitud semántica | Solo si hay colección de referencia indexada Y hay API key de OpenAI |
-| Universidades/Centros | Solo si `universityList` o `researchCenterList` no están vacíos en Settings |
+| Similitud semántica + keywords (interés) | Solo si hay colección de referencia indexada Y/O `keywordList` configurado |
+| Universidades/Centros | **Desde v3, ya no filtra** — solo etiqueta (`matched_affiliation`) si `universityList`/`researchCenterList` no están vacíos. Nunca rechaza un candidato. |
 | Ventana de fechas | Siempre (semana anterior, calculada en runtime) |
 | `maxPapers` | Siempre |
 
@@ -129,20 +130,22 @@ cuando se pudo determinar):
 
 | Etapa (`stage`) | Significa que… |
 |---|---|
-| `saved` | Pasó todos los filtros y quedó guardado |
+| `saved` | Pasó el filtro de interés + rerank y quedó guardado — **desde v3, esto incluye a los que no matchearon afiliación**; revisar `orgFilter.passed` / `matched_affiliation` en el candidato para saber si tiene estrella |
 | `selection` | Rechazado en el filtro de interés (embedding/keyword vs. referencia o `keywordList`) — incluye los scores exactos |
-| `rerank_cap` | Pasó el filtro de interés pero quedó fuera del top 15 antes del rerank |
 | `maxpapers_cutoff` | Sobrevivió selección + rerank pero no entró en el cupo de `maxPapers` |
 | `download` | Falló la descarga del PDF |
-| `first_page` | Falló `extractFirstPage` y había filtro de universidad activo |
-| `org_filter` | Se descargó el PDF pero la afiliación no coincide con `universityList`/`researchCenterList` — salvo que sea el fallback (ver abajo), en cuyo caso queda como `saved` con motivo "Guardado como fallback…" |
 | `pending` (sin más etapa) | No hay `keywordList` ni colección de referencia configurada — pasan todos sin evaluar |
 
 **Limitación conocida**: la universidad solo se conoce para candidatos que
-llegan a descargarse (después de superar selección + rerank). Los
-rechazados en `selection` o `rerank_cap` no tienen universidad en el log,
-porque nunca se descarga su PDF — hacerlo solo para loguear encarecería
-cada fetch sin necesidad.
+llegan a descargarse (los `maxPapers` finalistas). Los rechazados en
+`selection` no tienen universidad en el log, porque nunca se descarga su
+PDF — hacerlo solo para loguear encarecería cada fetch sin necesidad.
+
+**Ya no existen** las etapas `rerank_cap` (se sacó el tope pre-rerank, v3) ni
+`first_page`/`org_filter` como *rechazo* (desde v3 nunca rechazan, ver
+sección v3 más abajo) — `first_page` y `org_filter` siguen registrándose en
+`entry.orgFilter`, pero solo como diagnóstico, no cambian la etapa a
+`rejected`.
 
 Implementado en `src/ingestion/fetchLog.js` (`renderMarkdown`,
 `writeFetchLog`) y conectado en `runFetch()` (`src/ipc/papers.js`) vía
@@ -162,7 +165,7 @@ Implementado en `src/ingestion/fetchLog.js` (`renderMarkdown`,
 
 ---
 
-# v2 — Rediseño: Hybrid Search + Rerank (pendiente de implementar)
+# v2 — Rediseño: Hybrid Search + Rerank (implementado; ver v3 al final para los ajustes más recientes)
 
 ## Problema que resuelve
 
@@ -314,13 +317,97 @@ ArXiv API (paginado, tope defensivo 300)
 | Nuevo módulo `src/rerank/` | cross-encoder local, descarga/cachea el modelo |
 | `FETCH_POOL = 50` → paginación con tope defensivo 300 | `src/ingestion/arxiv.js` |
 
-## Pendiente (seguir TDD — tests antes de implementar)
+## Implementado (todo lo de abajo ya está en `main`)
 
-- [ ] `src/ingestion/arxiv.js` — reemplazar `FETCH_POOL=50` fijo por paginación (`start` offset) hasta agotar la ventana semanal, tope defensivo 300
-- [ ] `src/ingestion/keywords.js` — extracción de keywords del abstract (referencia y candidatos), matching literal
-- [ ] `src/embeddings/index.js` — extender para embeder keywords de `keywordList`
-- [ ] `src/llm/*` — método nuevo para generar `abstract_summary` al indexar referencia
-- [ ] `src/rerank/index.js` — wrapper del cross-encoder (`@xenova/transformers`), interfaz `rerank(query, documents) → scores`
-- [ ] `src/ipc/papers.js` — integrar las 4 señales del filtro, el pre-orden y la llamada a rerank en `runFetch()`
-- [ ] `src/ipc/reference.js` — generar y guardar `abstract_summary` en `index-reference-folder` / `index-files`
-- [ ] `src/ipc/settings.js` — soportar `keywordList` en `save-settings` / `get-settings`
+- [x] `src/ingestion/arxiv.js` — reemplazó `FETCH_POOL=50` fijo por paginación (`start` offset) hasta agotar la ventana semanal, tope defensivo 300
+- [x] `src/ingestion/keywords.js` — extracción de keywords del abstract (referencia y candidatos), matching literal
+- [x] `src/embeddings/index.js` — extendido para embeber keywords de `keywordList`
+- [x] `src/llm/*` — método para generar `abstract_summary` al indexar referencia
+- [x] `src/rerank/index.js` — wrapper del cross-encoder (`@xenova/transformers`), interfaz `rerank(query, documents) → scores`
+- [x] `src/ipc/papers.js` — las 4 señales del filtro + pre-orden + rerank en `runFetch()` (el pre-orden con tope 15 se sacó en v3, ver abajo)
+- [x] `src/ipc/reference.js` — genera y guarda `abstract_summary` en `index-reference-folder` / `index-files`
+- [x] `src/ipc/settings.js` — soporta `keywordList` en `save-settings` / `get-settings`
+
+---
+
+# v3 — Afiliación deja de bloquear, un solo rerank (implementado)
+
+## Problema que resuelve
+
+Con v2 la ingesta configuraba `maxPapers=3` pero en la práctica nunca entregó
+más de 1 paper por semana (confirmado en 8 de 9 corridas históricas, ver
+`vault/fetch-logs/`). Dos causas, ver `plan.md` para el diagnóstico completo:
+
+1. El filtro de `universityList`/`researchCenterList` corría **después** del
+   rerank, solo sobre los 3 finalistas, sin backfill — si los 3 fallaban
+   afiliación (normal para temas de práctica/ingeniería, no solo academia
+   top-20), la única salida era un fallback de emergencia que guardaba 1 solo
+   paper, ignorando el filtro.
+2. `PRERANK_CAP=15` cortaba candidatos usando un score de embeddings más
+   ruidoso que comparaba contra 13 anchors sueltos (5 papers de referencia +
+   8 keywords), **antes** de que el cross-encoder (que compara contra un
+   query concatenado) tuviera oportunidad de verlos.
+
+## Qué cambió
+
+**Afiliación: de filtro a etiqueta.** `universityList`/`researchCenterList`
+ya no rechazan nada — se revisan (descarga PDF + IA, igual costo que antes:
+solo los `maxPapers` finalistas del rerank) y el resultado se guarda como
+`papers.matched_affiliation`:
+- `1` — la afiliación matcheó la lista → ★ en el vault
+- `0` — se evaluó y no matcheó → sin marca
+- `NULL` — no se evaluó (lista vacía, o falló `extractFirstPage`) → sin marca
+
+El fallback de emergencia (`orgRejects`, "Guardado como fallback…") se
+eliminó por completo — ya no hace falta, todo finalista se guarda siempre.
+
+**Un solo rerank.** Se eliminó `PRERANK_CAP` y el corte a top-15: todos los
+candidatos que pasan el filtro de interés (el OR de las 4 señales, sin
+límite de cantidad) van directos al cross-encoder local
+(`mxbai-rerank-xsmall-v1`, mismo modelo de v2, sin dependencias nuevas). El
+score de embeddings ya no ordena ni corta candidatos — el único orden real
+lo pone el rerank.
+
+## Diagrama v3
+
+```
+ArXiv API (paginado, tope defensivo 300)
+  → todos los candidatos de la semana anterior que matchean categorías/autores
+        ↓
+  [Filtro] OR de las 4 señales de interés (igual que v2)
+        ↓
+  Candidatos que sobreviven — SIN tope, van todos al rerank
+        ↓
+  [Rerank] cross-encoder local (mxbai-rerank-xsmall-v1) — único paso de ranking
+        ↓
+  Top maxPapers (3) por score de rerank
+        ↓
+  Por cada finalista: descarga PDF → extrae primera página →
+    afiliación (IA o regex) → SIEMPRE se guarda, con o sin match
+        ↓
+  matched_affiliation: 1 (★ en UI) / 0 / NULL
+        ↓
+  Semantic Scholar API (solo enriquece, no filtra)
+        ↓
+  Extrae texto completo (~30k chars)
+        ↓
+  Guarda en SQLite (status: ready)
+        ↓
+  Notifica al renderer → "N papers nuevos"
+```
+
+## Cambios de datos y UI
+
+| Cambio | Dónde |
+|---|---|
+| Nueva columna `matched_affiliation INTEGER` | tabla `papers` (migración `ALTER TABLE`, `src/database.js`) |
+| `PRERANK_CAP` eliminado | `src/ipc/papers.js` |
+| `orgRejects` / fallback de emergencia eliminados | `src/ipc/papers.js` |
+| Estrella (★, sin emoji) junto al título en el vault cuando `matched_affiliation === 1` | `renderer/modules/vault.js`, `renderer/styles.css` (`.affiliation-star`) |
+
+## Fuera de alcance (ver `plan.md`)
+
+- Revisar afiliación para más candidatos que `maxPapers` (para que además
+  influya en quién entra al cupo, no solo en la estrella) — se mantuvo a
+  propósito el mismo costo de siempre.
+- Engordar la colección de referencia (hoy 5 papers).
