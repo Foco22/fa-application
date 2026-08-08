@@ -202,14 +202,47 @@ describe('indexReferenceFolder', () => {
     )
   })
 
-  it('generates and saves abstract_summary when an llm is provided', async () => {
+  it('generates abstract_summary from the extracted abstract, not the raw snippet, when an llm is provided', async () => {
     const db  = makeDb()
-    const llm = { summarizeAbstract: vi.fn().mockResolvedValue('A short summary.') }
+    const llm = {
+      extractPaperMetadata: vi.fn().mockResolvedValue({ title: 't', authors: 'a', abstract: 'The real abstract.' }),
+      summarizeAbstract:    vi.fn().mockResolvedValue('A short summary.'),
+    }
     await indexReferenceFolder('/refs', db, makeProvider(), makePdfParse('some snippet text'), llm)
-    expect(llm.summarizeAbstract).toHaveBeenCalledWith('some snippet text')
+    expect(llm.extractPaperMetadata).toHaveBeenCalledWith('some snippet text')
+    expect(llm.summarizeAbstract).toHaveBeenCalledWith('The real abstract.')
     expect(db.saveReferencePaper).toHaveBeenCalledWith(
       expect.objectContaining({ abstract_summary: 'A short summary.' })
     )
+  })
+
+  // El embedding debe representar el paper, no un recorte crudo de las primeras
+  // 3000 chars (que mezcla título/autores/intro) — se usa el abstract real
+  // cuando hay un LLM disponible para extraerlo.
+  it('embeds the extracted abstract instead of the raw snippet, when an llm is provided', async () => {
+    const provider = makeProvider()
+    const llm = {
+      extractPaperMetadata: vi.fn().mockResolvedValue({ abstract: 'The real abstract.' }),
+      summarizeAbstract:    vi.fn().mockResolvedValue('summary'),
+    }
+    await indexReferenceFolder('/refs', makeDb(), provider, makePdfParse('raw snippet text'), llm)
+    expect(provider.generateEmbedding).toHaveBeenCalledWith('The real abstract.')
+  })
+
+  it('falls back to embedding the raw snippet when no llm is provided (can\'t extract an abstract)', async () => {
+    const provider = makeProvider()
+    await indexReferenceFolder('/refs', makeDb(), provider, makePdfParse('raw snippet text'), null)
+    expect(provider.generateEmbedding).toHaveBeenCalledWith('raw snippet text')
+  })
+
+  it('falls back to embedding the raw snippet when metadata extraction finds no abstract', async () => {
+    const provider = makeProvider()
+    const llm = {
+      extractPaperMetadata: vi.fn().mockResolvedValue({ abstract: '' }),
+      summarizeAbstract:    vi.fn().mockResolvedValue('summary'),
+    }
+    await indexReferenceFolder('/refs', makeDb(), provider, makePdfParse('raw snippet text'), llm)
+    expect(provider.generateEmbedding).toHaveBeenCalledWith('raw snippet text')
   })
 })
 
@@ -259,14 +292,34 @@ describe('indexFiles', () => {
     expect(result.indexed).toBe(0)
   })
 
-  it('generates and saves abstract_summary when an llm is provided', async () => {
+  it('generates abstract_summary from the extracted abstract, not the raw snippet, when an llm is provided', async () => {
     const db  = makeDb()
-    const llm = { summarizeAbstract: vi.fn().mockResolvedValue('Short summary.') }
+    const llm = {
+      extractPaperMetadata: vi.fn().mockResolvedValue({ abstract: 'The real abstract.' }),
+      summarizeAbstract:    vi.fn().mockResolvedValue('Short summary.'),
+    }
     await indexFiles(['/docs/paper.pdf'], db, makeProvider(), makePdfParse('snippet text'), llm)
-    expect(llm.summarizeAbstract).toHaveBeenCalledWith('snippet text')
+    expect(llm.extractPaperMetadata).toHaveBeenCalledWith('snippet text')
+    expect(llm.summarizeAbstract).toHaveBeenCalledWith('The real abstract.')
     expect(db.saveReferencePaper).toHaveBeenCalledWith(
       expect.objectContaining({ abstract_summary: 'Short summary.' })
     )
+  })
+
+  it('embeds the extracted abstract instead of the raw snippet, when an llm is provided', async () => {
+    const provider = makeProvider()
+    const llm = {
+      extractPaperMetadata: vi.fn().mockResolvedValue({ abstract: 'The real abstract.' }),
+      summarizeAbstract:    vi.fn().mockResolvedValue('summary'),
+    }
+    await indexFiles(['/docs/paper.pdf'], makeDb(), provider, makePdfParse('raw snippet text'), llm)
+    expect(provider.generateEmbedding).toHaveBeenCalledWith('The real abstract.')
+  })
+
+  it('falls back to embedding the raw snippet when no llm is provided', async () => {
+    const provider = makeProvider()
+    await indexFiles(['/docs/paper.pdf'], makeDb(), provider, makePdfParse('raw snippet text'))
+    expect(provider.generateEmbedding).toHaveBeenCalledWith('raw snippet text')
   })
 
   it('saves null abstract_summary when no llm is provided', async () => {

@@ -118,8 +118,13 @@ function registerReferenceHandlers({ ipcMain, db, deps }) {
         }
 
         if (!db.getReferencePaper(filePath)) {
-          const embedding = await embProvider.generateEmbedding(snippet)
-          const abstractSummary = await llm.summarizeAbstract(abstract || snippet)
+          // El embedding debe representar el abstract del paper, no el
+          // snippet crudo (primera página, mezcla título/autores/abstract) —
+          // se usa `abstract` (ya extraído arriba vía extractPaperMetadata),
+          // con el snippet como respaldo si la extracción no encontró nada.
+          const embedText = abstract || snippet
+          const embedding = await embProvider.generateEmbedding(embedText)
+          const abstractSummary = await llm.summarizeAbstract(embedText)
           db.saveReferencePaper({
             path: filePath, snippet, embedding: JSON.stringify(embedding),
             abstract_summary: abstractSummary, embedding_model: embProvider.id,
