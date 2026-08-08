@@ -46,8 +46,15 @@ async function indexReferenceFolder(folderPath, db, provider, pdfParse, llm = nu
       const buf      = fs.readFileSync(filePath)
       const { text } = await pdfParse(buf)
       const snippet  = text.slice(0, 3000)
-      const embedding = await provider.generateEmbedding(snippet)
-      const abstract_summary = llm ? await llm.summarizeAbstract(snippet) : null
+      // El embedding debe representar el paper — no un recorte crudo de las
+      // primeras 3000 chars, que mezcla título/autores/intro con el abstract.
+      // Se extrae el abstract real vía LLM cuando hay uno disponible; si no
+      // hay LLM, o la extracción no encuentra abstract, se usa el snippet
+      // como respaldo (mejor un embedding aproximado que ninguno).
+      const abstract  = llm ? (await llm.extractPaperMetadata(snippet)).abstract : ''
+      const embedText = abstract || snippet
+      const embedding = await provider.generateEmbedding(embedText)
+      const abstract_summary = llm ? await llm.summarizeAbstract(embedText) : null
       db.saveReferencePaper({
         path: filePath, snippet, embedding: JSON.stringify(embedding), abstract_summary,
         embedding_model: provider.id,
@@ -103,8 +110,12 @@ async function indexFiles(filePaths, db, provider, pdfParse, llm = null) {
       const buf      = fs.readFileSync(filePath)
       const { text } = await pdfParse(buf)
       const snippet  = text.slice(0, 3000)
-      const embedding = await provider.generateEmbedding(snippet)
-      const abstract_summary = llm ? await llm.summarizeAbstract(snippet) : null
+      // Ver comentario en indexReferenceFolder: se embebe el abstract real,
+      // no el recorte crudo de las primeras 3000 chars.
+      const abstract  = llm ? (await llm.extractPaperMetadata(snippet)).abstract : ''
+      const embedText = abstract || snippet
+      const embedding = await provider.generateEmbedding(embedText)
+      const abstract_summary = llm ? await llm.summarizeAbstract(embedText) : null
       db.saveReferencePaper({
         path: filePath, snippet, embedding: JSON.stringify(embedding), abstract_summary,
         embedding_model: provider.id,

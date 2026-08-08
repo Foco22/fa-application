@@ -206,6 +206,27 @@ describe('index-files', () => {
     )
   })
 
+  // El embedding debe representar el abstract real del paper (ya lo tenemos
+  // vía extractPaperMetadata más arriba en el handler), no el snippet crudo
+  // de la primera página que mezcla título/autores/abstract.
+  it('embeds the extracted abstract, not the raw first-page snippet', async () => {
+    const { invoke, deps } = setup()
+    await invoke('index-files', ['/docs/paper.pdf'])
+    expect(deps.createEmbeddings().generateEmbedding).toHaveBeenCalledWith('Ab')
+  })
+
+  it('falls back to embedding the raw snippet when metadata extraction finds no abstract', async () => {
+    const { invoke, deps } = setup({}, {
+      createLLM: vi.fn().mockReturnValue({
+        extractPaperMetadata:     vi.fn().mockResolvedValue({ title: 'T', authors: 'A', abstract: '' }),
+        extractAffiliationsWithAI: vi.fn().mockResolvedValue(null),
+        summarizeAbstract:         vi.fn().mockResolvedValue('summary'),
+      }),
+    })
+    await invoke('index-files', ['/docs/paper.pdf'])
+    expect(deps.createEmbeddings().generateEmbedding).toHaveBeenCalledWith('first page')
+  })
+
   it('counts errors when a file throws during processing', async () => {
     const { invoke } = setup(
       {},
