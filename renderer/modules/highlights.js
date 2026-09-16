@@ -4,6 +4,7 @@ import { escAttr } from './utils.js'
 import { scheduleNotesSave, notesGetText, buildLineDiv, flushNotesRender } from './notes.js'
 import { dispatchChat } from './chat.js'
 import { t } from './language.js'
+import { rectToStored, rectToScreen } from './pdf-zoom.js'
 
 export function hideAnnotationPopup() {
   document.getElementById('annotation-popup').classList.add('hidden')
@@ -95,12 +96,13 @@ function captureHighlightRects() {
     const pr = pageDiv.getBoundingClientRect()
     const rects = clientRects
       .filter(r => r.width > 1 && r.height > 1 && r.top < pr.bottom && r.bottom > pr.top)
-      .map(r => ({
-        x: Math.round(r.left - pr.left),
-        y: Math.round(r.top  - pr.top),
-        w: Math.round(r.width),
-        h: Math.round(r.height)
-      }))
+      // Se guardan en la escala base para que sigan válidos al cambiar el zoom.
+      .map(r => rectToStored({
+        x: r.left - pr.left,
+        y: r.top  - pr.top,
+        w: r.width,
+        h: r.height
+      }, state.pdfScale))
     if (rects.length) result.push({ page: idx + 1, rects })
   })
 
@@ -120,7 +122,8 @@ export function drawHighlight(highlight) {
       pageDiv.appendChild(layer)
     }
 
-    pd.rects.forEach(r => {
+    pd.rects.forEach(stored => {
+      const r   = rectToScreen(stored, state.pdfScale)
       const div = document.createElement('div')
       div.className = 'pdf-highlight'
       div.dataset.hlId = highlight.id
