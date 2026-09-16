@@ -537,6 +537,21 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
   padding: 0 0 8px; flex-shrink: 0;
 }
 .pdf-toolbar-btns { display: flex; gap: 6px; align-items: center; }
+
+/* Zoom del lector — reusa el look de los botones de la barra */
+.pdf-zoom { display: flex; align-items: center; gap: 2px; margin-right: 4px; }
+.pdf-zoom-btn {
+  width: 26px; height: 26px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 600; line-height: 1;
+}
+.pdf-zoom-level {
+  min-width: 42px; height: 26px; padding: 0 4px;
+  background: none; border: none; cursor: pointer;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+  text-align: center;
+}
+.pdf-zoom-level:hover { color: var(--text); }
 .pdf-selection-hint {
   display: flex; align-items: center; gap: 5px;
   font-size: 11px; color: var(--text-3);

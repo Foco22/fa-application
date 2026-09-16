@@ -5,7 +5,7 @@ import { renderVault, autoExpandRecent, initVault } from './modules/vault.js'
 import { openPaper, initPaperView } from './modules/paper-view.js'
 import { showContextMenu, hideContextMenu, initContextMenu } from './modules/context-menu.js'
 import { showOnboarding, initOnboarding } from './modules/onboarding.js'
-import { loadPdf } from './modules/pdf.js'
+import { loadPdf, setupPdfZoom } from './modules/pdf.js'
 import { flushNotesRender, onNotesClick, onNotesKeydown, onNotesInput, onNotesBlur } from './modules/notes.js'
 import { hideAnnotationPopup, setupAnnotationPopup, toggleHighlightsPanel, rebuildNotesFromHighlights } from './modules/highlights.js'
 import { startSummary } from './modules/summary.js'
@@ -291,6 +291,7 @@ function wireListeners() {
   })
 
   document.getElementById('btn-pdf-expand').addEventListener('click', () => setPdfExpanded(!state.pdfExpanded))
+  setupPdfZoom()
   document.getElementById('btn-highlights-toggle').addEventListener('click', toggleHighlightsPanel)
   document.getElementById('btn-rebuild-notes').addEventListener('click', rebuildNotesFromHighlights)
   document.getElementById('btn-summary').addEventListener('click', startSummary)

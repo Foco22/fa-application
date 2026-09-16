@@ -82,6 +82,7 @@ export default {
   'agregar-foto': '+ Add photo',
   'afiliacion-en-tu-lista': 'Affiliation is in your university/center list',
   'agregar-foto-2': 'Add photo',
+  'restablecer-zoom': 'Reset zoom',
   'alejar': 'Zoom out',
   'ampliar': '⤢ Expand',
   'ampliar-pdf': 'Expand file',

@@ -10,6 +10,7 @@ export const state = {
   currentNotesLine: null,
   pdfDoc:           null,
   pdfLoadId:        0,
+  pdfScale:         1.5,   // escala actual del lector (ver pdf-zoom.js)
   annotationText:   '',
   annotationRects:  null,
   highlightsPanelOpen: false,

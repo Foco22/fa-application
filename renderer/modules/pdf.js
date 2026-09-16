@@ -1,5 +1,6 @@
 import { state } from './state.js'
 import { loadSavedHighlights } from './highlights.js'
+import { stepPdfScale, formatPdfZoom, PDF_BASE_SCALE } from './pdf-zoom.js'
 
 export async function loadPdf() {
   if (!state.activePaper) return
@@ -23,11 +24,7 @@ export async function loadPdf() {
     state.pdfDoc = await loadingTask.promise
     if (loadId !== state.pdfLoadId) return
 
-    for (let i = 1; i <= state.pdfDoc.numPages; i++) {
-      if (loadId !== state.pdfLoadId) return
-      await renderPdfPage(i, viewer)
-    }
-    loadSavedHighlights()
+    await renderAllPages(viewer, loadId)
   } catch (err) {
     if (loadId !== state.pdfLoadId) return
     viewer.classList.add('hidden')
@@ -36,10 +33,73 @@ export async function loadPdf() {
   }
 }
 
+async function renderAllPages(viewer, loadId) {
+  for (let i = 1; i <= state.pdfDoc.numPages; i++) {
+    if (loadId !== state.pdfLoadId) return
+    await renderPdfPage(i, viewer)
+  }
+  if (loadId !== state.pdfLoadId) return
+  loadSavedHighlights()
+  updateZoomLabel()
+}
+
+/* ── Zoom ──────────────────────────────────────────────────────────────── */
+
+function updateZoomLabel() {
+  const el = document.getElementById('pdf-zoom-level')
+  if (el) el.textContent = formatPdfZoom(state.pdfScale)
+}
+
+// Re-renderiza el documento ya cargado a la nueva escala, conservando la
+// posición de scroll proporcional. Usa pdfLoadId para cancelar un render en
+// curso si el usuario vuelve a hacer zoom (o cambia de paper) antes de terminar.
+export async function setPdfScale(scale) {
+  if (scale === state.pdfScale) return
+  state.pdfScale = scale
+  updateZoomLabel()
+  if (!state.pdfDoc) return
+
+  const viewer = document.getElementById('pdf-viewer')
+  const ratio  = viewer.scrollHeight > 0 ? viewer.scrollTop / viewer.scrollHeight : 0
+
+  const loadId = ++state.pdfLoadId
+  viewer.innerHTML = ''
+  try {
+    await renderAllPages(viewer, loadId)
+  } catch (err) {
+    if (loadId !== state.pdfLoadId) return
+    console.error('PDF zoom render error:', err)
+  }
+  if (loadId !== state.pdfLoadId) return
+  viewer.scrollTop = ratio * viewer.scrollHeight
+}
+
+export function zoomPdf(direction) {
+  return setPdfScale(stepPdfScale(state.pdfScale, direction))
+}
+
+export function resetPdfZoom() {
+  return setPdfScale(PDF_BASE_SCALE)
+}
+
+export function setupPdfZoom() {
+  document.getElementById('pdf-zoom-in') .addEventListener('click', () => zoomPdf(+1))
+  document.getElementById('pdf-zoom-out').addEventListener('click', () => zoomPdf(-1))
+  document.getElementById('pdf-zoom-level').addEventListener('click', resetPdfZoom)
+
+  // Ctrl + rueda sobre el PDF hace zoom del documento (no de la interfaz —
+  // el handler global de app.js ignora el panel de lectura a propósito).
+  document.getElementById('pdf-viewer').addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return
+    e.preventDefault()
+    zoomPdf(e.deltaY < 0 ? +1 : -1)
+  }, { passive: false })
+  updateZoomLabel()
+}
+
 export async function renderPdfPage(pageNum, container) {
   const page     = await state.pdfDoc.getPage(pageNum)
-  const scale    = 1.5
-  const viewport = page.getViewport({ scale })
+  const viewport = page.getViewport({ scale: state.pdfScale })
 
   const pageDiv = document.createElement('div')
   pageDiv.className = 'pdf-page'
