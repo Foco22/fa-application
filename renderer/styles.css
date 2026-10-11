@@ -1562,93 +1562,147 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 .class-prep-col-header { display: flex; align-items: center; gap: 8px; }
 .class-slides-count { font-size: 12px; color: var(--text-3); }
 
-.class-slides-dropzone {
-  flex: 1; min-height: 260px; position: relative;
-  border: 2px dashed var(--border-2); border-radius: var(--r-lg);
-  background: var(--surface-1);
+/* ── Editor de slides (markdown | preview | PDF) ── */
+.class-deck-hint { font-size: 12px; color: var(--text-3); margin-left: 4px; }
+.class-deck-toolbar { margin-left: auto; display: flex; gap: 6px; }
+.class-deck-tool-btn {
+  padding: 4px 10px; border-radius: var(--r-pill);
+  background: transparent; border: 1px solid var(--border-2);
+  color: var(--text-2); font-family: var(--font-ui); font-size: 12px; cursor: pointer;
+  white-space: nowrap; transition: border-color .15s, color .15s, background .15s;
+}
+.class-deck-tool-btn:hover { border-color: var(--accent); color: var(--accent); }
+.class-deck-tool-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.class-deck-icon-btn { width: 26px; padding: 4px 0; text-align: center; }
+
+.class-deck-editor {
+  flex: 1; min-height: 0; display: flex; gap: 12px;
+}
+.class-deck-md {
+  flex: 1; min-width: 0; resize: none;
+  background: var(--surface-1); color: var(--text);
+  border: 1px solid var(--border-2); border-radius: var(--r-lg);
+  padding: 16px 18px; font-family: var(--font-mono); font-size: 13px; line-height: 1.6;
+  tab-size: 2; outline: none;
+}
+.class-deck-md:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+
+.class-deck-preview {
+  flex: 1.15; min-width: 0; display: flex; flex-direction: column; gap: 10px; align-items: center;
+}
+.class-deck-stage {
+  flex: 1; width: 100%; min-height: 0;
   display: flex; align-items: center; justify-content: center;
-  overflow: hidden; transition: border-color .2s, background .2s;
+  container-type: size;
 }
-.class-slides-dropzone.has-slides { border-style: solid; border-color: var(--border); }
 
-.class-slides-placeholder {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  user-select: none;
+/* Panel PDF */
+.class-deck-pdf {
+  flex: 1.1; min-width: 0; position: relative;
+  display: flex; flex-direction: column;
+  background: var(--surface-0); border: 1px solid var(--border-2); border-radius: var(--r-lg);
+  overflow: hidden;
 }
-.class-slides-placeholder-icon { font-size: 42px; opacity: .3; line-height: 1; pointer-events: none; }
-.class-slides-placeholder-text { font-size: 14px; color: var(--text-2); font-weight: 500; pointer-events: none; }
-.class-slides-placeholder-sub  { font-size: 12px; color: var(--text-3); pointer-events: none; }
+.class-deck-pdf.hidden { display: none; }
+.class-deck-pdf-bar {
+  display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.class-deck-pdf-name {
+  flex: 1; min-width: 0; font-size: 12px; color: var(--text-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.class-deck-hl { border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.class-deck-hl > summary {
+  padding: 8px 12px; cursor: pointer; user-select: none;
+  font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--text-3);
+}
+.class-deck-hl-list { max-height: 34vh; overflow-y: auto; padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+.class-deck-hl-item {
+  background: var(--surface-1); border-radius: var(--r-sm); padding: 8px 10px;
+  border-left: 3px solid rgba(255, 213, 0, .7);
+}
+.class-deck-hl-text { font-size: 12px; color: var(--text); line-height: 1.45; }
+.class-deck-hl-comment { font-size: 12px; color: var(--text-3); margin-top: 4px; }
+.class-deck-hl-actions { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 6px; }
+.class-deck-hl-page {
+  background: none; border: none; color: var(--text-3); font-size: 11px; cursor: pointer; margin-right: auto; padding: 0;
+}
+.class-deck-hl-page:hover { color: var(--accent); }
+.class-deck-hl-empty, .class-deck-pdf-msg { font-size: 12px; color: var(--text-3); padding: 4px 2px; }
+.class-deck-pdf-msg { padding: 24px; text-align: center; }
+.class-deck-pdf-pages {
+  flex: 1; min-height: 0; overflow: auto; padding: 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+}
+.class-deck-insert-selection {
+  position: absolute; z-index: 5;
+  padding: 6px 12px; border-radius: var(--r-pill); border: none;
+  background: var(--accent); color: #fff; font-family: var(--font-ui); font-size: 12px; font-weight: 600;
+  cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.45);
+}
+.class-deck-insert-selection.hidden { display: none; }
 
-/* ── Prep slide viewer ── */
-.class-slide-viewer {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
+/* Panel PDF abierto: ocupa todo el editor. Destacados a la izquierda, páginas a la derecha. */
+.class-deck-editor.pdf-open > .class-deck-md,
+.class-deck-editor.pdf-open > .class-deck-preview { display: none; }
+.class-deck-editor.pdf-open > .class-deck-pdf {
+  flex: 1;
+  display: grid; grid-template-columns: minmax(260px, 340px) 1fr; grid-template-rows: auto 1fr;
 }
-.class-slide-viewer-img {
-  width: 100%; height: 100%; object-fit: contain; display: block;
+.class-deck-editor.pdf-open .class-deck-pdf-bar { grid-column: 1 / -1; }
+.class-deck-editor.pdf-open .class-deck-hl {
+  grid-column: 1; grid-row: 2; min-height: 0; overflow-y: auto;
+  border-bottom: none; border-right: 1px solid var(--border);
 }
-.class-slide-viewer-nav {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  background: rgba(0,0,0,.45); border: none; border-radius: 50%;
-  color: #fff; font-size: 22px; width: 40px; height: 40px;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer; z-index: 2; transition: background .15s;
-  opacity: 0;
-}
-.class-slides-dropzone:hover .class-slide-viewer-nav:not(:disabled) { opacity: 1; }
-.class-slide-viewer-nav:hover { background: rgba(0,0,0,.8); }
-.class-slide-viewer-nav:disabled { opacity: 0 !important; pointer-events: none; }
-.class-slide-viewer-prev { left: 12px; }
-.class-slide-viewer-next { right: 12px; }
-.class-slide-viewer-info {
-  position: absolute; bottom: 0; left: 0; right: 0; z-index: 2;
-  background: linear-gradient(transparent, rgba(0,0,0,.65));
-  padding: 24px 16px 10px;
-  display: flex; align-items: flex-end; justify-content: space-between;
-}
-.class-slide-viewer-label     { font-size: 13px; color: rgba(255,255,255,.9); font-weight: 500; }
-.class-slide-viewer-indicator { font-size: 12px; color: rgba(255,255,255,.55); }
-.class-slide-viewer-remove {
-  position: absolute; top: 10px; right: 10px; z-index: 3;
-  background: rgba(0,0,0,.6); border: none; border-radius: 50%;
-  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
-  color: #fff; font-size: 11px; cursor: pointer;
-  opacity: 0; transition: opacity .15s, background .15s;
-}
-.class-slides-dropzone:hover .class-slide-viewer-remove { opacity: 1; }
-.class-slide-viewer-remove:hover { background: var(--red); }
+.class-deck-editor.pdf-open .class-deck-hl-list { max-height: none; overflow: visible; }
+.class-deck-editor.pdf-open .class-deck-pdf-pages { grid-column: 2; grid-row: 2; }
 
-.class-add-slide-overlay {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  z-index: 2; padding: 8px 18px;
-  background: rgba(0,0,0,.35); border: 1.5px solid rgba(255,255,255,.25);
-  border-radius: var(--r-pill); color: rgba(255,255,255,.5);
-  font-family: var(--font-ui); font-size: 13px; cursor: pointer;
-  opacity: 0; transition: opacity .2s, background .2s, color .2s, border-color .2s;
-  backdrop-filter: blur(4px);
+/* ── Slide renderizada desde markdown (preview del editor + presentación) ──
+   El marco ocupa lo más grande que entra en 16:9 dentro de su contenedor
+   (container-type: size) y el texto escala con el ancho del marco (cqw),
+   así la preview chica y la slide proyectada se ven idénticas. */
+.md-slide-frame {
+  width: min(100cqw, calc(100cqh * 16 / 9));
+  aspect-ratio: 16 / 9;
+  container-type: inline-size;
+  background: #fbfbfd; color: #1d1d1f;
+  border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.45);
+  overflow: hidden;
 }
-.class-slides-dropzone:hover .class-add-slide-overlay { opacity: 1; }
-.class-add-slide-overlay:hover { background: rgba(0,0,0,.6); border-color: rgba(255,255,255,.6); color: #fff; }
-
-.class-add-slide-btn {
-  margin-top: 6px; display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 18px;
-  background: transparent; border: 1.5px solid var(--border-2);
-  border-radius: var(--r-pill); color: var(--text-2);
-  font-family: var(--font-ui); font-size: 13px; cursor: pointer;
-  transition: border-color .15s, color .15s, background .15s;
+.md-slide {
+  height: 100%; padding: 5cqw 6.5cqw; overflow: hidden;
+  font-family: var(--font-ui); font-size: 2.5cqw; line-height: 1.45;
 }
-.class-add-slide-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
-
-.class-add-slide-more-btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px; padding: 0;
-  background: transparent; border: 1.5px solid var(--border-2);
-  border-radius: 50%; color: var(--text-3);
-  font-size: 16px; line-height: 1; cursor: pointer;
-  transition: border-color .15s, color .15s;
+.md-slide > :first-child { margin-top: 0; }
+.md-slide h1 { font-size: 5cqw;   line-height: 1.12; margin: 0 0 2.4cqw; font-weight: 700; letter-spacing: -.02em; }
+.md-slide h2 { font-size: 3.9cqw; line-height: 1.15; margin: 0 0 2cqw;   font-weight: 700; letter-spacing: -.01em; }
+.md-slide h3 { font-size: 3cqw;   margin: 1.6cqw 0 1cqw; font-weight: 600; }
+.md-slide h4 { font-size: 2.6cqw; margin: 1.4cqw 0 .8cqw; font-weight: 600; color: #515154; }
+.md-slide p  { margin: 0 0 1.4cqw; }
+.md-slide ul, .md-slide ol { margin: 0 0 1.4cqw; padding-left: 3.2cqw; }
+.md-slide li { margin-bottom: .8cqw; }
+.md-slide li::marker { color: #0071e3; }
+.md-slide strong { font-weight: 700; }
+.md-slide em { color: #515154; }
+.md-slide code { font-family: var(--font-mono); font-size: .88em; background: #ececf0; padding: .1em .35em; border-radius: 4px; }
+.md-slide blockquote {
+  margin: 0 0 1.6cqw; padding: 1cqw 2cqw;
+  border-left: .5cqw solid #f5c400; background: #fff8d6; border-radius: 0 6px 6px 0;
+  font-size: .92em;
 }
-.class-add-slide-more-btn:hover { border-color: var(--accent); color: var(--accent); }
+.md-slide blockquote p { margin: 0 0 .5cqw; }
+.md-slide blockquote p:last-child { margin: 0; color: #6e6e73; }
+.md-slide blockquote p:first-child { color: #1d1d1f; }
+.md-slide table { border-collapse: collapse; margin: 0 0 1.6cqw; font-size: .9em; }
+.md-slide th, .md-slide td { border: 1px solid #d2d2d7; padding: .6cqw 1.2cqw; text-align: left; }
+.md-slide th { background: #f0f0f3; }
+.md-slide .code-block { margin: 0 0 1.6cqw; background: #1d1d1f; color: #f5f5f7; border-radius: 8px; overflow: hidden; }
+.md-slide .code-block .code-header { display: none; }
+.md-slide .code-block pre { margin: 0; padding: 1.4cqw 2cqw; font-size: .8em; }
+.md-slide .code-block code { background: none; padding: 0; color: inherit; }
+.md-slide hr { border: none; border-top: 1px solid #d2d2d7; margin: 1.6cqw 0; }
+.md-slide .katex-display { margin: 1.2cqw 0; }
 
 /* ── Settings column ── */
 .class-prep-settings-col {
@@ -1830,7 +1884,8 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
   align-items: center; justify-content: center; padding: 20px; gap: 12px; overflow: hidden;
 }
 .class-slide-display {
-  flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  flex: 1; width: 100%; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  container-type: size;
 }
 .class-slide-img-full { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--r-sm); }
 .class-no-slides { color: var(--text-3); font-size: 14px; }

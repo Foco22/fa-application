@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld('api', {
 
   classCanHaveClass:    (paperId)   => ipcRenderer.invoke('class-can-have-class', paperId),
   classUploadSlides:    (data)      => ipcRenderer.invoke('class-upload-slides', data),
+  classSaveSlidesDraft: (data)      => ipcRenderer.invoke('class-save-slides-draft', data),
+  classPickPdf:         ()          => ipcRenderer.invoke('class-pick-pdf'),
   classInterpretSlides: (data)      => ipcRenderer.invoke('class-interpret-slides', data),
   classStartSession:    (data)      => ipcRenderer.invoke('class-start-session', data),
   classGetSlides:       (sessionId) => ipcRenderer.invoke('class-get-slides', sessionId),

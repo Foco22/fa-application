@@ -457,9 +457,6 @@
   <!-- ── Clase Simulada fullscreen ───────────────────────────────────────── -->
   <div id="class-fullscreen" class="fullscreen hidden">
 
-    <!-- file input: lives outside all views so it's never destroyed -->
-    <input type="file" id="class-file-input" accept="image/*" multiple hidden>
-
     <!-- ── Main area (switches between views) ── -->
     <div id="class-main-area">
 
@@ -472,32 +469,47 @@
         <p id="class-paper-title" class="class-paper-title"></p>
         <div class="class-prep-body">
 
-          <!-- Col izquierda: slides -->
+          <!-- Col izquierda: editor de slides en markdown -->
           <div class="class-prep-slides-col">
             <div class="class-prep-col-header">
               <span class="class-section-title" data-i18n="diapositivas">Diapositivas</span>
               <span id="class-slides-count" class="class-slides-count"></span>
-              <button id="class-btn-add-slide-more" class="class-add-slide-more-btn" style="display:none" title="Agregar foto" data-i18n-title="agregar-foto-2">+</button>
-            </div>
-            <div id="class-slides-dropzone" class="class-slides-dropzone">
-              <!-- Estado vacío -->
-              <div id="class-slides-placeholder" class="class-slides-placeholder">
-                <span class="class-slides-placeholder-icon">🖼</span>
-                <span class="class-slides-placeholder-text" data-i18n="sube-fotos-de-tus-slides">Sube fotos de tus slides</span>
-                <span class="class-slides-placeholder-sub" data-i18n="intro-desarrollo-conclusion-max-3">intro · desarrollo · conclusión · máx. 3</span>
-                <button id="class-btn-add-slide" class="class-add-slide-btn" data-i18n="agregar-foto">+ Agregar foto</button>
+              <span class="class-deck-hint" data-i18n="deck-hint-separador">Separa cada slide con una línea ---</span>
+              <div class="class-deck-toolbar">
+                <button id="class-deck-new-slide" class="class-deck-tool-btn" data-i18n="deck-nueva-slide">+ Slide</button>
+                <button id="class-deck-toggle-pdf" class="class-deck-tool-btn" data-i18n="deck-pdf-destacados">PDF y destacados</button>
               </div>
-              <!-- Visor de slide única -->
-              <div id="class-slide-viewer" class="class-slide-viewer" style="display:none">
-                <img id="class-slide-viewer-img" class="class-slide-viewer-img" src="" alt="">
-                <button id="class-slide-viewer-prev" class="class-slide-viewer-nav class-slide-viewer-prev">‹</button>
-                <button id="class-slide-viewer-next" class="class-slide-viewer-nav class-slide-viewer-next">›</button>
-                <button id="class-btn-add-slide-overlay" class="class-add-slide-overlay" title="Agregar foto" data-i18n-title="agregar-foto-2" data-i18n="agregar-foto">+ Agregar foto</button>
-                <div class="class-slide-viewer-info">
-                  <span id="class-slide-viewer-label" class="class-slide-viewer-label"></span>
-                  <span id="class-slide-viewer-indicator" class="class-slide-viewer-indicator"></span>
+            </div>
+            <div id="class-deck-editor" class="class-deck-editor">
+
+              <!-- Panel PDF (oculto hasta que se abre) -->
+              <div id="class-deck-pdf" class="class-deck-pdf hidden">
+                <div class="class-deck-pdf-bar">
+                  <span id="class-deck-pdf-name" class="class-deck-pdf-name"></span>
+                  <button id="class-deck-pdf-paper" class="class-deck-tool-btn" data-i18n="deck-pdf-del-paper" title="PDF de este paper, con tus destacados de la app" data-i18n-title="deck-pdf-del-paper-tip">Del paper</button>
+                  <button id="class-deck-pdf-open" class="class-deck-tool-btn" data-i18n="deck-abrir-pdf">Abrir PDF…</button>
+                  <button id="class-deck-pdf-zoom-out" class="class-deck-tool-btn class-deck-icon-btn" title="Alejar" data-i18n-title="alejar">−</button>
+                  <button id="class-deck-pdf-zoom-in" class="class-deck-tool-btn class-deck-icon-btn" title="Acercar" data-i18n-title="acercar">+</button>
                 </div>
-                <button id="class-slide-viewer-remove" class="class-slide-viewer-remove" title="Eliminar slide" data-i18n-title="eliminar-slide">✕</button>
+                <details id="class-deck-hl" class="class-deck-hl" open>
+                  <summary><span data-i18n="deck-destacados">Destacados</span> <span id="class-deck-hl-count" class="class-slides-count"></span></summary>
+                  <div id="class-deck-hl-list" class="class-deck-hl-list"></div>
+                </details>
+                <div id="class-deck-pdf-pages" class="class-deck-pdf-pages"></div>
+                <button id="class-deck-insert-selection" class="class-deck-insert-selection hidden" data-i18n="deck-insertar-seleccion">Insertar en la slide</button>
+              </div>
+
+              <textarea id="class-deck-md" class="class-deck-md" spellcheck="false"
+                placeholder="# Mi primera slide&#10;&#10;- un punto&#10;&#10;---&#10;&#10;## Segunda slide"
+                data-i18n-placeholder="deck-placeholder"></textarea>
+
+              <div class="class-deck-preview">
+                <div id="class-deck-stage" class="class-deck-stage"></div>
+                <div class="class-slide-nav">
+                  <button id="class-deck-prev" class="class-nav-btn" title="Anterior" data-i18n-title="anterior">‹</button>
+                  <span id="class-deck-indicator" class="class-slide-indicator">—</span>
+                  <button id="class-deck-next" class="class-nav-btn" title="Siguiente" data-i18n-title="siguiente-2">›</button>
+                </div>
               </div>
             </div>
           </div>

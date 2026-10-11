@@ -1,9 +1,10 @@
 const path = require('path')
 const fs   = require('fs')
+const { pathToFileURL } = require('url')
 const { canHaveClass, STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, evaluatePresentation, generateHint, assistantChat } = require('../class')
 
 function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
-  const { createLLM, createTranscription, createWhisperStream, whisperStreamBin, whisperModelsDir, vault } = deps
+  const { createLLM, createTranscription, createWhisperStream, whisperStreamBin, whisperModelsDir, vault, dialog } = deps
 
   let _whisperStream = null
 
@@ -24,6 +25,15 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
     const paper = db.getPaper(paperId)
     const slideIds = slides.map((s, i) => {
       const autoLabel = i === 0 ? 'intro' : i === slides.length - 1 ? 'conclusion' : 'desarrollo'
+      if (s.markdown != null) {
+        const slide = db.saveClassSlide({
+          session_id: sessionId, order_index: i, markdown: s.markdown, label: s.label || autoLabel
+        })
+        // El markdown ya ES la descripción textual de la slide: los estudiantes
+        // lo leen directo, sin pasar por visión (interpret-slides la salta).
+        db.updateClassSlideInterpretation(slide.id, s.markdown)
+        return slide.id
+      }
       const slide = db.saveClassSlide({
         session_id: sessionId,
         order_index: i,
@@ -45,16 +55,51 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
       }
       return slide.id
     })
+    // Un deck markdown va al vault como un solo slides.md (mismo separador ---
+    // que usa el editor), no como un archivo por slide.
+    const mdSlides = slides.filter(s => s.markdown != null).map(s => s.markdown.trim())
+    if (mdSlides.length && vault && vault.writeSlide && paper) {
+      try {
+        vault.writeSlide(paper, 'slides.md', Buffer.from(mdSlides.join('\n\n---\n\n') + '\n', 'utf8'))
+      } catch (err) {
+        console.error('[class-upload-slides] no se pudo escribir slides.md al vault:', err.message)
+      }
+    }
     return { sessionId, slideIds }
+  })
+
+  ipcMain.handle('class-save-slides-draft', (_e, { paperId, markdown }) => {
+    db.saveSlidesDraft(paperId, markdown)
+    return { ok: true }
+  })
+
+  // PDF propio del usuario (ej. uno exportado con sus destacados desde otro
+  // lector) para tenerlo al lado mientras escribe las slides.
+  ipcMain.handle('class-pick-pdf', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'PDF', extensions: ['pdf'] }]
+    })
+    if (result.canceled || !result.filePaths.length) return null
+    const filePath = result.filePaths[0]
+    return { url: pathToFileURL(filePath).href, name: path.basename(filePath) }
   })
 
   ipcMain.handle('class-interpret-slides', async (_e, { sessionId }) => {
     const settings = db.getAllSettings()
     const llm = createClassLLM(settings)
-    if (!llm.interpretImage) return { slides: [] }
     const slides = db.getClassSlides(sessionId)
     const results = []
     for (const slide of slides) {
+      // Ya interpretada (las slides markdown traen su propio texto) → no gastar visión.
+      if (slide.interpretation) {
+        results.push({ id: slide.id, interpretation: slide.interpretation })
+        continue
+      }
+      if (!llm.interpretImage) {
+        results.push({ id: slide.id, interpretation: null })
+        continue
+      }
       try {
         const interpretation = await llm.interpretImage(slide.image_data, slide.mime_type)
         if (interpretation) db.updateClassSlideInterpretation(slide.id, interpretation)
