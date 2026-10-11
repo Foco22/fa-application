@@ -756,7 +756,9 @@ PRESENTING ──timer=0──▶ QA_TURN_1
 
 **El loop es natural:** cuando el estudiante no queda satisfecho, pide una aclaración más sencilla — un ejemplo, una analogía, una reformulación más básica. No escala la dificultad, baja el nivel de abstracción para ayudar al profesor a articular mejor. Es Socrático.
 
-**No hay botón de escape:** el profesor tiene que seguir respondiendo. La única salida es que el estudiante quede satisfecho. Como válvula de seguridad oculta: si llegan a 4 exchanges sin satisfacción, el estudiante acepta con una frase como *"Ok, creo que entiendo la idea general, sigamos"* — natural, no un corte abrupto. Este límite no se muestra en la UI.
+**No hay botón de escape ni límite de intercambios:** el profesor tiene que seguir respondiendo. La única salida es que el estudiante quede satisfecho. Si no sabe, se escalan las pistas: 1.er intento fallido → campanita (fragmentos del paper), 2.º → guía, 3.º → respuesta revelada; después sigue respondiendo con esa ayuda.
+
+> **Actualizado:** la "válvula oculta" de 4 intercambios descrita abajo se eliminó porque dejaba pasar preguntas sin responder. Tampoco cuenta como respuesta aceptada: un saludo / "no sé" / muletilla (`isNonAnswer`, se rechaza aunque el LLM diga lo contrario), un `"satisfied": "false"` en string, ni un error del LLM o del IPC.
 
 **Estados:** `PRESENTING | QA_TURN_{1,2,3} | DONE`  
 No hay estados de retry — el follow-up es otra iteración del mismo estado `QA_TURN_N`. Sin botón "Siguiente →".

@@ -505,3 +505,40 @@ describe('class-pick-pdf', () => {
     expect(await invoke('class-pick-pdf')).toBeNull()
   })
 })
+
+describe('class-student-evaluate', () => {
+  it('returns NOT satisfied when evaluation throws, so the student keeps the turn', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = makeDb({
+      getPaper: vi.fn(() => { throw new Error('db down') }),
+      getClassSlides: vi.fn().mockReturnValue([]),
+    })
+    registerClassHandlers({ ipcMain, db, deps: { createLLM: vi.fn().mockReturnValue({ chat: vi.fn() }) }, mainWindow: makeMainWindow() })
+    const r = await invoke('class-student-evaluate', { studentId: 1, paperId: 'p', sessionId: 's', professorAnswer: 'x', history: [], exchangeCount: 1 })
+    expect(r.satisfied).toBe(false)
+  })
+})
+
+describe('class-student-evaluate — reference answer', () => {
+  it('builds the reference answer once per question and reuses it on later attempts', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const chat = vi.fn()
+      .mockResolvedValueOnce('La respuesta correcta según el paper.')          // referencia
+      .mockResolvedValueOnce('{"passed": false, "missing": "el porqué"}')     // evaluador, intento 1
+      .mockResolvedValueOnce('¿Y por qué?')                                    // reacción 1
+      .mockResolvedValueOnce('{"passed": true, "missing": null}')             // evaluador, intento 2
+      .mockResolvedValueOnce('Gracias')                                        // reacción 2
+    const db = makeDb({ getPaper: vi.fn().mockReturnValue({ id: 'p', title: 'T', pdf_text: 'texto' }), getClassSlides: vi.fn().mockReturnValue([]) })
+    registerClassHandlers({ ipcMain, db, deps: { createLLM: vi.fn().mockReturnValue({ chat }) }, mainWindow: makeMainWindow() })
+
+    const q = '¿Qué propone el paper?'
+    const r1 = await invoke('class-student-evaluate', { studentId: 1, paperId: 'p', sessionId: 's', professorAnswer: 'un modelo nuevo', history: [{ question: q, answer: 'un modelo nuevo' }], exchangeCount: 1 })
+    const r2 = await invoke('class-student-evaluate', { studentId: 1, paperId: 'p', sessionId: 's', professorAnswer: 'el GRU, porque...', history: [{ question: q, answer: 'un modelo nuevo' }, { question: '¿Y por qué?', answer: 'el GRU, porque...' }], exchangeCount: 2 })
+
+    expect(r1.satisfied).toBe(false)
+    expect(r2.satisfied).toBe(true)
+    expect(chat).toHaveBeenCalledTimes(5)
+    const judge2 = chat.mock.calls[3][0].map(m => m.content).join('\n')
+    expect(judge2).toContain('La respuesta correcta según el paper.')
+  })
+})

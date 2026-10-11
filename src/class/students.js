@@ -67,47 +67,138 @@ async function generateTurn(student, context, llm) {
   return text
 }
 
+// Palabras que, solas, no responden nada: saludos, muletillas y "no sé".
+// Si la respuesta del profesor está hecha SOLO de esto, no es un intento de
+// respuesta — no se le pregunta al LLM si le parece suficiente.
+const NON_ANSWER_WORDS = new Set([
+  'hola', 'buenas', 'buenos', 'buen', 'dias', 'tardes', 'noches', 'hey', 'saludos',
+  'ok', 'okay', 'oka', 'vale', 'si', 'no', 'se', 'lo', 'la', 'el', 'verdad', 'idea', 'ni', 'tengo',
+  'estoy', 'seguro', 'segura', 'recuerdo', 'paso', 'siguiente', 'bueno', 'pues', 'este', 'esto',
+  'gracias', 'profesor', 'profe', 'sinceramente', 'honestamente', 'la', 'verdad',
+  'mmm', 'mm', 'hmm', 'eh', 'ehh', 'ah', 'um', 'uh', 'em',
+  'i', 'dont', 'do', 'not', 'know', 'hi', 'hello', 'sure', 'idk',
+  'maria', 'carlos', 'sofia',
+])
+
+function isNonAnswer(text) {
+  const words = (text || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // sé → se, maría → maria
+    .replace(/[\u2019']/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+  return words.every(w => NON_ANSWER_WORDS.has(w) || /^(m+|h?m+|e+h*|a+h+)$/.test(w))
+}
+
+// Respuesta correcta a la pregunta del estudiante según el paper. Se genera una
+// vez por pregunta (la cachea el IPC) y es la vara contra la que el evaluador
+// compara lo que dijo el profesor. null si falla: el evaluador entonces juzga
+// contra el texto del paper directamente.
+async function generateReferenceAnswer(paper, question, llm) {
+  const messages = [{
+    role: 'user',
+    content: `Eres un experto en este paper. Responde la pregunta de forma correcta, concreta y basada SOLO en el paper.
+Título: ${paper?.title || ''}
+Abstract: ${paper?.abstract || ''}
+Texto del paper: ${(paper?.pdf_text || '').slice(0, 12000)}
+
+Pregunta: ${question}
+
+Responde en 2-4 oraciones con los puntos clave que una buena respuesta debe cubrir. Solo la respuesta, sin preámbulo.`
+  }]
+  try {
+    const text = (await llm.chat(messages) || '').trim()
+    return text || null
+  } catch {
+    return null
+  }
+}
+
+// Evaluador independiente de la persona del estudiante: compara la pregunta,
+// TODAS las respuestas del profesor en este turno (una puede completar a la
+// anterior) y la respuesta correcta. Devuelve { passed, missing }.
+async function judgeAnswer({ paper, question, answers, referenceAnswer }, llm) {
+  const reference = referenceAnswer
+    ? `RESPUESTA CORRECTA (según el paper):\n${referenceAnswer}`
+    : `TEXTO DEL PAPER (de aquí sale la respuesta correcta):\n${(paper?.pdf_text || paper?.abstract || '').slice(0, 8000)}`
+  const messages = [{
+    role: 'user',
+    content: `Eres un evaluador estricto pero justo de una clase. Un estudiante hizo una pregunta y el profesor respondió (puede que en varios intentos).
+
+PREGUNTA DEL ESTUDIANTE:
+${question}
+
+${reference}
+
+RESPUESTAS DEL PROFESOR (en orden):
+${answers.map((a, i) => `${i + 1}. ${a}`).join('\n')}
+
+Decide si, tomadas en conjunto, las respuestas del profesor contestan el núcleo de la pregunta de forma correcta y consistente con la respuesta correcta. No exijas las mismas palabras ni todos los detalles, pero sí la idea central correcta.
+- Saludos, "no sé", algo fuera de tema, o frases vagas que no explican nada → passed: false.
+- Una respuesta incorrecta o que contradice el paper → passed: false.
+Responde SOLO con JSON exacto:
+{"passed": true/false, "missing": "qué idea clave falta o está mal, en una frase (null si passed)"}`
+  }]
+  const result = parseJSONResponse(await llm.chat(messages))
+  // "false" como string es truthy: solo cuenta un true explícito.
+  const passed = result.passed === true || result.passed === 'true'
+  return { passed, missing: passed ? null : (result.missing || 'la idea central de la pregunta') }
+}
+
+// El veredicto lo da judgeAnswer; el estudiante solo reacciona a él con su voz.
+// Nunca pasa por cansancio ni por un error: si el profesor no sabe, para eso
+// están las pistas (campanita → guía → respuesta) en el renderer.
 async function evaluateAndReact(student, context, llm) {
-  const { paper, slides, history, exchangeCount } = context
-  const isLastRound = exchangeCount >= 4
+  const { paper, slides, history, referenceAnswer } = context
+  const turn = history || []
+  const question = turn[0]?.question || ''
+  const answers = turn.map(h => h.answer).filter(a => a && a.trim())
+  if (!answers.length && context.professorAnswer) answers.push(context.professorAnswer)
+  const lastAnswer = answers.at(-1) || ''
+
+  if (isNonAnswer(lastAnswer)) {
+    return {
+      satisfied: false,
+      reaction: 'Creo que todavía no respondió mi pregunta. ¿Me la podría explicar?',
+      missing: question || 'responder la pregunta'
+    }
+  }
+
+  let verdict
+  try {
+    verdict = await judgeAnswer({ paper, question, answers, referenceAnswer }, llm)
+  } catch {
+    return {
+      satisfied: false,
+      reaction: 'No quedó del todo claro, ¿me lo podría explicar de otra forma?',
+      missing: question || 'responder la pregunta'
+    }
+  }
+
   const messages = [
     { role: 'system', content: student.systemPrompt(paper, slides) },
     { role: 'user', content: 'El profesor terminó su explicación.' }
   ]
-
-  for (const h of (history || [])) {
+  for (const h of turn) {
     messages.push({ role: 'assistant', content: h.question })
     if (h.answer) messages.push({ role: 'user', content: h.answer })
   }
-
-  const closingInstruction = isLastRound
-    ? `Esta es la última ronda de intercambio. Evalúa la respuesta del profesor:
-- Si fue clara y completa: agradece de forma natural y marca satisfied: true.
-- Si no fue suficiente o fue vaga: de todas formas marca satisfied: true y cierra con amabilidad, algo como "No se preocupe, creo que lo entiendo, gracias." — es el momento de cerrar, no de insistir.`
-    : `- Si la respuesta fue clara y completa: marca satisfied: true y agradece.
-- Si el profesor no supo, fue vago o respondió algo sin sentido: SIEMPRE marca satisfied: false, sigue insistiendo con curiosidad y reformula la pregunta de otro ángulo. Nunca te rindas antes de tiempo.`
-
   messages.push({
     role: 'user',
-    content: `Basándote en toda la conversación, reacciona a la última respuesta del profesor de forma natural.
-${closingInstruction}
-Responde con JSON exacto:
-{"satisfied": true/false, "reaction": "frase corta y natural dirigida al profesor (max 25 palabras)", "missing": "qué faltó si no estás satisfecho (null si sí)"}`
+    content: verdict.passed
+      ? 'La respuesta del profesor fue correcta y te quedó claro. Agradécele de forma natural en una frase corta (max 25 palabras). Solo la frase.'
+      : `La respuesta del profesor todavía no te convence. Lo que falta: ${verdict.missing}. Díselo con amabilidad y curiosidad en una frase corta (max 25 palabras), sin revelar la respuesta. Solo la frase.`
   })
+  let reaction
   try {
-    const raw = await llm.chat(messages)
-    const result = parseJSONResponse(raw)
-    return {
-      satisfied: isLastRound ? true : Boolean(result.satisfied),
-      reaction: result.reaction || (result.satisfied ? 'Gracias, quedó claro.' : 'Hmm, todavía tengo dudas.'),
-      missing: result.missing || null
-    }
+    reaction = (await llm.chat(messages) || '').trim()
   } catch {
-    return {
-      satisfied: isLastRound ? true : false,
-      reaction: isLastRound ? 'No se preocupe, creo que lo entiendo. Gracias.' : 'No quedó del todo claro.',
-      missing: null
-    }
+    reaction = ''
+  }
+  return {
+    satisfied: verdict.passed,
+    reaction: reaction || (verdict.passed ? 'Gracias, quedó claro.' : 'Hmm, todavía tengo dudas.'),
+    missing: verdict.missing
   }
 }
 
@@ -166,4 +257,4 @@ Responde con JSON exacto:
   }
 }
 
-module.exports = { STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, evaluatePresentation }
+module.exports = { STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, evaluatePresentation, isNonAnswer, generateReferenceAnswer, judgeAnswer }
