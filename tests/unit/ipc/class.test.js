@@ -382,3 +382,126 @@ describe('class-upload-slides', () => {
     expect(result.slideIds).toEqual([1])
   })
 })
+
+// ─── slides escritas en markdown dentro de la app ────────────────────────────
+
+describe('class-upload-slides — markdown slides', () => {
+  function makeMdDb() {
+    let sid = 0
+    return makeDb({
+      getPaper:           vi.fn().mockReturnValue({ id: '2401.99999' }),
+      createClassSession: vi.fn().mockReturnValue({ id: 'sess-1' }),
+      saveClassSlide:     vi.fn().mockImplementation(() => ({ id: ++sid })),
+      updateClassSlideInterpretation: vi.fn(),
+    })
+  }
+  const baseDeps = (extra = {}) => ({
+    createLLM: vi.fn(), createTranscription: vi.fn(), createWhisperStream: vi.fn(),
+    whisperStreamBin: null, whisperModelsDir: null, ...extra,
+  })
+
+  it('saves markdown slides with their text and auto labels', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = makeMdDb()
+    registerClassHandlers({ ipcMain, db, deps: baseDeps(), mainWindow: makeMainWindow() })
+
+    await invoke('class-upload-slides', {
+      paperId: '2401.99999', duration: 180,
+      slides: [{ markdown: '# Intro' }, { markdown: '# Medio' }, { markdown: '# Fin' }],
+    })
+
+    expect(db.saveClassSlide).toHaveBeenNthCalledWith(1, expect.objectContaining({ markdown: '# Intro', label: 'intro', order_index: 0 }))
+    expect(db.saveClassSlide).toHaveBeenNthCalledWith(2, expect.objectContaining({ markdown: '# Medio', label: 'desarrollo' }))
+    expect(db.saveClassSlide).toHaveBeenNthCalledWith(3, expect.objectContaining({ markdown: '# Fin', label: 'conclusion' }))
+  })
+
+  it('uses the markdown itself as the interpretation (no vision call needed)', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = makeMdDb()
+    registerClassHandlers({ ipcMain, db, deps: baseDeps(), mainWindow: makeMainWindow() })
+
+    await invoke('class-upload-slides', { paperId: '2401.99999', duration: 180, slides: [{ markdown: '# Intro\n- punto' }] })
+
+    expect(db.updateClassSlideInterpretation).toHaveBeenCalledWith(1, '# Intro\n- punto')
+  })
+
+  it('writes the whole deck to the vault as a single slides.md', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const vault = { writeSlide: vi.fn() }
+    const db = makeMdDb()
+    registerClassHandlers({ ipcMain, db, deps: baseDeps({ vault }), mainWindow: makeMainWindow() })
+
+    await invoke('class-upload-slides', {
+      paperId: '2401.99999', duration: 180,
+      slides: [{ markdown: '# A' }, { markdown: '# B' }],
+    })
+
+    expect(vault.writeSlide).toHaveBeenCalledOnce()
+    expect(vault.writeSlide).toHaveBeenCalledWith({ id: '2401.99999' }, 'slides.md', Buffer.from('# A\n\n---\n\n# B\n', 'utf8'))
+  })
+})
+
+describe('class-interpret-slides', () => {
+  it('skips slides that already have an interpretation (markdown slides) and keeps it', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const llm = { interpretImage: vi.fn().mockResolvedValue('una imagen') }
+    const db = makeDb({
+      getClassSlides: vi.fn().mockReturnValue([
+        { id: 1, image_data: '', mime_type: 'text/markdown', markdown: '# A', interpretation: '# A' },
+        { id: 2, image_data: 'AAA', mime_type: 'image/jpeg', interpretation: null },
+      ]),
+      updateClassSlideInterpretation: vi.fn(),
+    })
+    const deps = {
+      createLLM: vi.fn().mockReturnValue(llm), createTranscription: vi.fn(), createWhisperStream: vi.fn(),
+      whisperStreamBin: null, whisperModelsDir: null,
+    }
+    registerClassHandlers({ ipcMain, db, deps, mainWindow: makeMainWindow() })
+
+    const result = await invoke('class-interpret-slides', { sessionId: 's1' })
+
+    expect(llm.interpretImage).toHaveBeenCalledOnce()
+    expect(llm.interpretImage).toHaveBeenCalledWith('AAA', 'image/jpeg')
+    expect(result.slides).toEqual([
+      { id: 1, interpretation: '# A' },
+      { id: 2, interpretation: 'una imagen' },
+    ])
+  })
+})
+
+describe('class-save-slides-draft', () => {
+  it('persists the markdown draft for the paper', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = makeDb({ saveSlidesDraft: vi.fn() })
+    registerClassHandlers({ ipcMain, db, deps: { createLLM: vi.fn() }, mainWindow: makeMainWindow() })
+
+    const res = await invoke('class-save-slides-draft', { paperId: 'p1', markdown: '# x' })
+    expect(db.saveSlidesDraft).toHaveBeenCalledWith('p1', '# x')
+    expect(res).toEqual({ ok: true })
+  })
+})
+
+describe('class-pick-pdf', () => {
+  it('opens a PDF-only file dialog via deps.dialog and returns a file:// url + name', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const dialog = { showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, filePaths: [join(tmpdir(), 'mis notas.pdf')] }) }
+    registerClassHandlers({ ipcMain, db: makeDb(), deps: { createLLM: vi.fn(), dialog }, mainWindow: makeMainWindow() })
+
+    const res = await invoke('class-pick-pdf')
+
+    expect(dialog.showOpenDialog).toHaveBeenCalledWith(expect.objectContaining({
+      properties: ['openFile'],
+      filters: [expect.objectContaining({ extensions: ['pdf'] })],
+    }))
+    expect(res.name).toBe('mis notas.pdf')
+    expect(res.url).toMatch(/^file:\/\//)
+    expect(res.url).toContain('mis%20notas.pdf')
+  })
+
+  it('returns null when the dialog is canceled', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const dialog = { showOpenDialog: vi.fn().mockResolvedValue({ canceled: true, filePaths: [] }) }
+    registerClassHandlers({ ipcMain, db: makeDb(), deps: { createLLM: vi.fn(), dialog }, mainWindow: makeMainWindow() })
+    expect(await invoke('class-pick-pdf')).toBeNull()
+  })
+})

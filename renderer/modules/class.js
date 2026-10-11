@@ -1,20 +1,19 @@
 import { toast } from './toast.js'
 import { LLM_PROVIDERS } from './constants.js'
 import { t } from './language.js'
+import { initDeck, openDeck, getDeckSlides, flushDeckDraft, closeDeck } from './class-deck.js'
+import { mountSlide } from './slides-md.js'
 
 // ── Module state ─────────────────────────────────────────────────────────────
 let _paper = null
 let _sessionId = null
 let _selectedDuration = 180
-let _slides = []          // prep slides: [{ imageData, mimeType, previewUrl }]
 let _dbSlides = []        // slides from DB after session creation
 let _currentSlideIndex = 0
 let _timer = null
 let _webcamStream = null
 let _transcript = ''
 let _professorBubble = null  // burbuja activa del profesor en el chat de la clase
-
-let _prepSlideIndex = 0
 
 let _mediaRecorder = null
 let _transcribeInterval = null
@@ -75,13 +74,11 @@ function clearSessionState() {
   // Reset all state variables
   _sessionId         = null
   _selectedDuration  = 180
-  _slides            = []
   _dbSlides          = []
   _currentSlideIndex = 0
   _transcript        = ''
   _professorBubble   = null
   _pendingBatchAudio = null
-  _prepSlideIndex    = 0
   _qaStudentIndex    = 0
   _qaHistory         = []
   _qaLog             = []
@@ -170,7 +167,7 @@ export function enterClassMode(paper) {
   document.getElementById('class-fullscreen').classList.remove('hidden')
 
   document.getElementById('class-paper-title').textContent = paper.title || paper.id
-  renderSlidesGrid()
+  openDeck(paper)
   resetUI()
   showView('prep')
 
@@ -192,6 +189,7 @@ export function enterClassMode(paper) {
 }
 
 export function exitClassMode() {
+  closeDeck()
   clearSessionState()
   document.getElementById('class-fullscreen').classList.add('hidden')
   document.getElementById('vault-panel').classList.remove('hidden')
@@ -354,21 +352,7 @@ export function initClass() {
     updatePrepLlmModels(e.target.value)
   })
 
-  document.getElementById('class-file-input').addEventListener('change', onFileChange)
-  const triggerFileInput = (e) => {
-    if (e) e.stopPropagation()
-    const fi = document.getElementById('class-file-input')
-    fi.value = ''
-    fi.click()
-  }
-  document.getElementById('class-btn-add-slide').addEventListener('click', triggerFileInput)
-  document.getElementById('class-btn-add-slide-more').addEventListener('click', triggerFileInput)
-  document.getElementById('class-btn-add-slide-overlay').addEventListener('click', triggerFileInput)
-  document.getElementById('class-slides-dropzone').addEventListener('click', (e) => {
-    if (_slides.length >= 3) return
-    if (e.target.closest('button') || e.target.closest('img')) return
-    triggerFileInput()
-  })
+  initDeck({ onChange: resetUI })
 
   document.querySelectorAll('.duration-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -380,30 +364,10 @@ export function initClass() {
 
   document.getElementById('class-btn-start').addEventListener('click', startClass)
 
-  // Prep slide viewer controls
-  document.getElementById('class-slide-viewer-prev').addEventListener('click', () => {
-    if (_prepSlideIndex > 0) { _prepSlideIndex--; renderSlidesGrid() }
-  })
-  document.getElementById('class-slide-viewer-next').addEventListener('click', () => {
-    if (_prepSlideIndex < _slides.length - 1) { _prepSlideIndex++; renderSlidesGrid() }
-  })
-  document.getElementById('class-slide-viewer-remove').addEventListener('click', () => {
-    URL.revokeObjectURL(_slides[_prepSlideIndex].previewUrl)
-    _slides.splice(_prepSlideIndex, 1)
-    _prepSlideIndex = Math.max(0, _prepSlideIndex - 1)
-    renderSlidesGrid()
-    resetUI()
-  })
-
-  // Teclado: flechas para navegar slides en prep y en active view
+  // Teclado: flechas para navegar slides en la presentación
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-    const inPrep   = !document.getElementById('class-view-prep')?.classList.contains('hidden')
     const inActive = !document.getElementById('class-view-active')?.classList.contains('hidden')
-    if (inPrep) {
-      if (e.key === 'ArrowLeft'  && _prepSlideIndex > 0)               { _prepSlideIndex--; renderSlidesGrid() }
-      if (e.key === 'ArrowRight' && _prepSlideIndex < _slides.length - 1) { _prepSlideIndex++; renderSlidesGrid() }
-    }
     if (inActive) {
       if (e.key === 'ArrowLeft')  prevSlide()
       if (e.key === 'ArrowRight') nextSlide()
@@ -423,110 +387,27 @@ export function initClass() {
 
 }
 
-// ── Prep — file upload ────────────────────────────────────────────────────────
-
-function resizeImage(dataUrl, maxW = 1920, maxH = 1080) {
-  return new Promise(resolve => {
-    const img = new Image()
-    img.onload = () => {
-      const scale = Math.min(1, maxW / img.width, maxH / img.height)
-      const canvas = document.createElement('canvas')
-      canvas.width  = Math.round(img.width  * scale)
-      canvas.height = Math.round(img.height * scale)
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-      resolve(canvas.toDataURL('image/jpeg', 0.85))
-    }
-    img.onerror = () => resolve(dataUrl)  // fallback: usar original si falla el resize
-    img.src = dataUrl
-  })
-}
-
-function onFileChange(e) {
-  const files = Array.from(e.target.files)
-  if (!files.length) return
-  const remaining = 3 - _slides.length
-  const toProcess = files.slice(0, remaining)
-
-  // Array indexado: garantiza que los resultados se insertan en el orden de selección,
-  // sin importar cuál resizeImage termina primero
-  const results = new Array(toProcess.length).fill(null)
-  let done = 0
-
-  const finish = () => {
-    done++
-    if (done < toProcess.length) return
-    results.forEach(r => { if (r) _slides.push(r) })
-    _prepSlideIndex = _slides.length - 1
-    renderSlidesGrid()
-    resetUI()
-  }
-
-  toProcess.forEach((file, idx) => {
-    const previewUrl = URL.createObjectURL(file)
-    const reader = new FileReader()
-    reader.onload = async (ev) => {
-      const resized = await resizeImage(ev.target.result)
-      results[idx] = { imageData: resized.split(',')[1], mimeType: 'image/jpeg', previewUrl }
-      finish()
-    }
-    reader.onerror = () => finish()
-    reader.readAsDataURL(file)
-  })
-  e.target.value = ''
-}
-
-function renderSlidesGrid() {
-  const placeholder = document.getElementById('class-slides-placeholder')
-  const viewer      = document.getElementById('class-slide-viewer')
-  const dropzone    = document.getElementById('class-slides-dropzone')
-  const hasSlides   = _slides.length > 0
-
-  if (placeholder) placeholder.style.display = hasSlides ? 'none' : ''
-  if (viewer)      viewer.style.display       = hasSlides ? ''     : 'none'
-  if (dropzone)    dropzone.classList.toggle('has-slides', hasSlides)
-
-  if (hasSlides) {
-    _prepSlideIndex = Math.min(_prepSlideIndex, _slides.length - 1)
-    const slide  = _slides[_prepSlideIndex]
-    const labels = ['Intro', 'Desarrollo', 'Conclusión']
-    document.getElementById('class-slide-viewer-img').src         = slide.previewUrl
-    document.getElementById('class-slide-viewer-label').textContent     = labels[_prepSlideIndex] || `Slide ${_prepSlideIndex + 1}`
-    document.getElementById('class-slide-viewer-indicator').textContent = `${_prepSlideIndex + 1} / ${_slides.length}`
-    document.getElementById('class-slide-viewer-prev').disabled   = _prepSlideIndex === 0
-    document.getElementById('class-slide-viewer-next').disabled   = _prepSlideIndex === _slides.length - 1
-  }
-
-  const count = document.getElementById('class-slides-count')
-  if (count) count.textContent = _slides.length > 0 ? `${_slides.length}/3` : ''
-  const canAdd = _slides.length < 3
-  const addBtn     = document.getElementById('class-btn-add-slide')
-  const addBtnMore = document.getElementById('class-btn-add-slide-more')
-  const addOverlay = document.getElementById('class-btn-add-slide-overlay')
-  if (addBtn)     addBtn.style.display     = canAdd ? '' : 'none'
-  if (addBtnMore) addBtnMore.style.display = (canAdd && hasSlides) ? '' : 'none'
-  if (addOverlay) addOverlay.style.display = (canAdd && hasSlides) ? '' : 'none'
-}
-
 function resetUI() {
-  document.getElementById('class-btn-start').disabled = _slides.length === 0
+  document.getElementById('class-btn-start').disabled = getDeckSlides().length === 0
 }
 
 // ── Start flow ────────────────────────────────────────────────────────────────
 
 async function startClass() {
-  if (_slides.length === 0) return
+  const deck = getDeckSlides()
+  if (deck.length === 0) return
   showView('loading')
-  setLoading('Subiendo diapositivas…', '')
+  setLoading('Guardando diapositivas…', '')
   try {
+    await flushDeckDraft()
+    // Las slides markdown ya son texto: los estudiantes las leen directo, sin
+    // pasar por class-interpret-slides (visión) como las fotos de antes.
     const { sessionId } = await window.api.classUploadSlides({
       paperId: _paper.id,
       duration: _selectedDuration,
-      slides: _slides.map(s => ({ imageData: s.imageData, mimeType: s.mimeType }))
+      slides: deck.map(markdown => ({ markdown }))
     })
     _sessionId = sessionId
-
-    setLoading('Interpretando diapositivas con IA…', 'Los agentes estudiantes verán tus slides')
-    await window.api.classInterpretSlides({ sessionId })
 
     setLoading('¡Todo listo! Iniciando clase…', '')
     const { slides } = await window.api.classStartSession({ sessionId })
@@ -615,11 +496,16 @@ function renderCurrentSlide() {
   }
 
   const slide = _dbSlides[_currentSlideIndex]
-  display.innerHTML = ''
-  const img = document.createElement('img')
-  img.src = `data:${slide.mime_type};base64,${slide.image_data}`
-  img.className = 'class-slide-img-full'
-  display.appendChild(img)
+  if (slide.markdown != null) {
+    mountSlide(display, slide.markdown)
+  } else {
+    // Sesiones viejas: slides subidas como foto
+    display.innerHTML = ''
+    const img = document.createElement('img')
+    img.src = `data:${slide.mime_type};base64,${slide.image_data}`
+    img.className = 'class-slide-img-full'
+    display.appendChild(img)
+  }
 
   indicator.textContent = `${_currentSlideIndex + 1} / ${_dbSlides.length}`
 

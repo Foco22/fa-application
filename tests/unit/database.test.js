@@ -601,3 +601,42 @@ describe('usage_events', () => {
     expect(db.getUnknownCostCount()).toBe(1)
   })
 })
+
+// ─── slides en markdown (editor de la Clase) ─────────────────────────────────
+
+describe('saveSlidesDraft', () => {
+  it('persists the markdown deck draft on the paper', () => {
+    db.savePaper(makePaper('p1'))
+    db.saveSlidesDraft('p1', '# Intro\n---\n# Fin')
+    expect(db.getPaper('p1').slides_md).toBe('# Intro\n---\n# Fin')
+  })
+
+  it('survives a later savePaper upsert (re-fetch must not wipe the draft)', () => {
+    db.savePaper(makePaper('p1'))
+    db.saveSlidesDraft('p1', '# Mi deck')
+    db.savePaper({ ...makePaper('p1'), title: 'Nuevo título' })
+    expect(db.getPaper('p1').slides_md).toBe('# Mi deck')
+  })
+})
+
+describe('saveClassSlide — markdown slides', () => {
+  it('stores a markdown slide without image data', () => {
+    db.savePaper(makePaper('p1'))
+    const { id: sessionId } = db.createClassSession({ paper_id: 'p1', duration: 60 })
+    db.saveClassSlide({ session_id: sessionId, order_index: 0, markdown: '# Hola', label: 'intro' })
+    const [slide] = db.getClassSlides(sessionId)
+    expect(slide.markdown).toBe('# Hola')
+    expect(slide.image_data).toBe('')
+    expect(slide.mime_type).toBe('text/markdown')
+  })
+
+  it('still stores image slides as before', () => {
+    db.savePaper(makePaper('p1'))
+    const { id: sessionId } = db.createClassSession({ paper_id: 'p1', duration: 60 })
+    db.saveClassSlide({ session_id: sessionId, order_index: 0, image_data: 'AAA', mime_type: 'image/png', label: 'intro' })
+    const [slide] = db.getClassSlides(sessionId)
+    expect(slide.image_data).toBe('AAA')
+    expect(slide.mime_type).toBe('image/png')
+    expect(slide.markdown).toBeNull()
+  })
+})

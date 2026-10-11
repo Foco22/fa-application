@@ -20,6 +20,21 @@
 
 ---
 
+## Slides escritas en la app (reemplaza "subir fotos")
+
+En la preparación, las slides ya no se suben como fotos: se **escriben en markdown dentro de la app**.
+
+- **Editor** (`renderer/modules/class-deck.js`): textarea markdown a la izquierda, preview en vivo de la slide donde está el cursor a la derecha. Las slides se separan con una línea `---` (un `---` dentro de un bloque de código o `$$` no separa). Soporta títulos, listas, tablas, código, citas y fórmulas KaTeX.
+- **Borrador por paper**: se autoguarda (debounce 600 ms) en `papers.slides_md` vía `class-save-slides-draft`. Un paper sin borrador arranca con una plantilla intro / desarrollo / conclusión.
+- **Panel "PDF y destacados"**: muestra el PDF del paper con los destacados de la app, o uno propio abierto desde disco (`class-pick-pdf`, ej. exportado con destacados desde otro lector). En ese caso los destacados se leen de las anotaciones `Highlight`/`Underline` del PDF (`textUnderQuads`). Cada destacado tiene "Insertar" (lo agrega como cita `>` en el cursor) y seleccionar texto en el PDF muestra "Insertar en la slide".
+- **Al iniciar**: cada slide se guarda en `class_slides.markdown` (con `image_data = ''`, `mime_type = 'text/markdown'`) y el markdown se usa directo como `interpretation` → los estudiantes leen el texto de la slide sin llamada de visión. El deck completo va al vault como `<paper>/slides/slides.md`.
+- **Lógica pura** en `renderer/modules/slides-md.js` (`splitSlides`, `slideIndexAtOffset`, `textUnderQuads`, `mountSlide`…), testeada en `tests/unit/renderer/slides-md.test.js`.
+- `mountSlide` reaplica los `style=""` de KaTeX por CSSOM: la CSP de la app (`style-src` sin `unsafe-inline`) los descarta si llegan como HTML.
+
+Las sesiones viejas con slides de imagen se siguen mostrando igual.
+
+---
+
 ## Flujo completo (secuencia)
 
 ```

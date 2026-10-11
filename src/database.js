@@ -150,6 +150,11 @@ function openDatabase(path) {
   // configurado, o falló la extracción de la primera página) — no es lo mismo que
   // 0 (se evaluó y no matcheó). 1 = matcheó, se pinta la estrella en la UI.
   try { db.exec('ALTER TABLE papers ADD COLUMN matched_affiliation INTEGER') } catch (_) {}
+  // Slides de la Clase escritas en markdown dentro de la app: slides_md es el
+  // borrador por paper (se edita entre sesiones); class_slides.markdown es la
+  // copia congelada de cada slide al iniciar una sesión.
+  try { db.exec('ALTER TABLE papers ADD COLUMN slides_md TEXT') } catch (_) {}
+  try { db.exec('ALTER TABLE class_slides ADD COLUMN markdown TEXT') } catch (_) {}
 
   const savePaper = db.prepare(`
     INSERT INTO papers (id, title, authors, abstract, pdf_url, published_date,
@@ -178,6 +183,7 @@ function openDatabase(path) {
 
   const saveNotes      = db.prepare('UPDATE papers SET notes      = ? WHERE id = ?')
   const saveHighlights = db.prepare('UPDATE papers SET highlights = ? WHERE id = ?')
+  const saveSlidesDraft = db.prepare('UPDATE papers SET slides_md = ? WHERE id = ?')
   const deletePaper  = db.prepare('DELETE FROM papers WHERE id = ?')
 
   const getPaper = db.prepare('SELECT * FROM papers WHERE id = ?')
@@ -394,6 +400,7 @@ function openDatabase(path) {
     },
     saveNotes:           (id, notes)      => saveNotes.run(notes, id),
     saveHighlights:      (id, highlights) => saveHighlights.run(highlights, id),
+    saveSlidesDraft:     (id, markdown)   => saveSlidesDraft.run(markdown, id),
     deletePaper:         (id) => deletePaper.run(id),
     savePricingRows: (rows) => {
       const defaults = {
@@ -448,10 +455,21 @@ function openDatabase(path) {
     },
     getClassSession:    (id)      => db.prepare('SELECT * FROM class_sessions WHERE id = ?').get(id),
     getClassSessions:   (paperId) => db.prepare('SELECT * FROM class_sessions WHERE paper_id = ? ORDER BY created_at DESC').all(paperId),
+    // Una slide es imagen (image_data base64) o markdown. image_data es NOT NULL
+    // en el esquema original, así que una slide markdown la guarda vacía.
     saveClassSlide:     (data) => {
+      const isMarkdown = data.markdown != null
+      const row = {
+        session_id:  data.session_id,
+        order_index: data.order_index,
+        image_data:  isMarkdown ? '' : data.image_data,
+        mime_type:   isMarkdown ? 'text/markdown' : (data.mime_type || 'image/jpeg'),
+        label:       data.label ?? null,
+        markdown:    isMarkdown ? data.markdown : null,
+      }
       const r = db.prepare(
-        'INSERT INTO class_slides (session_id, order_index, image_data, mime_type, label) VALUES (@session_id, @order_index, @image_data, @mime_type, @label)'
-      ).run(data)
+        'INSERT INTO class_slides (session_id, order_index, image_data, mime_type, label, markdown) VALUES (@session_id, @order_index, @image_data, @mime_type, @label, @markdown)'
+      ).run(row)
       return { id: r.lastInsertRowid }
     },
     getClassSlides:              (sessionId) => db.prepare('SELECT * FROM class_slides WHERE session_id = ? ORDER BY order_index').all(sessionId),
