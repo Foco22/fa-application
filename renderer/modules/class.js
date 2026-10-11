@@ -1215,9 +1215,9 @@ async function sendQAResponse() {
     })
     removeTypingIndicator()
 
-    const satisfiedOrMaxed = result.satisfied || _qaExchangeCount >= 4
-
-    // Always activate the hint for this round before deciding whether to continue
+    // El turno solo avanza cuando el estudiante queda satisfecho. Si el profesor
+    // no sabe, se escalan las pistas: campanita (fragmentos del paper) → guía →
+    // respuesta revelada; después sigue respondiendo hasta convencerlo.
     if (_qaExchangeCount === 1 && _hintLevel === 0 && !result.satisfied) {
       showBellHint(result.missing)
     } else if (_qaExchangeCount === 2 && _hintLevel <= 1 && !result.satisfied) {
@@ -1226,7 +1226,7 @@ async function sendQAResponse() {
       await fetchAndShowAnswer(result.missing)
     }
 
-    if (satisfiedOrMaxed) {
+    if (result.satisfied) {
       addChatBubble('student', student.name, result.reaction)
       _qaLog.push({
         studentId: student.id,
@@ -1256,10 +1256,12 @@ async function sendQAResponse() {
         _qaHistory.push({ question, answer: null })
         enableChatInput(true)
       } catch {
+        // Sin repregunta nueva el estudiante sigue esperando respuesta a la
+        // anterior: no se salta al siguiente.
         removeTypingIndicator()
-        _qaLog.push({ studentId: student.id, studentName: student.name, question: _qaHistory[0]?.question || '', professorAnswer: text, hintLevel: _hintLevel })
-        highlightParticipant(student.id, false)
-        setTimeout(() => processStudent(_qaStudentIndex + 1), 800)
+        addChatBubble('student', student.name, result.reaction)
+        _qaHistory.push({ question: _qaHistory.at(-1)?.question || '', answer: null })
+        enableChatInput(true)
       }
     }
   } catch {

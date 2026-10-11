@@ -1,12 +1,15 @@
 const path = require('path')
 const fs   = require('fs')
 const { pathToFileURL } = require('url')
-const { canHaveClass, STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, evaluatePresentation, generateHint, assistantChat } = require('../class')
+const { canHaveClass, STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, evaluatePresentation, generateReferenceAnswer, generateHint, assistantChat } = require('../class')
 
 function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
   const { createLLM, createTranscription, createWhisperStream, whisperStreamBin, whisperModelsDir, vault, dialog } = deps
 
   let _whisperStream = null
+  // Respuesta correcta por pregunta (sessionId::pregunta): se genera en el
+  // primer intento del profesor y se reutiliza en los siguientes.
+  const _referenceAnswers = new Map()
 
   // El modo Clase (pistas, evaluaciones, Q&A) usa siempre el LLM principal de
   // la app — sin proveedor/modelo/API key propios de Clase. Ver features/settings-redesign.md.
@@ -142,17 +145,24 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
   })
 
   ipcMain.handle('class-student-evaluate', async (_e, { studentId, paperId, sessionId, professorAnswer, history, exchangeCount }) => {
-    const settings = db.getAllSettings()
-    const llm = createClassLLM(settings)
-    const paper = db.getPaper(paperId)
-    const slides = db.getClassSlides(sessionId)
     const student = STUDENTS.find(s => s.id === studentId)
     if (!student) return { satisfied: true, reaction: 'Gracias.', missing: null }
     try {
-      return await evaluateAndReact(student, { paper, slides, professorAnswer, history: history || [], exchangeCount: exchangeCount || 0 }, llm)
+      const settings = db.getAllSettings()
+      const llm = createClassLLM(settings)
+      const paper = db.getPaper(paperId)
+      const slides = db.getClassSlides(sessionId)
+      const question = (history || [])[0]?.question || ''
+      const refKey = `${sessionId}::${question}`
+      if (question && !_referenceAnswers.has(refKey)) {
+        _referenceAnswers.set(refKey, await generateReferenceAnswer(paper, question, llm))
+      }
+      const referenceAnswer = _referenceAnswers.get(refKey) || null
+      return await evaluateAndReact(student, { paper, slides, professorAnswer, history: history || [], exchangeCount: exchangeCount || 0, referenceAnswer }, llm)
     } catch (err) {
       console.error('[class-student-evaluate]', err?.message || err)
-      return { satisfied: true, reaction: 'Gracias por la respuesta.', missing: null }
+      // Un error no cuenta como respuesta aceptada: el estudiante mantiene el turno.
+      return { satisfied: false, reaction: 'No quedó del todo claro, ¿me lo podría explicar de otra forma?', missing: null }
     }
   })
 
