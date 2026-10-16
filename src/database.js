@@ -94,6 +94,15 @@ function openDatabase(path) {
       indexed_at        DATETIME DEFAULT (datetime('now'))
     );
 
+    -- Embedding del abstract de cada paper (para el grafo). Tabla aparte para que
+    -- SELECT * FROM papers no arrastre ~30 KB de floats por paper hacia el renderer.
+    CREATE TABLE IF NOT EXISTS paper_embeddings (
+      paper_id   TEXT PRIMARY KEY,
+      embedding  TEXT NOT NULL,
+      model      TEXT NOT NULL,
+      created_at DATETIME DEFAULT (datetime('now'))
+    );
+
     -- Un evento por cada llamada pagada a IA. Los montos van como ENTEROS en
     -- micro-USD (1 USD = 1.000.000): sumar miles de eventos en REAL acumularía
     -- drift de punto flotante y el total no cerraría con la factura real. La UI
@@ -185,6 +194,12 @@ function openDatabase(path) {
   const saveHighlights = db.prepare('UPDATE papers SET highlights = ? WHERE id = ?')
   const saveSlidesDraft = db.prepare('UPDATE papers SET slides_md = ? WHERE id = ?')
   const deletePaper  = db.prepare('DELETE FROM papers WHERE id = ?')
+  const deletePaperEmbedding = db.prepare('DELETE FROM paper_embeddings WHERE paper_id = ?')
+  const savePaperEmbedding = db.prepare(`
+    INSERT INTO paper_embeddings (paper_id, embedding, model) VALUES (?, ?, ?)
+    ON CONFLICT(paper_id) DO UPDATE SET embedding = excluded.embedding, model = excluded.model, created_at = datetime('now')
+  `)
+  const getPaperEmbeddings = db.prepare('SELECT paper_id, embedding, model FROM paper_embeddings')
 
   const getPaper = db.prepare('SELECT * FROM papers WHERE id = ?')
 
@@ -401,7 +416,9 @@ function openDatabase(path) {
     saveNotes:           (id, notes)      => saveNotes.run(notes, id),
     saveHighlights:      (id, highlights) => saveHighlights.run(highlights, id),
     saveSlidesDraft:     (id, markdown)   => saveSlidesDraft.run(markdown, id),
-    deletePaper:         (id) => deletePaper.run(id),
+    deletePaper:         (id) => { deletePaperEmbedding.run(id); return deletePaper.run(id) },
+    savePaperEmbedding:  (id, embedding, model) => savePaperEmbedding.run(id, JSON.stringify(embedding), model),
+    getPaperEmbeddings:  () => getPaperEmbeddings.all().map(r => ({ ...r, embedding: JSON.parse(r.embedding) })),
     savePricingRows: (rows) => {
       const defaults = {
         prompt_price_per_token: null, completion_price_per_token: null,

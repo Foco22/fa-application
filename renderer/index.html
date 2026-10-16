@@ -74,7 +74,13 @@
               <path d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z"/>
             </svg>
           </button>
-          <button class="activity-btn" id="act-learning" data-tooltip="Evolución del conocimiento" data-i18n-tooltip="evolucion-del-conocimiento">
+          <button class="activity-btn" id="act-graph" data-tooltip="Graph" data-i18n-tooltip="mapa-de-papers">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="6" cy="7" r="2.2"/><circle cx="18" cy="6" r="2.2"/><circle cx="12" cy="18" r="2.2"/>
+              <path d="M7.9 8.2l8.2-1.4M7.3 8.9l3.6 7.2M16.9 8l-3.8 8.2"/>
+            </svg>
+          </button>
+          <button class="activity-btn" id="act-learning"data-tooltip="Evolución del conocimiento" data-i18n-tooltip="evolucion-del-conocimiento">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 3v16.5a1.5 1.5 0 0 0 1.5 1.5H21M7 16.5l4.5-5.25 3 3.375L20.25 7"/>
             </svg>
@@ -448,6 +454,45 @@
               </div>
             </section>
           </div>
+        </div>
+      </section>
+
+      <!-- Graph: nodos = referencias + papers semanales, aristas = cercanía de abstracts -->
+      <section id="graph-panel" class="learning-panel graph-panel hidden">
+        <div class="learning-header">
+          <button id="btn-close-graph" class="btn-ghost" data-i18n="volver">← Volver</button>
+          <span class="learning-title" data-i18n="mapa-de-papers">Graph</span>
+        </div>
+        <div class="graph-body">
+          <div class="graph-main">
+            <div class="graph-toolbar">
+              <label class="graph-control"><span data-i18n="grafo-vecinos">Vecinos por paper</span>
+                <input id="graph-k" type="range" min="1" max="8" step="1" value="3"><b id="graph-k-val">3</b>
+              </label>
+              <label class="graph-control"><span data-i18n="grafo-sim-minima">Ocultar conexiones débiles</span>
+                <input id="graph-min" type="range" min="0" max="100" step="1" value="0"><b id="graph-min-val">0%</b>
+              </label>
+              <label class="graph-control graph-check"><input id="graph-center" type="checkbox" checked><span data-i18n="grafo-contraste">Realzar contraste</span></label>
+              <button id="graph-fit" class="ref-action-btn" data-i18n="grafo-reencuadrar">Reencuadrar</button>
+              <span id="graph-summary" class="settings-hint"></span>
+            </div>
+            <div class="graph-stage">
+              <canvas id="graph-canvas"></canvas>
+              <div id="graph-tooltip" class="graph-tooltip hidden"></div>
+              <div id="graph-empty" class="ld-empty hidden"><span class="empty-glyph">◌</span><span id="graph-empty-text"></span></div>
+              <div class="graph-legend">
+                <span><i class="graph-dot graph-dot-ref"></i><span data-i18n="grafo-leyenda-ref">Referencia</span></span>
+                <span><i class="graph-dot graph-dot-paper"></i><span data-i18n="grafo-leyenda-paper">Paper semanal</span></span>
+              </div>
+            </div>
+          </div>
+          <aside class="graph-side">
+            <div class="section-label" data-i18n="grafo-comunidades">Comunidades</div>
+            <ul id="graph-communities" class="graph-communities"></ul>
+            <div class="section-label" data-i18n="grafo-calidad">Calidad del grafo</div>
+            <ul id="graph-quality" class="graph-quality"></ul>
+            <div id="graph-notes" class="settings-hint"></div>
+          </aside>
         </div>
       </section>
 

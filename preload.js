@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('api', {
   getClassPerformanceTrend:  (range) => ipcRenderer.invoke('get-class-performance-trend', range),
   getQuizPerformanceTrend:   (range) => ipcRenderer.invoke('get-quiz-performance-trend', range),
   getWeeklyStreak:           ()      => ipcRenderer.invoke('get-weekly-streak'),
+  getGraph:                  (opts)  => ipcRenderer.invoke('get-graph', opts),
 
   getCostSummary:      (opts)   => ipcRenderer.invoke('get-cost-summary', opts),
   getPricingStatus:    ()       => ipcRenderer.invoke('get-pricing-status'),

@@ -640,3 +640,39 @@ describe('saveClassSlide — markdown slides', () => {
     expect(slide.markdown).toBeNull()
   })
 })
+
+// ─── paper_embeddings ────────────────────────────────────────────────────────
+
+describe('paper embeddings', () => {
+  const base = { id: '2401.00001', title: 'T', authors: '', abstract: 'A', pdf_url: '', published_date: '2024-01-01', affiliations: '[]', pdf_text: null, summary: null, quiz: null, pdf_error: null, status: 'ready' }
+
+  it('stores and reads back an embedding sealed with its model', () => {
+    db.savePaper(base)
+    db.savePaperEmbedding(base.id, [0.1, 0.2], 'openai:text-embedding-3-small')
+    expect(db.getPaperEmbeddings()).toEqual([
+      { paper_id: base.id, embedding: [0.1, 0.2], model: 'openai:text-embedding-3-small' },
+    ])
+  })
+
+  it('replaces the embedding when saved again (e.g. after switching model)', () => {
+    db.savePaper(base)
+    db.savePaperEmbedding(base.id, [0.1], 'a')
+    db.savePaperEmbedding(base.id, [0.9, 0.8], 'b')
+    const rows = db.getPaperEmbeddings()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].model).toBe('b')
+  })
+
+  it('does not leak the embedding into getPapers (it would travel over IPC)', () => {
+    db.savePaper(base)
+    db.savePaperEmbedding(base.id, [0.1, 0.2], 'a')
+    expect(db.getPapers()[0].embedding).toBeUndefined()
+  })
+
+  it('deletes the embedding together with its paper', () => {
+    db.savePaper(base)
+    db.savePaperEmbedding(base.id, [0.1], 'a')
+    db.deletePaper(base.id)
+    expect(db.getPaperEmbeddings()).toEqual([])
+  })
+})

@@ -191,6 +191,8 @@ export async function openCostsDashboard() {
   // los dos paneles quedan visibles a la vez partiendo la pantalla.
   document.getElementById('learning-panel').classList.add('hidden')
   document.getElementById('act-learning').classList.remove('active')
+  document.getElementById('graph-panel').classList.add('hidden')
+  document.getElementById('act-graph').classList.remove('active')
 
   document.getElementById('costs-panel').classList.remove('hidden')
   document.getElementById('act-costs').classList.add('active')
