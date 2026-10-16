@@ -81,7 +81,29 @@ describe('keywordOverlap', () => {
     expect(keywordOverlap('Diffusion models are useful.', ['', '   ', 'diffusion'])).toBe(true)
   })
 
-  it('matches as a substring, not requiring exact word boundaries', () => {
+  it('matches a plural of the keyword', () => {
     expect(keywordOverlap('Transformers revolutionized NLP.', ['transformer'])).toBe(true)
+    expect(keywordOverlap('We train agents with RL.', ['agent'])).toBe(true)
+  })
+
+  it('matches the keyword inside a hyphenated compound', () => {
+    expect(keywordOverlap('LLM-Assisted Agent-Based Models', ['agent'])).toBe(true)
+    expect(keywordOverlap('Memory-Efficient inference', ['memory'])).toBe(true)
+  })
+
+  it('does not match a keyword that is only a fragment of a longer word', () => {
+    expect(keywordOverlap('A chemical reagent for synthesis.', ['agent'])).toBe(false)
+    expect(keywordOverlap('Pretraining of language models.', ['training'])).toBe(false)
+    expect(keywordOverlap('Visualization of the harnessed energy.', ['harness'])).toBe(false)
+  })
+
+  it('matches multi-word keywords as a whole phrase', () => {
+    expect(keywordOverlap('We study context engineering for LLMs.', ['context engineering'])).toBe(true)
+    expect(keywordOverlap('The context of software engineering.', ['context engineering'])).toBe(false)
+  })
+
+  it('treats regex metacharacters in a keyword literally', () => {
+    expect(keywordOverlap('We use C++ and (k)-means.', ['c++'])).toBe(true)
+    expect(keywordOverlap('We use C and Java.', ['c++'])).toBe(false)
   })
 })

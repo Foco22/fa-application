@@ -11,4 +11,35 @@ function newPapersMessage(count, language = 'es') {
   return build(count)
 }
 
-module.exports = { newPapersMessage }
+// Texto del motivo cuando un fetch no guarda nada. Lo arma el proceso main (con el
+// idioma persistido) para que el toast del renderer y la notificación del
+// scheduler digan exactamente lo mismo.
+const EMPTY_MESSAGES = {
+  es: {
+    no_candidates: () => 'ArXiv no devolvió papers para la semana pasada con tus categorías y autores. Revisa Configuración o espera a la próxima semana.',
+    none_passed: ({ candidates, bestSimilarity, threshold }) =>
+      `Ninguno de los ${candidates} papers pasó el filtro de interés` +
+      (bestSimilarity == null ? '.' : ` (mejor similitud ${bestSimilarity.toFixed(3)}, umbral ${threshold.toFixed(2)}).`) +
+      ' Amplía tus keywords o referencias, o baja el umbral.',
+    downloads_failed: ({ survivors, firstError }) =>
+      `${survivors} paper${survivors > 1 ? 's' : ''} pasó el filtro pero no se pudo descargar ningún PDF` +
+      (firstError ? ` (${firstError}).` : '.') + ' Inténtalo de nuevo en unos minutos.',
+  },
+  en: {
+    no_candidates: () => 'ArXiv returned no papers for last week with your categories and authors. Check Settings or wait until next week.',
+    none_passed: ({ candidates, bestSimilarity, threshold }) =>
+      `None of the ${candidates} papers passed the interest filter` +
+      (bestSimilarity == null ? '.' : ` (best similarity ${bestSimilarity.toFixed(3)}, threshold ${threshold.toFixed(2)}).`) +
+      ' Broaden your keywords or references, or lower the threshold.',
+    downloads_failed: ({ survivors, firstError }) =>
+      `${survivors} paper${survivors > 1 ? 's' : ''} passed the filter but no PDF could be downloaded` +
+      (firstError ? ` (${firstError}).` : '.') + ' Try again in a few minutes.',
+  },
+}
+
+function emptyFetchMessage(outcome, language = 'es') {
+  const table = EMPTY_MESSAGES[language] || EMPTY_MESSAGES.es
+  return table[outcome.code](outcome)
+}
+
+module.exports = { newPapersMessage, emptyFetchMessage }

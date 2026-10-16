@@ -32,16 +32,30 @@ function loadScorer() {
 
 // _scorer: injectable (query, document) => Promise<number>, same pattern as
 // the LLM/embeddings provider clients — tests never load the real model.
+//
+// `query` may be a string or an array of strings. The cross-encoder truncates
+// (query + document) at its token limit, so a single query that concatenates
+// every interest gets its tail cut off. With an array, each interest is scored
+// on its own and a document keeps its best score (same max-pooling idea as the
+// embedding similarity). Cost: queries × documents inferences — local and free.
 function createReranker(_scorer = null) {
   return {
     async rerank(query, documents) {
       if (!documents || documents.length === 0) return []
+
+      const queries = (Array.isArray(query) ? query : [query]).filter(q => q && q.trim())
+      if (queries.length === 0) return documents.map((_, index) => ({ index, score: 0 }))
+
       const scorer = _scorer || await loadScorer()
 
       const scored = []
       for (let i = 0; i < documents.length; i++) {
-        const score = await scorer(query, documents[i])
-        scored.push({ index: i, score })
+        let best = -Infinity
+        for (const q of queries) {
+          const score = await scorer(q, documents[i])
+          if (score > best) best = score
+        }
+        scored.push({ index: i, score: best })
       }
       return scored.sort((a, b) => b.score - a.score)
     }

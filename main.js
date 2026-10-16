@@ -194,6 +194,9 @@ app.whenReady().then(() => {
         title: 'Ra',
         body: newPapersMessage(result.length, db.getSetting('language'))
       }).show()
+    } else if (result && result.empty) {
+      // Un fetch semanal que no trae nada ya no pasa en silencio: se avisa el motivo.
+      new Notification({ title: 'Ra', body: result.empty.message }).show()
     }
   }, cron)
 })

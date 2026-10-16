@@ -126,6 +126,12 @@ async function triggerFetch() {
         status.textContent = t('sin-papers-nuevos')
       }
       setTimeout(() => { status.textContent = '' }, 4000)
+    } else if (result && result.empty) {
+      // Nada guardado: el motivo (ArXiv vacío / filtro de interés / PDFs caídos)
+      // llega ya redactado desde main en el idioma persistido.
+      status.textContent = t('sin-papers-nuevos')
+      toast(result.empty.message, 'info', 10000)
+      setTimeout(() => { status.textContent = '' }, 4000)
     }
   } catch (err) {
     toast(t('error-prefijo') + err.message, 'error')
