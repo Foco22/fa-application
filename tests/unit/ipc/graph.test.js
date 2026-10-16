@@ -1,3 +1,4 @@
+import path from 'path'
 import { describe, it, expect, vi } from 'vitest'
 import { registerGraphHandlers } from '../../../src/ipc/graph.js'
 import { hasEmbeddingConfig } from '../../../src/embeddings/index.js'
@@ -10,7 +11,7 @@ const paper = (id, extra = {}) => ({
 })
 
 const ref = (name, embedding, model = MODEL) => ({
-  path: `C:\\refs\\${name}.pdf`, embedding: JSON.stringify(embedding), embedding_model: model,
+  path: path.join('refs', `${name}.pdf`), embedding: JSON.stringify(embedding), embedding_model: model,
 })
 
 function setup({ papers = [], refs = [], stored = [], settings = {}, embed } = {}) {
@@ -92,7 +93,7 @@ describe('get-graph', () => {
       refs: [ref('old', [1, 0], 'local:other')],
     })
     const g = await call()
-    expect(g.stale).toEqual(['ref:C:\\refs\\old.pdf'])
+    expect(g.stale).toEqual(['ref:' + path.join('refs', 'old.pdf')])
     expect(g.nodes.some(n => n.kind === 'reference')).toBe(false)
   })
 
