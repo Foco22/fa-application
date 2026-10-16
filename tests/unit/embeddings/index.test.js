@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
-import { cosineSimilarity, indexReferenceFolder, indexFiles, scoreAbstractAgainst, scoreEmbeddingAgainst, embedKeywordList, createEmbeddings, hasEmbeddingConfig } from '../../../src/embeddings/index.js'
+import { cosineSimilarity, indexReferenceFolder, indexFiles, scoreAbstractAgainst, scoreEmbeddingAgainst, embedKeywordList, embedMany, createEmbeddings, hasEmbeddingConfig } from '../../../src/embeddings/index.js'
 
 // ─── cosineSimilarity ─────────────────────────────────────────────────────────
 
@@ -368,6 +368,56 @@ describe('scoreEmbeddingAgainst', () => {
   it('does not call any embedding provider (pure function)', () => {
     // no provider argument at all — this must work on precomputed vectors only
     expect(() => scoreEmbeddingAgainst([1, 0], [[1, 0]])).not.toThrow()
+  })
+})
+
+// ─── embedMany ────────────────────────────────────────────────────────────────
+
+describe('embedMany', () => {
+  it('uses the provider batch method when it has one — a single call for the whole list', async () => {
+    const provider = { id: 'x', generateEmbedding: vi.fn(), generateEmbeddings: vi.fn().mockResolvedValue([[1], [2], [3]]) }
+
+    const out = await embedMany(provider, ['a', 'b', 'c'])
+
+    expect(out).toEqual([[1], [2], [3]])
+    expect(provider.generateEmbeddings).toHaveBeenCalledOnce()
+    expect(provider.generateEmbeddings.mock.calls[0][0]).toEqual(['a', 'b', 'c'])
+    expect(provider.generateEmbedding).not.toHaveBeenCalled()
+  })
+
+  it('falls back to one generateEmbedding call per text, in order, for providers without a batch method', async () => {
+    const provider = { id: 'x', generateEmbedding: vi.fn().mockImplementation(async t => [t.length]) }
+
+    const out = await embedMany(provider, ['a', 'bb', 'ccc'])
+
+    expect(out).toEqual([[1], [2], [3]])
+    expect(provider.generateEmbedding).toHaveBeenCalledTimes(3)
+  })
+
+  it('forwards onProgress to the provider batch method', async () => {
+    const provider = { id: 'x', generateEmbedding: vi.fn(), generateEmbeddings: vi.fn().mockResolvedValue([[1]]) }
+    const onProgress = vi.fn()
+
+    await embedMany(provider, ['a'], onProgress)
+
+    expect(provider.generateEmbeddings).toHaveBeenCalledWith(['a'], onProgress)
+  })
+
+  it('reports (done, total) per text in the fallback path', async () => {
+    const provider = { id: 'x', generateEmbedding: vi.fn().mockResolvedValue([1]) }
+    const onProgress = vi.fn()
+
+    await embedMany(provider, ['a', 'b', 'c'], onProgress)
+
+    expect(onProgress.mock.calls).toEqual([[1, 3], [2, 3], [3, 3]])
+  })
+
+  it('returns [] and calls nothing for an empty list', async () => {
+    const provider = { id: 'x', generateEmbedding: vi.fn(), generateEmbeddings: vi.fn() }
+
+    expect(await embedMany(provider, [])).toEqual([])
+    expect(provider.generateEmbeddings).not.toHaveBeenCalled()
+    expect(provider.generateEmbedding).not.toHaveBeenCalled()
   })
 })
 

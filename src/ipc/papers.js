@@ -2,6 +2,8 @@ const fs   = require('fs')
 const path = require('path')
 const { diagnoseEmptyFetch } = require('../ingestion/fetchLog')
 const { emptyFetchMessage }  = require('../notifications')
+const { embedMany }          = require('../embeddings')
+const { createProgressEmitter } = require('./progress')
 
 // Selection phase: scores every ArXiv candidate against two independent
 // interest signals (reference collection, declared keywordList). When
@@ -32,7 +34,7 @@ function makeReportEntry(paper) {
   }
 }
 
-async function selectCandidates(candidates, { db, deps, settings, embProvider, similarityThreshold }) {
+async function selectCandidates(candidates, { db, deps, settings, embProvider, similarityThreshold, onProgress = () => {} }) {
   const { scoreEmbeddingAgainst, embedKeywordList, keywordOverlap, createReranker } = deps
 
   const refRows = db.getReferencePapers()
@@ -60,14 +62,26 @@ async function selectCandidates(candidates, { db, deps, settings, embProvider, s
     return { survivors: candidates, rerankQueries: [], report }
   }
 
+  // Todos los abstracts se embeben de una vez (por lotes si el proveedor lo
+  // soporta): con miles de candidatos, una llamada de red por paper era lo que
+  // más tardaba del fetch.
+  const needsEmbedding = embProvider && (refEmbeddings.length > 0 || keywordEmbeddings.length > 0)
+  let abstractEmbeddings = []
+  if (needsEmbedding) {
+    // Los eventos de inicio y fin se emiten siempre: el proveedor puede no
+    // reportar avance intermedio y la barra no debe quedarse sin esta etapa.
+    onProgress('embedding', 0, candidates.length)
+    abstractEmbeddings = await embedMany(embProvider, candidates.map(c => c.abstract), (done, total) => onProgress('embedding', done, total))
+    onProgress('embedding', candidates.length, candidates.length)
+  }
+
   const scored = []
-  for (const paper of candidates) {
+  for (const [i, paper] of candidates.entries()) {
     const entry = entryById.get(paper.id)
     let embSimRef = 0, embSimInterest = 0
 
-    const needsEmbedding = embProvider && (refEmbeddings.length > 0 || keywordEmbeddings.length > 0)
     if (needsEmbedding) {
-      const abstractEmbedding = await embProvider.generateEmbedding(paper.abstract)
+      const abstractEmbedding = abstractEmbeddings[i]
       if (refEmbeddings.length > 0)      embSimRef      = scoreEmbeddingAgainst(abstractEmbedding, refEmbeddings)
       if (keywordEmbeddings.length > 0)  embSimInterest = scoreEmbeddingAgainst(abstractEmbedding, keywordEmbeddings.map(k => k.embedding))
     }
@@ -105,7 +119,9 @@ async function selectCandidates(candidates, { db, deps, settings, embProvider, s
   }
 
   const reranker = createReranker()
-  const ranked = await reranker.rerank(rerankQueries, scored.map(s => s.paper.abstract))
+  onProgress('rerank', 0, scored.length)
+  const ranked = await reranker.rerank(rerankQueries, scored.map(s => s.paper.abstract), (done, total) => onProgress('rerank', done, total))
+  onProgress('rerank', scored.length, scored.length)
   ranked.forEach((r, i) => {
     const { entry } = scored[r.index]
     entry.rerank = { rank: i + 1, score: r.score }
@@ -134,14 +150,18 @@ async function runFetch({ db, deps, mainWindow }) {
   // El proveedor local no necesita API key — no se puede gatear por settings.apiKey.
   const embProvider          = hasEmbeddingConfig(settings) ? createEmbeddings(settings) : null
 
-  const result = await fetchPapers(settings, httpClient)
+  const progress = createProgressEmitter(mainWindow)
+
+  // `undefined` en today/sleepFn → fetchPapers usa sus valores por defecto.
+  const result = await fetchPapers(settings, httpClient, undefined, undefined,
+    ({ loaded, total }) => progress('arxiv', loaded, total ?? loaded))
   if (result.error) return { error: result.error }
 
   console.log(`[fetch] ${result.length} candidates from ArXiv.`)
 
   let survivors, report
   try {
-    const selection = await selectCandidates(result, { db, deps, settings, embProvider, similarityThreshold })
+    const selection = await selectCandidates(result, { db, deps, settings, embProvider, similarityThreshold, onProgress: progress })
     survivors = selection.survivors
     report    = selection.report
   } catch (embErr) {
@@ -182,6 +202,7 @@ async function runFetch({ db, deps, mainWindow }) {
     }
     db.savePaper(finalPaper)
     saved.push(finalPaper)
+    progress('saving', saved.length, maxPapers)
     entry.stage = 'saved'
     entry.decision = 'saved'
     entry.reason = `Guardado (status: ${finalPaper.status})`
@@ -194,6 +215,7 @@ async function runFetch({ db, deps, mainWindow }) {
   // PDF descargado) se guarda, con o sin match (v3, ver plan.md).
   // El cupo de maxPapers se aplica sobre los papers GUARDADOS, no sobre los
   // sobrevivientes: si un PDF falla, se sigue con el siguiente en el ranking.
+  progress('saving', 0, maxPapers)
   for (const paper of survivors) {
     if (saved.length >= maxPapers) break
     const entry = entryById.get(paper.id)

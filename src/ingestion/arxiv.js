@@ -18,6 +18,13 @@ function calculateDateWindow(today = new Date()) {
   }
 }
 
+// ArXiv announces the size of the whole result set in every page of the feed
+// (<opensearch:totalResults>). Reading it lets the UI show a determinate bar.
+function parseTotalResults(xml) {
+  const m = /<opensearch:totalResults[^>]*>\s*(\d+)\s*</.exec(xml)
+  return m ? Number(m[1]) : null
+}
+
 function formatDate(date) {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -88,7 +95,12 @@ function parseFeed(xml) {
 }
 
 const FETCH_PAGE_SIZE = 100  // candidates per ArXiv request
-const FETCH_POOL_CAP  = 300  // defensive cap on total candidates per run (not a design target)
+// Defensive cap, but it must hold a FULL week: with 11 categories ArXiv returns
+// ~4.300 papers for a single week. The old cap of 300, combined with sorting by
+// date descending, kept only the last day and silently dropped the rest.
+const FETCH_POOL_CAP  = 6000
+// ArXiv's API terms ask for ~3s between consecutive requests.
+const PAGE_DELAY_MS   = 3000
 
 const MAX_RETRIES        = 3     // total attempts per page request
 const RETRY_BASE_DELAY_MS = 1000 // 1s, 2s, ... (linear backoff)
@@ -126,7 +138,7 @@ function describeFetchError(err, attempts) {
 // cutting at a fixed number — sorting by submittedDate desc + a fixed
 // max_results would systematically drop early-week papers once a broad
 // category selection exceeds one page.
-async function fetchPapers(settings, httpClient, today = new Date(), sleepFn = defaultSleep) {
+async function fetchPapers(settings, httpClient, today = new Date(), sleepFn = defaultSleep, onProgress = null) {
   const { categoryList, authorList } = settings
 
   let query
@@ -139,6 +151,7 @@ async function fetchPapers(settings, httpClient, today = new Date(), sleepFn = d
 
   const all = []
   let start = 0
+  let total = null
 
   try {
     while (all.length < FETCH_POOL_CAP) {
@@ -150,6 +163,7 @@ async function fetchPapers(settings, httpClient, today = new Date(), sleepFn = d
         try {
           const response = await httpClient.get(url)
           page = parseFeed(response.data)
+          if (total === null) total = parseTotalResults(response.data)
           break
         } catch (err) {
           if (!isRetryable(err) || attempt === MAX_RETRIES) {
@@ -161,8 +175,11 @@ async function fetchPapers(settings, httpClient, today = new Date(), sleepFn = d
       }
 
       all.push(...page)
+      if (onProgress) onProgress({ loaded: all.length, total })
       if (page.length < pageSize) break // fewer than requested → window exhausted
+      if (all.length >= FETCH_POOL_CAP) break
       start += pageSize
+      await sleepFn(PAGE_DELAY_MS)
     }
   } catch (err) {
     return { error: err.message }
@@ -171,4 +188,4 @@ async function fetchPapers(settings, httpClient, today = new Date(), sleepFn = d
   return all
 }
 
-module.exports = { calculateDateWindow, buildQuery, parseFeed, fetchPapers, FETCH_PAGE_SIZE, FETCH_POOL_CAP, MAX_RETRIES }
+module.exports = { calculateDateWindow, buildQuery, parseFeed, fetchPapers, parseTotalResults, FETCH_PAGE_SIZE, FETCH_POOL_CAP, MAX_RETRIES, PAGE_DELAY_MS }

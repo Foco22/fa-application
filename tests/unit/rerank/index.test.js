@@ -84,6 +84,15 @@ describe('createReranker — multiple queries', () => {
     ])
   })
 
+  it('reports (done, total) after each document', async () => {
+    const scorer = vi.fn().mockResolvedValue(0.5)
+    const onProgress = vi.fn()
+
+    await createReranker(scorer).rerank(['q1', 'q2'], ['a', 'b', 'c'], onProgress)
+
+    expect(onProgress.mock.calls).toEqual([[1, 3], [2, 3], [3, 3]])
+  })
+
   it('still accepts a single string query', async () => {
     const scorer = vi.fn().mockResolvedValue(0.3)
     const result = await createReranker(scorer).rerank('only', ['d'])

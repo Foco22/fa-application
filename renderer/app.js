@@ -19,6 +19,7 @@ import { enterClassMode, exitClassMode, initClass } from './modules/class.js'
 import { openLearningDashboard, closeLearningDashboard, initLearningDashboard } from './modules/learning-dashboard.js'
 import { openCostsDashboard, closeCostsDashboard, initCostsDashboard } from './modules/costs-dashboard.js'
 import { applyLanguage, onLanguageChange, t } from './modules/language.js'
+import { fetchProgressView } from './modules/fetch-progress.js'
 
 /* ── PDF expand ─────────────────────────────────────────────────────────── */
 
@@ -93,6 +94,18 @@ initContextMenu({ openPaper: openPaperFromLearning, renderVault })
 
 /* ── Fetch ──────────────────────────────────────────────────────────────── */
 
+// Barra del overlay de Fetch + porcentaje en la barra superior.
+function setFetchProgress(percent, label) {
+  const bar = document.getElementById('fetch-progress-bar')
+  const lbl = document.getElementById('fetch-progress-label')
+  if (!bar || !lbl) return
+  bar.style.width = `${percent}%`
+  bar.parentElement.setAttribute('aria-valuenow', String(percent))
+  lbl.textContent = label
+  const status = document.getElementById('fetch-status')
+  if (status && percent > 0) status.textContent = `${percent}%`
+}
+
 async function triggerFetch() {
   closeLearningDashboard()
   closeCostsDashboard()
@@ -104,6 +117,7 @@ async function triggerFetch() {
   actBtn.classList.add('spinning')
   status.textContent = t('buscando-papers')
   overlayText.textContent = t('buscando-papers-nuevos-dyn')
+  setFetchProgress(0, '')
   overlay.classList.remove('hidden')
 
   try {
@@ -345,6 +359,11 @@ function wireListeners() {
     }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
+  })
+
+  window.api.onFetchProgress(ev => {
+    const view = fetchProgressView(ev, t)
+    if (view) setFetchProgress(view.percent, view.label)
   })
 
   window.api.onNewPapers(async count => {

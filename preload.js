@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
   onSummaryDone:   (cb) => ipcRenderer.on('summary-done',  () => cb()),
   onSummaryError:  (cb) => ipcRenderer.on('summary-error', (_e, msg) => cb(msg)),
   onNewPapers:     (cb) => ipcRenderer.on('new-papers',    (_e, n) => cb(n)),
+  onFetchProgress: (cb) => ipcRenderer.on('fetch-progress', (_e, p) => cb(p)),
 
   generateOcr:        (payload) => ipcRenderer.invoke('generate-ocr', payload),
   reloadOcrFromFile:  (id)      => ipcRenderer.invoke('reload-ocr-from-file', id),

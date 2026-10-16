@@ -88,6 +88,20 @@ async function scoreAbstractAgainst(abstract, refEmbeddings, provider) {
   return scoreEmbeddingAgainst(emb, refEmbeddings)
 }
 
+// Embeds a list of texts, in order. Uses the provider's batch method when it has
+// one (OpenAI: one request per ~256 texts instead of one per text); providers
+// without it fall back to one call per text, so any provider keeps working.
+async function embedMany(provider, texts, onProgress = null) {
+  if (texts.length === 0) return []
+  if (typeof provider.generateEmbeddings === 'function') return provider.generateEmbeddings(texts, onProgress)
+  const out = []
+  for (const text of texts) {
+    out.push(await provider.generateEmbedding(text))
+    if (onProgress) onProgress(out.length, texts.length)
+  }
+  return out
+}
+
 // Embeds each line of settings.keywordList once, so callers can reuse the
 // vectors across a whole fetch run instead of re-embedding per candidate.
 async function embedKeywordList(keywordListRaw, provider) {
@@ -132,5 +146,5 @@ async function indexFiles(filePaths, db, provider, pdfParse, llm = null) {
 
 module.exports = {
   createEmbeddings, hasEmbeddingConfig, cosineSimilarity, indexReferenceFolder, indexFiles,
-  scoreAbstractAgainst, scoreEmbeddingAgainst, embedKeywordList,
+  scoreAbstractAgainst, scoreEmbeddingAgainst, embedKeywordList, embedMany,
 }

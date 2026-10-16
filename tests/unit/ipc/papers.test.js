@@ -413,6 +413,33 @@ describe('selectCandidates — rerank', () => {
     expect(rerankSpy.mock.calls[0][1]).toHaveLength(30)
   })
 
+  it('embeds all candidate abstracts through the provider batch method, not one call per paper', async () => {
+    const candidates = makeCandidates(40)
+    const db = { getReferencePapers: vi.fn().mockReturnValue([
+      { embedding: '[1,0]', snippet: '', abstract_summary: 'profile', embedding_model: 'openai:text-embedding-3-small' },
+    ]) }
+    const deps = {
+      scoreEmbeddingAgainst,
+      embedKeywordList: vi.fn().mockResolvedValue([]),
+      extractKeywords, keywordOverlap,
+      createReranker: vi.fn().mockReturnValue({
+        rerank: vi.fn().mockImplementation(async (_q, docs) => docs.map((_, index) => ({ index, score: 1 }))),
+      }),
+    }
+    const embProvider = {
+      id: 'openai:text-embedding-3-small',
+      generateEmbedding: vi.fn(),
+      generateEmbeddings: vi.fn().mockImplementation(async texts => texts.map(() => [1, 0])),
+    }
+
+    const { survivors } = await selectCandidates(candidates, { db, deps, settings: { ...SETTINGS }, embProvider, similarityThreshold: 0.6 })
+
+    expect(embProvider.generateEmbeddings).toHaveBeenCalledOnce()
+    expect(embProvider.generateEmbeddings.mock.calls[0][0]).toEqual(candidates.map(c => c.abstract))
+    expect(embProvider.generateEmbedding).not.toHaveBeenCalled()
+    expect(survivors).toHaveLength(40)
+  })
+
   // Regresión: una sola query con todos los resúmenes + keywords desbordaba el
   // límite del cross-encoder y se truncaban justo las keywords del final.
   it('reranks with one separate query per reference summary plus one for the declared keywords', async () => {
@@ -832,7 +859,73 @@ describe('runFetch — limits and notifications', () => {
 
     await runFetch({ db, deps, mainWindow })
 
-    expect(mainWindow.webContents.send).not.toHaveBeenCalled()
+    expect(mainWindow.webContents.send).not.toHaveBeenCalledWith('new-papers', expect.anything())
+  })
+
+  // La barra de progreso del botón Fetch: runFetch emite 'fetch-progress' por etapa.
+  describe('fetch-progress events', () => {
+    const progressEvents = (mainWindow) =>
+      mainWindow.webContents.send.mock.calls.filter(c => c[0] === 'fetch-progress').map(c => c[1])
+
+    function ctxWithAllStages() {
+      return makeCtx({
+        settings: { maxPapers: '1', similarityThreshold: '0.5' },
+        db: { getReferencePapers: vi.fn().mockReturnValue([
+          { embedding: '[1,0]', snippet: '', abstract_summary: 'A summary.', embedding_model: 'openai:text-embedding-3-small' },
+        ]) },
+        deps: {
+          fetchPapers: vi.fn().mockImplementation(async (_s, _h, _d, _sl, onProgress) => {
+            onProgress({ loaded: 1, total: 1 })
+            return [{ ...PAPER }]
+          }),
+          createEmbeddings: vi.fn().mockReturnValue({
+            id: 'openai:text-embedding-3-small',
+            generateEmbedding: vi.fn().mockResolvedValue([1, 0]),
+          }),
+        },
+      })
+    }
+
+    it('reports the stages in pipeline order: arxiv → embedding → rerank → saving', async () => {
+      const { db, deps, mainWindow } = ctxWithAllStages()
+
+      await runFetch({ db, deps, mainWindow })
+
+      const stages = progressEvents(mainWindow).map(e => e.stage)
+      expect([...new Set(stages)]).toEqual(['arxiv', 'embedding', 'rerank', 'saving'])
+    })
+
+    it('bookends every stage with a start and an end event so the bar never stalls', async () => {
+      const { db, deps, mainWindow } = ctxWithAllStages()
+
+      await runFetch({ db, deps, mainWindow })
+
+      const events = progressEvents(mainWindow)
+      for (const stage of ['embedding', 'rerank', 'saving']) {
+        const of = events.filter(e => e.stage === stage)
+        expect(of[0].current).toBe(0)
+        expect(of[of.length - 1].current).toBe(of[of.length - 1].total)
+      }
+    })
+
+    it('counts saved papers against maxPapers in the saving stage', async () => {
+      const papers = Array.from({ length: 3 }, (_, i) => ({ ...PAPER, id: `p${i}` }))
+      const { db, deps, mainWindow } = makeCtx({
+        settings: { maxPapers: '2' },
+        deps: { fetchPapers: vi.fn().mockResolvedValue(papers) },
+      })
+
+      await runFetch({ db, deps, mainWindow })
+
+      const saving = progressEvents(mainWindow).filter(e => e.stage === 'saving')
+      expect(saving[saving.length - 1]).toEqual({ stage: 'saving', current: 2, total: 2 })
+    })
+
+    it('still works when there is no window (scheduler without UI)', async () => {
+      const { db, deps } = makeCtx()
+
+      await expect(runFetch({ db, deps, mainWindow: null })).resolves.toBeDefined()
+    })
   })
 
   it('returns the list of saved papers', async () => {

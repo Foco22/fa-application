@@ -40,7 +40,7 @@ function loadScorer() {
 // embedding similarity). Cost: queries × documents inferences — local and free.
 function createReranker(_scorer = null) {
   return {
-    async rerank(query, documents) {
+    async rerank(query, documents, onProgress = null) {
       if (!documents || documents.length === 0) return []
 
       const queries = (Array.isArray(query) ? query : [query]).filter(q => q && q.trim())
@@ -56,6 +56,7 @@ function createReranker(_scorer = null) {
           if (score > best) best = score
         }
         scored.push({ index: i, score: best })
+        if (onProgress) onProgress(i + 1, documents.length)
       }
       return scored.sort((a, b) => b.score - a.score)
     }
