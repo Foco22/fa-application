@@ -57,6 +57,9 @@ function createReranker(_scorer = null) {
         }
         scored.push({ index: i, score: best })
         if (onProgress) onProgress(i + 1, documents.length)
+        // Cede el hilo: cada inferencia ocupa el proceso principal de Electron y,
+        // sin esto, la ventana queda "sin responder" y la barra no se repinta.
+        await new Promise(resolve => setImmediate(resolve))
       }
       return scored.sort((a, b) => b.score - a.score)
     }

@@ -44,6 +44,32 @@ export function setActiveProvider(provider) {
   document.getElementById('s-api-key').placeholder = cfg.placeholder
   const sel = document.getElementById('s-llm-model')
   sel.innerHTML = cfg.models.map(m => `<option value="${m}">${m}</option>`).join('')
+  // El OCR de visión usa el proveedor del LLM: su lista de modelos sigue al proveedor.
+  updateOcrModelOptions(provider)
+}
+
+// Pestaña OCR — el modelo de visión depende del proveedor del LLM. Solo se ofrecen
+// los que ven imágenes; sin ninguno (DeepSeek) se explica en vez de dejar un select vacío.
+export function updateOcrModelOptions(provider, selected = null) {
+  const cfg   = LLM_PROVIDERS[provider] || LLM_PROVIDERS.openai
+  const sel   = document.getElementById('s-ocr-model')
+  const keep  = selected ?? sel.value
+  const hasVision = cfg.visionModels.length > 0
+
+  sel.innerHTML = [`<option value="">${t('ocr-modelo-igual')}</option>`]
+    .concat(cfg.visionModels.map(m => `<option value="${m}">${m}</option>`)).join('')
+  sel.value = cfg.visionModels.includes(keep) ? keep : ''
+
+  document.getElementById('s-ocr-model-group').classList.toggle('hidden', !hasVision)
+  document.getElementById('s-ocr-no-vision').classList.toggle('hidden', hasVision)
+}
+
+export function setOcrEngine(engine) {
+  document.querySelectorAll('.ocr-engine-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.engine === engine)
+  })
+  document.getElementById('s-ocr-llamaparse-group').classList.toggle('hidden', engine !== 'llamaparse')
+  document.getElementById('s-ocr-vision-group').classList.toggle('hidden', engine !== 'vision')
 }
 
 // Estado del índice de referencia tal como estaba al abrir Settings: sirve para
@@ -155,6 +181,16 @@ export async function openSettings() {
   })
   document.getElementById('s-api-key').value = s.apiKey || ''
 
+  // OCR — sin elección guardada, quien ya tenía su key de LlamaParse sigue con LlamaParse
+  // (misma regla que resolveOcrConfig en main).
+  setOcrEngine(s.ocrEngine || (s.llamaParseApiKey ? 'llamaparse' : 'vision'))
+  document.querySelectorAll('.ocr-engine-btn').forEach(btn => {
+    btn.onclick = () => setOcrEngine(btn.dataset.engine)
+  })
+  document.getElementById('s-llx-key').value  = s.llamaParseApiKey || ''
+  document.getElementById('s-llx-tier').value = s.llamaParseTier || 'cost_effective'
+  updateOcrModelOptions(provider, s.ocrModel || '')
+
   // Embedding
   const embeddingProvider = s.embeddingProvider || 'openai'
   const embeddingModel    = s.embeddingModel || EMBEDDING_PROVIDERS[embeddingProvider]?.models[0] || ''
@@ -231,6 +267,10 @@ export async function saveSettings() {
     sttModel:              document.getElementById('s-stt-model').value,
 
     semanticScholarApiKey: document.getElementById('s-ss-key').value.trim(),
+    llamaParseApiKey:      document.getElementById('s-llx-key').value.trim(),
+    llamaParseTier:        document.getElementById('s-llx-tier').value,
+    ocrEngine:             document.querySelector('.ocr-engine-btn.active')?.dataset.engine || 'vision',
+    ocrModel:              document.getElementById('s-ocr-model').value,
     fetchDay:              document.getElementById('s-fetch-day').value,
     fetchHour:             document.getElementById('s-fetch-hour').value,
     maxPapers:             document.getElementById('s-max-papers').value,

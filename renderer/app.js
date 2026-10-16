@@ -20,6 +20,7 @@ import { openLearningDashboard, closeLearningDashboard, initLearningDashboard } 
 import { openCostsDashboard, closeCostsDashboard, initCostsDashboard } from './modules/costs-dashboard.js'
 import { applyLanguage, onLanguageChange, t } from './modules/language.js'
 import { fetchProgressView } from './modules/fetch-progress.js'
+import { fetchWeekPromptView } from './modules/fetch-week.js'
 
 /* ── PDF expand ─────────────────────────────────────────────────────────── */
 
@@ -106,9 +107,56 @@ function setFetchProgress(percent, label) {
   if (status && percent > 0) status.textContent = `${percent}%`
 }
 
+// maxPapers es un tope SEMANAL: si ya hay papers de esta semana se pregunta antes
+// de buscar. Devuelve 'go' (nada que preguntar), 'replace', 'complete' o 'cancel'.
+async function askFetchWeekChoice() {
+  let status
+  try { status = await window.api.getWeekStatus() } catch { return 'go' }
+  const view = fetchWeekPromptView(status, t)
+  if (!view) return 'go'
+
+  const $ = (id) => document.getElementById(id)
+  const overlay = $('fetch-week-overlay')
+  $('fetch-week-title').textContent = view.title
+  $('fetch-week-body').textContent  = view.body
+  $('fetch-week-list').replaceChildren(...view.items.map(item => {
+    const li = document.createElement('li')
+    li.textContent = (item.hasUserData ? '• ' : '') + item.title
+    return li
+  }))
+  const warn = $('fetch-week-warn')
+  warn.textContent = t('fetch-semana-perdida')
+  warn.style.display = view.warnDataLoss ? '' : 'none'
+  $('fetch-week-replace').textContent  = t('fetch-semana-reemplazar')
+  $('fetch-week-complete').textContent = `${t('fetch-semana-completar')} (${view.missing})`
+  $('fetch-week-complete').style.display = view.canComplete ? '' : 'none'
+  overlay.classList.remove('hidden')
+
+  return new Promise(resolve => {
+    const done = (choice) => {
+      overlay.classList.add('hidden')
+      $('fetch-week-cancel').removeEventListener('click', onCancel)
+      $('fetch-week-complete').removeEventListener('click', onComplete)
+      $('fetch-week-replace').removeEventListener('click', onReplace)
+      overlay.removeEventListener('click', onBackdrop)
+      resolve(choice)
+    }
+    const onCancel   = () => done('cancel')
+    const onComplete = () => done('complete')
+    const onReplace  = () => done('replace')
+    const onBackdrop = (e) => { if (e.target === overlay) done('cancel') }
+    $('fetch-week-cancel').addEventListener('click', onCancel)
+    $('fetch-week-complete').addEventListener('click', onComplete)
+    $('fetch-week-replace').addEventListener('click', onReplace)
+    overlay.addEventListener('click', onBackdrop)
+  })
+}
+
 async function triggerFetch() {
   closeLearningDashboard()
   closeCostsDashboard()
+  const choice = await askFetchWeekChoice()
+  if (choice === 'cancel') return
   const actBtn   = document.getElementById('act-fetch')
   const status   = document.getElementById('fetch-status')
   const overlay  = document.getElementById('fetch-overlay')
@@ -121,7 +169,7 @@ async function triggerFetch() {
   overlay.classList.remove('hidden')
 
   try {
-    const result = await window.api.fetchPapers()
+    const result = await window.api.fetchPapers({ replaceWeek: choice === 'replace' })
     if (result && result.error) {
       // El detalle completo va al toast (abajo); la barra superior solo lleva
       // un rótulo corto para no romper el layout del topbar con texto largo.

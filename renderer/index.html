@@ -850,6 +850,7 @@
         <button class="settings-cat-btn" data-category="embedding" data-i18n="embedding">Embedding</button>
         <button class="settings-cat-btn" data-category="stt" data-i18n="speech-to-text">Speech to Text</button>
         <button class="settings-cat-btn" data-category="ingesta" data-i18n="ingesta">Ingesta</button>
+        <button class="settings-cat-btn" data-category="ocr" data-i18n="ocr">OCR</button>
         <button class="settings-cat-btn" data-category="reference" data-i18n="papers-de-referencia">Papers de referencia</button>
       </div>
 
@@ -1019,6 +1020,46 @@
           </div>
         </div>
 
+        <!-- OCR -->
+        <div class="settings-pane hidden" id="settings-pane-ocr">
+          <h2 class="settings-pane-title" data-i18n="ocr">OCR</h2>
+          <p class="settings-hint" data-i18n="ocr-ayuda">Convierte el PDF de un paper en texto cuando pulsas OCR en el paper. Elige el motor y el modelo.</p>
+          <div class="settings-section">
+            <div class="form-group">
+              <label data-i18n="ocr-motor">Motor</label>
+              <div class="provider-selector" id="s-ocr-engine-selector">
+                <button class="ocr-engine-btn" data-engine="llamaparse" data-i18n="ocr-motor-llamaparse">LlamaParse (gratis)</button>
+                <button class="ocr-engine-btn" data-engine="vision" data-i18n="ocr-motor-vision">Modelo de visión</button>
+              </div>
+            </div>
+
+            <div id="s-ocr-llamaparse-group">
+              <div class="form-group">
+                <label>LlamaParse API Key</label>
+                <input type="password" id="s-llx-key" autocomplete="off" spellcheck="false" placeholder="llx-...">
+                <p class="settings-hint" data-i18n="llamaparse-ayuda">Gratis hasta 10.000 créditos al mes. Consigue tu key en cloud.llamaindex.ai.</p>
+              </div>
+              <div class="form-group">
+                <label data-i18n="ocr-calidad">Calidad</label>
+                <select id="s-llx-tier">
+                  <option value="cost_effective" data-i18n="ocr-tier-cost-effective">Económico (~3 créditos por página)</option>
+                  <option value="agentic" data-i18n="ocr-tier-agentic">Agéntico (~10 créditos por página, describe los diagramas)</option>
+                  <option value="agentic_plus" data-i18n="ocr-tier-agentic-plus">Agéntico+ (~45 créditos por página, máxima calidad)</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="s-ocr-vision-group" class="hidden">
+              <div class="form-group" id="s-ocr-model-group">
+                <label data-i18n="ocr-modelo">Modelo de visión</label>
+                <select id="s-ocr-model"></select>
+                <p class="settings-hint" data-i18n="ocr-modelo-ayuda">Usa el proveedor y la API key de la pestaña Large Language Model. Cada página cuesta tokens de ese proveedor.</p>
+              </div>
+              <p class="settings-hint hidden" id="s-ocr-no-vision" data-i18n="ocr-sin-vision">El proveedor de IA actual (DeepSeek) no puede leer imágenes. Elige LlamaParse o cambia de proveedor en la pestaña Large Language Model.</p>
+            </div>
+          </div>
+        </div>
+
         <!-- Papers de referencia -->
         <div class="settings-pane hidden" id="settings-pane-reference">
           <h2 class="settings-pane-title" data-i18n="papers-de-referencia">Papers de referencia</h2>
@@ -1070,6 +1111,21 @@
     <div class="fetch-overlay-content">
       <span class="spinner spinner-lg"></span>
       <p id="ocr-overlay-text" data-i18n="preparando-transcripcion">Preparando transcripción…</p>
+    </div>
+  </div>
+
+  <!-- Weekly-quota modal: asked before a Fetch when this week already has papers -->
+  <div id="fetch-week-overlay" class="confirm-overlay hidden">
+    <div class="confirm-modal">
+      <p class="confirm-title" id="fetch-week-title"></p>
+      <p class="confirm-body" id="fetch-week-body"></p>
+      <ul id="fetch-week-list" class="fetch-week-list"></ul>
+      <p class="confirm-body" id="fetch-week-warn" style="display:none"></p>
+      <div class="confirm-btns">
+        <button id="fetch-week-cancel" class="btn-ghost" data-i18n="cancelar">Cancelar</button>
+        <button id="fetch-week-complete" class="btn-ghost" style="display:none"></button>
+        <button id="fetch-week-replace" class="btn-primary"></button>
+      </div>
     </div>
   </div>
 

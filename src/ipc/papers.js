@@ -4,6 +4,7 @@ const { diagnoseEmptyFetch } = require('../ingestion/fetchLog')
 const { emptyFetchMessage }  = require('../notifications')
 const { embedMany }          = require('../embeddings')
 const { createProgressEmitter } = require('./progress')
+const { papersOfThisWeek, hasUserData } = require('../ingestion/week')
 
 // Selection phase: scores every ArXiv candidate against two independent
 // interest signals (reference collection, declared keywordList). When
@@ -18,6 +19,8 @@ const { createProgressEmitter } = require('./progress')
 // local/free (only cost is time, and this runs weekly in background), and a
 // fixed pre-cut using a cruder embedding score could throw away a candidate
 // before the more accurate model ever saw it (v3, see plan.md).
+const RERANK_CAP = 100
+
 function makeReportEntry(paper) {
   return {
     id: paper.id,
@@ -106,6 +109,19 @@ async function selectCandidates(candidates, { db, deps, settings, embProvider, s
 
   scored.sort((a, b) => b.rankScore - a.rankScore)
 
+  // El cross-encoder corre en el proceso principal y cuesta (queries × documentos)
+  // inferencias: con el pool de una semana completa pasaban ~2.000 candidatos y la
+  // app quedaba colgada. Solo los mejores por similitud llegan al rerank; el resto
+  // queda en el log, y como siguen ordenados por rankScore no se pierde el orden.
+  if (scored.length > RERANK_CAP) {
+    for (const { entry } of scored.slice(RERANK_CAP)) {
+      entry.stage = 'rerank_cap'
+      entry.decision = 'rejected'
+      entry.reason = `Pasó el filtro de interés pero quedó fuera del top ${RERANK_CAP} previo al rerank`
+    }
+    scored.length = RERANK_CAP
+  }
+
   // Una query por interés, no una sola concatenada: el cross-encoder trunca a su
   // límite de tokens y cortaba justo las keywords del final. El reranker se queda
   // con el mejor score de cada documento entre todas las queries.
@@ -131,7 +147,10 @@ async function selectCandidates(candidates, { db, deps, settings, embProvider, s
   return { survivors: ranked.map(r => scored[r.index].paper), rerankQueries, report }
 }
 
-async function runFetch({ db, deps, mainWindow }) {
+// maxPapers es un tope SEMANAL: lo que ya se trajo esta semana descuenta del cupo.
+// Con replaceWeek el usuario aceptó reemplazar esos papers, así que el cupo vuelve
+// a ser completo; los anteriores se borran SOLO si la nueva corrida guardó algo.
+async function runFetch({ db, deps, mainWindow, replaceWeek = false }) {
   const {
     createLLM, createEmbeddings, hasEmbeddingConfig,
     fetchPapers, getAffiliations,
@@ -149,6 +168,13 @@ async function runFetch({ db, deps, mainWindow }) {
   const llm                  = settings.apiKey            ? createLLM(settings)        : null
   // El proveedor local no necesita API key — no se puede gatear por settings.apiKey.
   const embProvider          = hasEmbeddingConfig(settings) ? createEmbeddings(settings) : null
+
+  const weekPapers = papersOfThisWeek(db.getPapers())
+  const quota      = replaceWeek ? maxPapers : maxPapers - weekPapers.length
+  if (quota <= 0) {
+    const outcome = { code: 'week_full', count: weekPapers.length, max: maxPapers }
+    return { saved: [], empty: { ...outcome, message: emptyFetchMessage(outcome, settings.language) } }
+  }
 
   const progress = createProgressEmitter(mainWindow)
 
@@ -171,7 +197,7 @@ async function runFetch({ db, deps, mainWindow }) {
 
   const entryById = new Map(report.map(e => [e.id, e]))
 
-  console.log(`[fetch] ${survivors.length} candidates survived filter + rerank. Saving up to ${maxPapers}.`)
+  console.log(`[fetch] ${survivors.length} candidates survived filter + rerank. Saving up to ${quota}.`)
 
   const saved = []
 
@@ -202,7 +228,7 @@ async function runFetch({ db, deps, mainWindow }) {
     }
     db.savePaper(finalPaper)
     saved.push(finalPaper)
-    progress('saving', saved.length, maxPapers)
+    progress('saving', saved.length, quota)
     entry.stage = 'saved'
     entry.decision = 'saved'
     entry.reason = `Guardado (status: ${finalPaper.status})`
@@ -215,9 +241,9 @@ async function runFetch({ db, deps, mainWindow }) {
   // PDF descargado) se guarda, con o sin match (v3, ver plan.md).
   // El cupo de maxPapers se aplica sobre los papers GUARDADOS, no sobre los
   // sobrevivientes: si un PDF falla, se sigue con el siguiente en el ranking.
-  progress('saving', 0, maxPapers)
+  progress('saving', 0, quota)
   for (const paper of survivors) {
-    if (saved.length >= maxPapers) break
+    if (saved.length >= quota) break
     const entry = entryById.get(paper.id)
     console.log(`\n[fetch] ── Paper: "${paper.title}" (${paper.id})`)
 
@@ -272,7 +298,19 @@ async function runFetch({ db, deps, mainWindow }) {
   for (const entry of report.filter(e => e.decision === 'pending')) {
     entry.stage = 'maxpapers_cutoff'
     entry.decision = 'rejected'
-    entry.reason = `Sobrevivió selección/rerank pero no entró en el cupo de maxPapers=${maxPapers}`
+    entry.reason = `Sobrevivió selección/rerank pero no entró en el cupo semanal (${quota} libres de ${maxPapers})`
+  }
+
+  // Reemplazo de la semana: recién ahora, con los nuevos ya guardados, se borran los
+  // anteriores (si la corrida no guardó nada, la semana no se deja vacía). Un paper
+  // elegido otra vez se salta: borrarlo eliminaría la copia nueva.
+  if (replaceWeek && saved.length > 0) {
+    const keepIds = new Set(saved.map(p => p.id))
+    for (const old of weekPapers) {
+      if (keepIds.has(old.id)) continue
+      try { vault.deletePaperDir(old) } catch (_) {}
+      db.deletePaper(old.id)
+    }
   }
 
   const stats = { totalCandidates: result.length, selected: survivors.length, saved: saved.length }
@@ -308,7 +346,19 @@ function registerPapersHandlers({ ipcMain, db, deps, mainWindow }) {
 
   ipcMain.handle('get-paper', (_e, id) => db.getPaper(id))
 
-  ipcMain.handle('fetch-papers', () => runFetch({ db, deps, mainWindow }))
+  // `replaceWeek` solo llega true si el usuario confirmó el modal de reemplazo.
+  ipcMain.handle('fetch-papers', (_e, opts) => runFetch({ db, deps, mainWindow, replaceWeek: Boolean(opts?.replaceWeek) }))
+
+  // Lo que la UI necesita para preguntar ANTES de lanzar el fetch.
+  ipcMain.handle('get-week-status', () => {
+    const settings = db.getAllSettings()
+    const papers   = papersOfThisWeek(db.getPapers())
+    return {
+      count: papers.length,
+      max:   parseInt(settings.maxPapers || '3', 10),
+      papers: papers.map(p => ({ id: p.id, title: p.title, hasUserData: hasUserData(p) })),
+    }
+  })
 
   ipcMain.handle('save-notes', (_e, { paperId, notes }) => {
     db.saveNotes(paperId, notes)
@@ -344,4 +394,4 @@ function registerPapersHandlers({ ipcMain, db, deps, mainWindow }) {
   })
 }
 
-module.exports = { registerPapersHandlers, runFetch, selectCandidates }
+module.exports = { registerPapersHandlers, runFetch, selectCandidates, RERANK_CAP }

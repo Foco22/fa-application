@@ -3,7 +3,8 @@ const { contextBridge, ipcRenderer, webFrame } = require('electron')
 contextBridge.exposeInMainWorld('api', {
   getPapers:       ()         => ipcRenderer.invoke('get-papers'),
   getPaper:        (id)       => ipcRenderer.invoke('get-paper', id),
-  fetchPapers:     ()         => ipcRenderer.invoke('fetch-papers'),
+  fetchPapers:     (opts)     => ipcRenderer.invoke('fetch-papers', opts),
+  getWeekStatus:   ()         => ipcRenderer.invoke('get-week-status'),
   generateQuiz:    (id)       => ipcRenderer.invoke('generate-quiz', id),
   saveQuizResult:  (payload)  => ipcRenderer.invoke('save-quiz-result', payload),
   getQuizResults:  (paperId)  => ipcRenderer.invoke('get-quiz-results', paperId),

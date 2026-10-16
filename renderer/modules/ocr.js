@@ -19,6 +19,7 @@ function providerSupportsVision(settings) {
 function ocrErrorMessage(error) {
   switch (error) {
     case 'no-vision':     return t('el-proveedor-llm-actual-no-soporta-vision-ocr')
+    case 'no-llamaparse-key': return t('ocr-falta-key')
     case 'no-pdf':        return t('no-se-encontro-el-pdf-de-este-paper-en-el-vault')
     case 'not-found':     return t('el-paper-ya-no-existe')
     case 'no-rasterizer': return t('no-se-pudo-rasterizar-el-pdf')

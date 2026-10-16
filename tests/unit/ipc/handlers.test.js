@@ -50,6 +50,42 @@ describe('get-papers', () => {
   })
 })
 
+// ─── get-week-status ──────────────────────────────────────────────────────────
+
+describe('get-week-status', () => {
+  const stampNow = () => new Date().toISOString().slice(0, 19).replace('T', ' ')
+
+  it('reports the fetched papers of this week, flagging the ones with generated content', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = {
+      getPapers: vi.fn().mockReturnValue([
+        { id: '2610.1', title: 'A', created_at: stampNow(), summary: 'resumen', quiz: null, notes: null },
+        { id: '2610.2', title: 'B', created_at: stampNow(), summary: null, quiz: null, notes: null },
+        { id: 'ref-x',  title: 'R', created_at: stampNow(), summary: null, quiz: null, notes: null },
+      ]),
+      getAllSettings: vi.fn().mockReturnValue(SETTINGS),
+    }
+    registerHandlers({ ipcMain, db, deps: {} })
+
+    const status = await invoke('get-week-status')
+
+    expect(status.count).toBe(2)
+    expect(status.max).toBe(3)
+    expect(status.papers).toEqual([
+      { id: '2610.1', title: 'A', hasUserData: true },
+      { id: '2610.2', title: 'B', hasUserData: false },
+    ])
+  })
+
+  it('reports an empty week', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = { getPapers: vi.fn().mockReturnValue([]), getAllSettings: vi.fn().mockReturnValue(SETTINGS) }
+    registerHandlers({ ipcMain, db, deps: {} })
+
+    expect(await invoke('get-week-status')).toMatchObject({ count: 0, max: 3, papers: [] })
+  })
+})
+
 // ─── get-paper ────────────────────────────────────────────────────────────────
 
 describe('get-paper', () => {
