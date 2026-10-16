@@ -542,3 +542,119 @@ describe('class-student-evaluate — reference answer', () => {
     expect(judge2).toContain('La respuesta correcta según el paper.')
   })
 })
+
+describe('class IPC — input validation', () => {
+  function setup(dbOverrides = {}, deps = {}) {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = makeDb({
+      createClassSession: vi.fn().mockReturnValue({ id: 's1' }),
+      saveClassSlide: vi.fn().mockReturnValue({ id: 1 }),
+      updateClassSlideInterpretation: vi.fn(),
+      saveSlidesDraft: vi.fn(),
+      ...dbOverrides
+    })
+    registerClassHandlers({ ipcMain, db, deps: { createLLM: vi.fn(), ...deps }, mainWindow: makeMainWindow() })
+    return { invoke, db }
+  }
+
+  it('save-slides-draft rejects a non-string markdown without touching the db', async () => {
+    const { invoke, db } = setup()
+    const res = await invoke('class-save-slides-draft', { paperId: 'p1', markdown: { x: 1 } })
+    expect(res.ok).toBe(false)
+    expect(db.saveSlidesDraft).not.toHaveBeenCalled()
+  })
+
+  it('save-slides-draft rejects a non-string paperId', async () => {
+    const { invoke, db } = setup()
+    const res = await invoke('class-save-slides-draft', { paperId: 42, markdown: '# x' })
+    expect(res.ok).toBe(false)
+    expect(db.saveSlidesDraft).not.toHaveBeenCalled()
+  })
+
+  it('save-slides-draft rejects a draft over the size cap', async () => {
+    const { invoke, db } = setup()
+    const res = await invoke('class-save-slides-draft', { paperId: 'p1', markdown: 'a'.repeat(1024 * 1024 + 1) })
+    expect(res.ok).toBe(false)
+    expect(db.saveSlidesDraft).not.toHaveBeenCalled()
+  })
+
+  it('upload-slides with a malformed slide creates NO session (nothing half-written)', async () => {
+    const { invoke, db } = setup()
+    await expect(invoke('class-upload-slides', {
+      paperId: 'p', duration: 60, slides: [{ markdown: '# ok' }, { markdown: 123 }]
+    })).rejects.toThrow()
+    expect(db.createClassSession).not.toHaveBeenCalled()
+    expect(db.saveClassSlide).not.toHaveBeenCalled()
+  })
+
+  it('upload-slides rejects an empty or non-array slides list', async () => {
+    const { invoke, db } = setup()
+    await expect(invoke('class-upload-slides', { paperId: 'p', duration: 60, slides: [] })).rejects.toThrow()
+    await expect(invoke('class-upload-slides', { paperId: 'p', duration: 60, slides: null })).rejects.toThrow()
+    expect(db.createClassSession).not.toHaveBeenCalled()
+  })
+
+  it('pick-pdf refuses a file that is not a .pdf', async () => {
+    const dialog = { showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, filePaths: [join(tmpdir(), 'evil.html')] }) }
+    const { invoke } = setup({}, { dialog })
+    expect(await invoke('class-pick-pdf')).toBeNull()
+  })
+
+  it('pick-pdf accepts an uppercase .PDF extension', async () => {
+    const dialog = { showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, filePaths: [join(tmpdir(), 'A.PDF')] }) }
+    const { invoke } = setup({}, { dialog })
+    expect((await invoke('class-pick-pdf')).name).toBe('A.PDF')
+  })
+})
+
+describe('class-student-evaluate — reference answer cache', () => {
+  const q = '¿Qué propone el paper?'
+  const payload = { studentId: 1, paperId: 'p', sessionId: 's', professorAnswer: 'un modelo nuevo', history: [{ question: q, answer: 'un modelo nuevo' }], exchangeCount: 1 }
+  function setup(chat) {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = makeDb({
+      getPaper: vi.fn().mockReturnValue({ id: 'p', title: 'T', pdf_text: 'texto' }),
+      getClassSlides: vi.fn().mockReturnValue([]),
+      getClassSession: vi.fn().mockReturnValue({ paper_id: 'p' }),
+      updateClassSession: vi.fn()
+    })
+    registerClassHandlers({ ipcMain, db, deps: { createLLM: vi.fn().mockReturnValue({ chat }) }, mainWindow: makeMainWindow() })
+    return invoke
+  }
+
+  it('does not cache a failed reference answer: the next attempt retries it', async () => {
+    const chat = vi.fn()
+      .mockRejectedValueOnce(new Error('rate limit'))                       // referencia, intento 1 (falla → null)
+      .mockResolvedValueOnce('{"passed": false, "missing": "x"}')           // juez 1
+      .mockResolvedValueOnce('mmm')                                         // reacción 1
+      .mockResolvedValueOnce('La respuesta correcta.')                      // referencia, reintento
+      .mockResolvedValueOnce('{"passed": true, "missing": null}')           // juez 2
+      .mockResolvedValueOnce('Gracias')                                     // reacción 2
+    const invoke = setup(chat)
+
+    await invoke('class-student-evaluate', payload)
+    await invoke('class-student-evaluate', payload)
+
+    const judge2 = chat.mock.calls[4][0].map(m => m.content).join('\n')
+    expect(judge2).toContain('La respuesta correcta.')
+  })
+
+  it('drops the cached answers when the session ends', async () => {
+    const chat = vi.fn(async (msgs) => {
+      const text = msgs.map(m => m.content).join('\n')
+      if (text.includes('Eres un experto en este paper')) return 'REF'
+      if (text.includes('evaluador estricto')) return '{"passed": false, "missing": "x"}'
+      return 'ok'
+    })
+    const invoke = setup(chat)
+    const refCalls = () => chat.mock.calls.filter(c => c[0].some(m => m.content.includes('Eres un experto en este paper'))).length
+
+    await invoke('class-student-evaluate', payload)
+    await invoke('class-student-evaluate', payload)
+    expect(refCalls()).toBe(1)                       // cacheada
+
+    await invoke('class-end-session', { sessionId: 's', transcript: '', qaLog: [] })
+    await invoke('class-student-evaluate', payload)
+    expect(refCalls()).toBe(2)                       // se limpió al terminar
+  })
+})

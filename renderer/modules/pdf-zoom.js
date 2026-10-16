@@ -40,3 +40,28 @@ export function rectToStored(rect, scale) {
     h: Math.round(rect.h * f)
   }
 }
+
+// Agrupa una ráfaga de pasos de zoom (Ctrl+rueda, trackpad) en un único render.
+// Cada paso avisa de inmediato la escala pendiente (onPreview, para la etiqueta)
+// y solo cuando la ráfaga se calma se llama a apply(scale), que es lo caro.
+export function createZoomDebouncer({ getScale, apply, onPreview = () => {}, delay = 120 }) {
+  let pending = null
+  let timer   = null
+
+  function schedule(target) {
+    pending = target
+    onPreview(target)
+    clearTimeout(timer)
+    timer = setTimeout(() => {
+      const scale = pending
+      pending = null
+      timer   = null
+      if (scale !== getScale()) apply(scale)
+    }, delay)
+  }
+
+  return {
+    step(direction) { schedule(stepPdfScale(pending ?? getScale(), direction)) },
+    reset()         { schedule(PDF_BASE_SCALE) }
+  }
+}

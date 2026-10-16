@@ -74,20 +74,32 @@ const NON_ANSWER_WORDS = new Set([
   'hola', 'buenas', 'buenos', 'buen', 'dias', 'tardes', 'noches', 'hey', 'saludos',
   'ok', 'okay', 'oka', 'vale', 'si', 'no', 'se', 'lo', 'la', 'el', 'verdad', 'idea', 'ni', 'tengo',
   'estoy', 'seguro', 'segura', 'recuerdo', 'paso', 'siguiente', 'bueno', 'pues', 'este', 'esto',
-  'gracias', 'profesor', 'profe', 'sinceramente', 'honestamente', 'la', 'verdad',
+  'gracias', 'profesor', 'profe', 'sinceramente', 'honestamente',
   'mmm', 'mm', 'hmm', 'eh', 'ehh', 'ah', 'um', 'uh', 'em',
   'i', 'dont', 'do', 'not', 'know', 'hi', 'hello', 'sure', 'idk',
-  'maria', 'carlos', 'sofia',
 ])
 
-function isNonAnswer(text) {
-  const words = (text || '')
+// "Sí" / "No" solos pueden ser la respuesta correcta a una pregunta de sí/no:
+// van al evaluador. Solo cuentan como relleno acompañados de otras muletillas
+// ("no sé", "no tengo idea").
+const AMBIGUOUS_SINGLE_WORDS = new Set(['si', 'no', 'yes'])
+
+function normalizeWords(text) {
+  return (text || '')
     .toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // sé → se, maría → maria
     .replace(/[\u2019']/g, '')
     .split(/[^a-z0-9]+/)
     .filter(Boolean)
-  return words.every(w => NON_ANSWER_WORDS.has(w) || /^(m+|h?m+|e+h*|a+h+)$/.test(w))
+}
+
+// `ignoredNames`: nombres que no cuentan como contenido (ej. el del estudiante
+// al que se le habla: "Hola María"). Se pasan en vez de hardcodearlos aquí.
+function isNonAnswer(text, ignoredNames = []) {
+  const ignored = new Set(ignoredNames.flatMap(normalizeWords))
+  const words = normalizeWords(text)
+  if (words.length === 1 && AMBIGUOUS_SINGLE_WORDS.has(words[0])) return false
+  return words.every(w => NON_ANSWER_WORDS.has(w) || ignored.has(w) || /^(m+|h?m+|e+h*|a+h+)$/.test(w))
 }
 
 // Respuesta correcta a la pregunta del estudiante según el paper. Se genera una
@@ -156,7 +168,7 @@ async function evaluateAndReact(student, context, llm) {
   if (!answers.length && context.professorAnswer) answers.push(context.professorAnswer)
   const lastAnswer = answers.at(-1) || ''
 
-  if (isNonAnswer(lastAnswer)) {
+  if (isNonAnswer(lastAnswer, [student.name])) {
     return {
       satisfied: false,
       reaction: 'Creo que todavía no respondió mi pregunta. ¿Me la podría explicar?',
