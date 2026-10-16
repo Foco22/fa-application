@@ -5,7 +5,8 @@ export const FETCH_STAGES = {
   arxiv:     { from: 0,  to: 40,  key: 'fetch-etapa-arxiv' },
   embedding: { from: 40, to: 70,  key: 'fetch-etapa-embedding' },
   rerank:    { from: 70, to: 90,  key: 'fetch-etapa-rerank' },
-  saving:    { from: 90, to: 100, key: 'fetch-etapa-saving' },
+  saving:    { from: 90, to: 95,  key: 'fetch-etapa-saving' },
+  ocr:       { from: 95, to: 100, key: 'fetch-etapa-ocr' },
 }
 
 // ev: { stage, current, total } tal como lo emite main por 'fetch-progress'.

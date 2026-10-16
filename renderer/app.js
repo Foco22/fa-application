@@ -34,7 +34,13 @@ export function setPdfExpanded(val) {
 
 export function switchTab(tab) {
   if (tab === 'clase') {
-    if (state.activePaper) showClassConfirm(state.activePaper)
+    if (state.activePaper) {
+      // El backend decide si el paper puede tener clase (exige OCR previo) y da el motivo.
+      const paper = state.activePaper
+      window.api.classCanHaveClass(paper.id)
+        .then(check => check.ok ? showClassConfirm(paper) : toast(check.reason, 'error'))
+        .catch(() => showClassConfirm(paper))
+    }
     return
   }
   if (tab !== 'pdf' && state.pdfExpanded) setPdfExpanded(false)
@@ -183,6 +189,10 @@ async function triggerFetch() {
       if (result.length > 0) {
         status.textContent = `${result.length} paper${result.length > 1 ? 's' : ''} importado${result.length > 1 ? 's' : ''}`
         toast(status.textContent, 'success')
+        // El fetch hace el OCR solo; si no pudo (sin key, sin créditos…) el paper queda bloqueado
+        // para resumen/quiz/clase/chat hasta que se reintente a mano.
+        const withoutOcr = result.filter(p => p.pdf_text_source !== 'ocr').length
+        if (withoutOcr > 0) toast(t('fetch-sin-ocr').replace('{n}', withoutOcr), 'info', 10000)
         await openPaper(result[0].id)
       } else {
         status.textContent = t('sin-papers-nuevos')

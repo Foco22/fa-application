@@ -4,6 +4,7 @@ const { diagnoseEmptyFetch } = require('../ingestion/fetchLog')
 const { emptyFetchMessage }  = require('../notifications')
 const { embedMany }          = require('../embeddings')
 const { createProgressEmitter } = require('./progress')
+const { resolveOcrEngine, runOcrOnBuffer } = require('../ingestion/ocr-runner')
 const { papersOfThisWeek, hasUserData } = require('../ingestion/week')
 
 // Selection phase: scores every ArXiv candidate against two independent
@@ -200,6 +201,7 @@ async function runFetch({ db, deps, mainWindow, replaceWeek = false }) {
   console.log(`[fetch] ${survivors.length} candidates survived filter + rerank. Saving up to ${quota}.`)
 
   const saved = []
+  const pdfBuffers = new Map() // PDF de cada paper guardado, para no releerlo del disco al hacer OCR
 
   async function finalizeSave(paper, entry, buf, aiAffiliations, matchedAffiliation) {
     const ssAffiliations = await getAffiliations(paper.id, httpClient, settings.semanticScholarApiKey)
@@ -220,19 +222,51 @@ async function runFetch({ db, deps, mainWindow, replaceWeek = false }) {
       // o falló extractFirstPage) — no es lo mismo que 0 (se evaluó, no matcheó).
       matched_affiliation: matchedAffiliation === null ? null : (matchedAffiliation ? 1 : 0),
       pdf_text:     extracted.success ? extracted.text : null,
-      // La ingesta SIEMPRE usa pdf-parse liviano — el OCR es una acción posterior
-      // y explícita del usuario, nunca parte del fetch (§4/§8 del PRD).
+      // Se guarda primero con pdf-parse (liviano, recortado) para que el paper exista ya;
+      // enseguida, al final de runFetch, el OCR lo reemplaza por el texto completo.
       pdf_text_source: 'pdf-parse',
       status:       extracted.success ? 'ready' : 'pdf_error',
       pdf_error:    extracted.success ? null : extracted.error
     }
     db.savePaper(finalPaper)
     saved.push(finalPaper)
+    pdfBuffers.set(finalPaper.id, buf)
     progress('saving', saved.length, quota)
     entry.stage = 'saved'
     entry.decision = 'saved'
     entry.reason = `Guardado (status: ${finalPaper.status})`
     console.log(`[fetch]   SAVED (status: ${finalPaper.status}, afiliación: ${matchedAffiliation === true ? 'match' : matchedAffiliation === false ? 'sin match' : 'no evaluada'})`)
+  }
+
+  async function ocrSavedPapers() {
+    let engine
+    try { engine = resolveOcrEngine(settings, createLLM) } catch (err) { engine = { error: err.message } }
+
+    if (engine.error) {
+      console.log(`[fetch] OCR omitido: ${engine.error}`)
+      for (const paper of saved) {
+        const entry = entryById.get(paper.id)
+        if (entry) entry.reason += ` · OCR no disponible (${engine.error})`
+      }
+      return
+    }
+
+    progress('ocr', 0, saved.length)
+    for (const [i, paper] of saved.entries()) {
+      const entry = entryById.get(paper.id)
+      const out = await runOcrOnBuffer({ paper, buffer: pdfBuffers.get(paper.id), engine, db, deps })
+      if (out.success) {
+        saved[i] = out.paper
+        if (entry) entry.reason += ` · OCR ok (${out.pageCount} págs)`
+        console.log(`[fetch]   OCR ok: ${paper.id}`)
+      } else {
+        // El paper se queda con el texto básico; runOcrOnBuffer ya registró ocr_error en la DB.
+        saved[i] = { ...paper, ocr_error: out.error }
+        if (entry) entry.reason += ` · OCR falló: ${out.error}`
+        console.log(`[fetch]   OCR FAILED (${paper.id}): ${out.error}`)
+      }
+      progress('ocr', i + 1, saved.length)
+    }
   }
 
   // La afiliación (universityList/researchCenterList) ya NO rechaza candidatos —
@@ -312,6 +346,12 @@ async function runFetch({ db, deps, mainWindow, replaceWeek = false }) {
       db.deletePaper(old.id)
     }
   }
+
+  // OCR de los papers recién guardados: resumen, quiz, clase y chat lo exigen, así que
+  // el fetch lo hace solo (antes era un botón por paper). Un fallo no rompe el fetch: el
+  // paper queda guardado con el texto básico y el error en ocr_error, y se reintenta a
+  // mano con el botón OCR.
+  if (saved.length > 0) await ocrSavedPapers()
 
   const stats = { totalCandidates: result.length, selected: survivors.length, saved: saved.length }
 

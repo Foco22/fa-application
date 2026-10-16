@@ -2,6 +2,7 @@ import { state } from './state.js'
 import { toast } from './toast.js'
 import { renderMarkdown } from '../summary-utils.js'
 import { t } from './language.js'
+import { needsOcr } from './ocr-gate.js'
 
 export function updateChatContext() {
   const ctx   = document.getElementById('chat-context')
@@ -43,6 +44,13 @@ export async function sendChat() {
 
 export async function dispatchChat(message) {
   const sendBtn = document.getElementById('btn-chat-send')
+  // Con un paper activo el chat exige OCR; sin paper (preguntas generales) no.
+  if (needsOcr(state.activePaper)) {
+    clearChatWelcome()
+    appendChatBubble('assistant', t('ocr-requerido'))
+    toast(t('ocr-requerido'), 'error')
+    return
+  }
   sendBtn.disabled = true
   clearChatWelcome()
 
@@ -55,6 +63,14 @@ export async function dispatchChat(message) {
       message, paperId: state.activePaper?.id || null, history: state.chatHistory.slice(-12),
     })
     thinking.remove()
+    if (reply?.error === 'ocr-required') {
+      // El proceso principal rechazó el mensaje: no debe quedar en el historial.
+      state.chatHistory.pop()
+      appendChatBubble('assistant', t('ocr-requerido'))
+      toast(t('ocr-requerido'), 'error')
+      sendBtn.disabled = false
+      return
+    }
     appendChatBubble('assistant', reply)
     state.chatHistory.push({ role: 'assistant', content: reply })
   } catch (err) {

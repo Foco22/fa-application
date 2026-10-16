@@ -1,6 +1,7 @@
 import { state } from './state.js'
 import { toast } from './toast.js'
 import { t } from './language.js'
+import { needsOcr } from './ocr-gate.js'
 
 export async function renderQuizSection(p) {
   const quizDiv = document.getElementById('pv-quiz')
@@ -178,6 +179,7 @@ export async function submitQuiz(questions, quizEl) {
 
 export async function generateQuiz() {
   if (!state.activePaper) return
+  if (needsOcr(state.activePaper)) { toast(t('ocr-requerido'), 'error'); return }
   const btn     = document.getElementById('btn-quiz')
   const quizDiv = document.getElementById('pv-quiz')
   btn.disabled    = true
@@ -186,6 +188,12 @@ export async function generateQuiz() {
 
   try {
     const data  = await window.api.generateQuiz(state.activePaper.id)
+    if (data?.error === 'ocr-required') {
+      toast(t('ocr-requerido'), 'error')
+      btn.textContent = t('generar')
+      btn.disabled = false
+      return
+    }
     state.activePaper = await window.api.getPaper(state.activePaper.id)
     renderQuiz(quizDiv, data.questions)
     btn.textContent = t('regenerar')

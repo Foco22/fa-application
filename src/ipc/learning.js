@@ -1,11 +1,10 @@
 const fs = require('fs')
-const { resolveOcrConfig } = require('../ingestion/ocr-config')
+const { resolveOcrEngine, runOcrOnBuffer } = require('../ingestion/ocr-runner')
+const { hasOcr, OCR_REQUIRED } = require('../ingestion/ocr-gate')
 
 function registerLearningHandlers({ ipcMain, db, deps, mainWindow }) {
   const {
     createLLM, chatWithPaper, vault,
-    rasterizePdf, transcribePdfToMarkdown, pdfParse, extractPagesText,
-    parsePdfWithLlamaParse, httpClient,
     OCR_MAX_CHARS = 200000,
   } = deps
 
@@ -18,6 +17,7 @@ function registerLearningHandlers({ ipcMain, db, deps, mainWindow }) {
 
   ipcMain.handle('generate-quiz', async (_e, paperId) => {
     const paper    = db.getPaper(paperId)
+    if (!hasOcr(paper)) return { error: OCR_REQUIRED }
     const settings = db.getAllSettings()
     const llm      = createLLM(settings)
     const quiz     = await llm.generateQuiz(paper)
@@ -28,6 +28,7 @@ function registerLearningHandlers({ ipcMain, db, deps, mainWindow }) {
 
   ipcMain.handle('start-summary', async (_e, paperId) => {
     const paper    = db.getPaper(paperId)
+    if (!hasOcr(paper)) return { error: OCR_REQUIRED }
     const settings = db.getAllSettings()
     const llm      = createLLM(settings)
     try {
@@ -44,63 +45,36 @@ function registerLearningHandlers({ ipcMain, db, deps, mainWindow }) {
 
   ipcMain.handle('chat-message', async (_e, { message, paperId, history }) => {
     const settings = db.getAllSettings()
-    const llm      = createLLM(settings)
     const paper    = paperId ? db.getPaper(paperId) : null
+    // Sin paper (preguntas generales de investigación) el chat no se limita.
+    if (paper && !hasOcr(paper)) return { error: OCR_REQUIRED }
+    const llm      = createLLM(settings)
     return chatWithPaper(message, paper, history || [], llm, settings.language)
   })
 
-  // OCR bajo demanda — ÚNICO punto de entrada al OCR. Solo sobre un paper que YA
-  // existe en la DB y tiene su PDF en raw/. Nunca lo dispara runFetch /
-  // index-files / indexReferenceFolder. Funciona igual para papers de fetch y de
-  // referencia (ref-…). Aplica también a re-corridas (sobrescribe).
+  // OCR bajo demanda desde el botón OCR del paper (también aplica a papers de
+  // referencia ref-… y a re-corridas, que sobrescriben). El fetch semanal corre el
+  // mismo núcleo (ingestion/ocr-runner) sobre los papers que acaba de guardar.
   ipcMain.handle('generate-ocr', async (_e, { paperId } = {}) => {
     const paper = db.getPaper(paperId)
     if (!paper) return { success: false, error: 'not-found' }
 
-    const settings = db.getAllSettings()
-    // Motor de OCR elegido en la pestaña OCR. LlamaParse (gratis hasta 10k créditos/mes)
-    // no usa el modelo de visión del LLM, así que tampoco exige que lo tenga.
-    const ocr = resolveOcrConfig(settings)
-    const useLlamaParse = ocr.engine === 'llamaparse'
-    if (useLlamaParse && !ocr.llamaParse.apiKey) return { success: false, error: 'no-llamaparse-key' }
-
-    const llm = useLlamaParse ? null : createLLM(ocr.visionSettings)
-    // Mismo guard que src/ipc/class.js para proveedores sin visión (DeepSeek):
-    // degradar sin bloquear ni tocar el pdf_text existente.
-    if (llm && !llm.transcribePageToMarkdown) return { success: false, error: 'no-vision' }
+    const engine = resolveOcrEngine(db.getAllSettings(), createLLM)
+    if (engine.error) return { success: false, error: engine.error }
 
     const pdfFile = vault.pdfPath(paper)
     if (!pdfFile || !fs.existsSync(pdfFile)) return { success: false, error: 'no-pdf' }
     const buffer = fs.readFileSync(pdfFile)
 
-    let result
-    try {
-      // Si LlamaParse falla NO se cae al OCR de visión: eso gastaría tokens del LLM
-      // sin que el usuario lo haya decidido. Se informa el error y se deja elegir.
-      result = useLlamaParse
-        ? { fallbackUsed: false, ...await parsePdfWithLlamaParse(buffer, { apiKey: ocr.llamaParse.apiKey, tier: ocr.llamaParse.tier, httpClient }) }
-        : await transcribePdfToMarkdown(buffer, {
-            rasterizePdf, llm, pdfParse, extractPagesText,
-            onProgress: (page, total) => mainWindow?.webContents.send('ocr-progress', { paperId, page, total }),
-          })
-    } catch (err) {
-      result = { success: false, error: err.message }
-    }
+    const result = await runOcrOnBuffer({
+      paper, buffer, engine, db, deps,
+      onProgress: (page, total) => mainWindow?.webContents.send('ocr-progress', { paperId, page, total }),
+    })
 
     if (!result.success) {
-      // Fallo total: NO tocar el pdf_text existente; solo registrar ocr_error.
-      db.savePaper({ ...paper, ocr_error: result.error })
       mainWindow?.webContents.send('ocr-error', { paperId, error: result.error })
       return { success: false, error: result.error }
     }
-
-    // El techo de 30K de pdf-parse NO aplica al OCR: solo un tope alto de fila SQLite.
-    const markdown = (result.markdown || '').slice(0, OCR_MAX_CHARS)
-    try { vault.writeOcr(paper, markdown) } catch (_) {}
-    const ocrError = result.fallbackUsed
-      ? 'Algunas páginas cayeron a pdf-parse como fallback — revisá la transcripción.'
-      : null
-    db.savePaper({ ...paper, pdf_text: markdown, pdf_text_source: 'ocr', ocr_error: ocrError })
     mainWindow?.webContents.send('ocr-done', { paperId, pageCount: result.pageCount, fallbackUsed: result.fallbackUsed })
     return { success: true, pageCount: result.pageCount, fallbackUsed: result.fallbackUsed }
   })
