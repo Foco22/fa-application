@@ -2590,3 +2590,8 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 .graph-communities .gc-count { color: var(--text-4); font-variant-numeric: tabular-nums; }
 .graph-tooltip .graph-tip-tag { font-size: 11px; margin-bottom: 4px; }
 .graph-tooltip .graph-tip-links { margin-top: 6px; }
+.graph-types { list-style: none; margin: 0 0 var(--sp-md); padding: 0; display: flex; flex-direction: column; gap: var(--sp-sm); }
+.graph-types li { display: flex; align-items: flex-start; gap: var(--sp-sm); font-size: 12px; color: var(--text-2); line-height: 1.35; }
+.graph-types .graph-dot { flex-shrink: 0; margin-top: 2px; }
+.graph-types b { display: block; font-weight: 500; color: var(--text); }
+.graph-types small { color: var(--text-3); font-size: 11px; }
