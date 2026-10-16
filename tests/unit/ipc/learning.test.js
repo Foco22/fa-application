@@ -171,6 +171,143 @@ describe('start-summary (learning handler)', () => {
   })
 })
 
+// ─── generate-ocr con LlamaParse ───────────────────────────────────────────────
+// Si hay llamaParseApiKey, el OCR lo hace LlamaParse (gratis hasta 10k créditos/mes)
+// en vez del modelo de visión del LLM activo: no gasta tokens del LLM y funciona
+// también con proveedores sin visión (DeepSeek).
+
+describe('generate-ocr con LlamaParse (learning handler)', () => {
+  let tmpDir, pdfFile
+  beforeAll(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ocr-llx-'))
+    pdfFile = path.join(tmpDir, 'raw.pdf')
+    fs.writeFileSync(pdfFile, '%PDF-1.4 fake')
+  })
+  afterAll(() => fs.rmSync(tmpDir, { recursive: true, force: true }))
+
+  const LLX_SETTINGS = { apiKey: 'sk-test', llamaParseApiKey: 'llx-test-key-0000' }
+
+  function llxDeps(overrides = {}) {
+    return {
+      createLLM: vi.fn().mockReturnValue({ chat: vi.fn() }), // sin visión, a propósito
+      vault: { pdfPath: vi.fn().mockReturnValue(pdfFile), writeOcr: vi.fn(), readOcr: vi.fn() },
+      httpClient: {},
+      OCR_MAX_CHARS: 200000,
+      transcribePdfToMarkdown: vi.fn(),
+      parsePdfWithLlamaParse: vi.fn().mockResolvedValue({ success: true, markdown: '# From LlamaParse', pageCount: 4 }),
+      ...overrides,
+    }
+  }
+
+  function makeDb(settings = LLX_SETTINGS) {
+    return {
+      getAllSettings: vi.fn().mockReturnValue(settings),
+      getPaper: vi.fn().mockReturnValue({ ...PAPER, pdf_text_source: 'pdf-parse' }),
+      savePaper: vi.fn(),
+    }
+  }
+
+  it('uses LlamaParse instead of the vision LLM and persists the markdown as OCR text', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = makeDb()
+    const deps = llxDeps()
+    registerLearningHandlers({ ipcMain, db, deps, mainWindow: null })
+
+    const result = await invoke('generate-ocr', { paperId: '2401.00001' })
+
+    expect(result).toMatchObject({ success: true, pageCount: 4, fallbackUsed: false })
+    expect(deps.transcribePdfToMarkdown).not.toHaveBeenCalled()
+    expect(deps.parsePdfWithLlamaParse.mock.calls[0][1]).toMatchObject({ apiKey: 'llx-test-key-0000', httpClient: deps.httpClient })
+    expect(deps.vault.writeOcr).toHaveBeenCalledWith(expect.objectContaining({ id: '2401.00001' }), '# From LlamaParse')
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({
+      pdf_text: '# From LlamaParse', pdf_text_source: 'ocr', ocr_error: null,
+    }))
+  })
+
+  it('works even when the active LLM has no vision (the old path answered no-vision)', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    registerLearningHandlers({ ipcMain, db: makeDb(), deps: llxDeps(), mainWindow: null })
+
+    const result = await invoke('generate-ocr', { paperId: '2401.00001' })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('on failure records ocr_error, notifies the renderer and does NOT silently fall back to the paid vision OCR', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const db = makeDb()
+    const mainWindow = { webContents: { send: vi.fn() } }
+    const deps = llxDeps({
+      createLLM: vi.fn().mockReturnValue({ transcribePageToMarkdown: vi.fn() }),
+      parsePdfWithLlamaParse: vi.fn().mockResolvedValue({ success: false, error: 'LlamaParse: sin créditos' }),
+    })
+    registerLearningHandlers({ ipcMain, db, deps, mainWindow })
+
+    const result = await invoke('generate-ocr', { paperId: '2401.00001' })
+
+    expect(result).toEqual({ success: false, error: 'LlamaParse: sin créditos' })
+    expect(deps.transcribePdfToMarkdown).not.toHaveBeenCalled()
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ ocr_error: 'LlamaParse: sin créditos' }))
+    expect(db.savePaper.mock.calls[0][0].pdf_text).toBe(PAPER.pdf_text) // el texto existente no se toca
+    expect(mainWindow.webContents.send).toHaveBeenCalledWith('ocr-error', { paperId: '2401.00001', error: 'LlamaParse: sin créditos' })
+  })
+
+  it('passes the chosen LlamaParse tier to the client', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const deps = llxDeps()
+    registerLearningHandlers({ ipcMain, db: makeDb({ ...LLX_SETTINGS, ocrEngine: 'llamaparse', llamaParseTier: 'agentic' }), deps, mainWindow: null })
+
+    await invoke('generate-ocr', { paperId: '2401.00001' })
+
+    expect(deps.parsePdfWithLlamaParse.mock.calls[0][1].tier).toBe('agentic')
+  })
+
+  it('engine "llamaparse" without a key asks for it instead of silently using the paid vision OCR', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const deps = llxDeps()
+    registerLearningHandlers({ ipcMain, db: makeDb({ apiKey: 'sk-test', ocrEngine: 'llamaparse' }), deps, mainWindow: null })
+
+    const result = await invoke('generate-ocr', { paperId: '2401.00001' })
+
+    expect(result).toEqual({ success: false, error: 'no-llamaparse-key' })
+    expect(deps.parsePdfWithLlamaParse).not.toHaveBeenCalled()
+    expect(deps.transcribePdfToMarkdown).not.toHaveBeenCalled()
+  })
+
+  it('engine "vision" ignores a stored LlamaParse key and OCRs with the vision model picked for OCR', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const createLLM = vi.fn().mockReturnValue({ transcribePageToMarkdown: vi.fn() })
+    const deps = llxDeps({
+      createLLM,
+      transcribePdfToMarkdown: vi.fn().mockResolvedValue({ success: true, markdown: 'vision', pageCount: 1, fallbackUsed: false }),
+      rasterizePdf: vi.fn(), pdfParse: vi.fn(), extractPagesText: vi.fn(),
+    })
+    const settings = { ...LLX_SETTINGS, ocrEngine: 'vision', llmModel: 'gpt-4o-mini', ocrModel: 'gpt-4o' }
+    registerLearningHandlers({ ipcMain, db: makeDb(settings), deps, mainWindow: null })
+
+    await invoke('generate-ocr', { paperId: '2401.00001' })
+
+    expect(deps.parsePdfWithLlamaParse).not.toHaveBeenCalled()
+    expect(createLLM.mock.calls[0][0].llmModel).toBe('gpt-4o')
+    expect(deps.transcribePdfToMarkdown).toHaveBeenCalledOnce()
+  })
+
+  it('without a LlamaParse key it keeps using the vision LLM as before', async () => {
+    const { ipcMain, invoke } = makeIpcMain()
+    const deps = llxDeps({
+      createLLM: vi.fn().mockReturnValue({ transcribePageToMarkdown: vi.fn() }),
+      transcribePdfToMarkdown: vi.fn().mockResolvedValue({ success: true, markdown: 'vision', pageCount: 1, fallbackUsed: false }),
+      rasterizePdf: vi.fn(), pdfParse: vi.fn(), extractPagesText: vi.fn(),
+    })
+    registerLearningHandlers({ ipcMain, db: makeDb({ apiKey: 'sk-test' }), deps, mainWindow: null })
+
+    await invoke('generate-ocr', { paperId: '2401.00001' })
+
+    expect(deps.transcribePdfToMarkdown).toHaveBeenCalledOnce()
+    expect(deps.parsePdfWithLlamaParse).not.toHaveBeenCalled()
+  })
+})
+
 // ─── generate-ocr ──────────────────────────────────────────────────────────────
 
 describe('generate-ocr (learning handler)', () => {

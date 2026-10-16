@@ -24,6 +24,9 @@ const EMPTY_MESSAGES = {
     downloads_failed: ({ survivors, firstError }) =>
       `${survivors} paper${survivors > 1 ? 's' : ''} pasó el filtro pero no se pudo descargar ningún PDF` +
       (firstError ? ` (${firstError}).` : '.') + ' Inténtalo de nuevo en unos minutos.',
+    week_full: ({ count, max }) =>
+      `Ya tienes ${count} de ${max} papers de esta semana, así que no se buscaron más. ` +
+      'Si quieres rehacer la búsqueda, pulsa Fetch y elige reemplazarlos.',
   },
   en: {
     no_candidates: () => 'ArXiv returned no papers for last week with your categories and authors. Check Settings or wait until next week.',
@@ -34,6 +37,9 @@ const EMPTY_MESSAGES = {
     downloads_failed: ({ survivors, firstError }) =>
       `${survivors} paper${survivors > 1 ? 's' : ''} passed the filter but no PDF could be downloaded` +
       (firstError ? ` (${firstError}).` : '.') + ' Try again in a few minutes.',
+    week_full: ({ count, max }) =>
+      `You already have ${count} of ${max} papers for this week, so nothing more was fetched. ` +
+      'To redo the search, press Fetch and choose to replace them.',
   },
 }
 

@@ -1,9 +1,11 @@
 const fs = require('fs')
+const { resolveOcrConfig } = require('../ingestion/ocr-config')
 
 function registerLearningHandlers({ ipcMain, db, deps, mainWindow }) {
   const {
     createLLM, chatWithPaper, vault,
     rasterizePdf, transcribePdfToMarkdown, pdfParse, extractPagesText,
+    parsePdfWithLlamaParse, httpClient,
     OCR_MAX_CHARS = 200000,
   } = deps
 
@@ -56,10 +58,16 @@ function registerLearningHandlers({ ipcMain, db, deps, mainWindow }) {
     if (!paper) return { success: false, error: 'not-found' }
 
     const settings = db.getAllSettings()
-    const llm      = createLLM(settings)
+    // Motor de OCR elegido en la pestaña OCR. LlamaParse (gratis hasta 10k créditos/mes)
+    // no usa el modelo de visión del LLM, así que tampoco exige que lo tenga.
+    const ocr = resolveOcrConfig(settings)
+    const useLlamaParse = ocr.engine === 'llamaparse'
+    if (useLlamaParse && !ocr.llamaParse.apiKey) return { success: false, error: 'no-llamaparse-key' }
+
+    const llm = useLlamaParse ? null : createLLM(ocr.visionSettings)
     // Mismo guard que src/ipc/class.js para proveedores sin visión (DeepSeek):
     // degradar sin bloquear ni tocar el pdf_text existente.
-    if (!llm.transcribePageToMarkdown) return { success: false, error: 'no-vision' }
+    if (llm && !llm.transcribePageToMarkdown) return { success: false, error: 'no-vision' }
 
     const pdfFile = vault.pdfPath(paper)
     if (!pdfFile || !fs.existsSync(pdfFile)) return { success: false, error: 'no-pdf' }
@@ -67,10 +75,14 @@ function registerLearningHandlers({ ipcMain, db, deps, mainWindow }) {
 
     let result
     try {
-      result = await transcribePdfToMarkdown(buffer, {
-        rasterizePdf, llm, pdfParse, extractPagesText,
-        onProgress: (page, total) => mainWindow?.webContents.send('ocr-progress', { paperId, page, total }),
-      })
+      // Si LlamaParse falla NO se cae al OCR de visión: eso gastaría tokens del LLM
+      // sin que el usuario lo haya decidido. Se informa el error y se deja elegir.
+      result = useLlamaParse
+        ? { fallbackUsed: false, ...await parsePdfWithLlamaParse(buffer, { apiKey: ocr.llamaParse.apiKey, tier: ocr.llamaParse.tier, httpClient }) }
+        : await transcribePdfToMarkdown(buffer, {
+            rasterizePdf, llm, pdfParse, extractPagesText,
+            onProgress: (page, total) => mainWindow?.webContents.send('ocr-progress', { paperId, page, total }),
+          })
     } catch (err) {
       result = { success: false, error: err.message }
     }

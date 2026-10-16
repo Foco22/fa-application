@@ -3,7 +3,8 @@ const { contextBridge, ipcRenderer, webFrame } = require('electron')
 contextBridge.exposeInMainWorld('api', {
   getPapers:       ()         => ipcRenderer.invoke('get-papers'),
   getPaper:        (id)       => ipcRenderer.invoke('get-paper', id),
-  fetchPapers:     ()         => ipcRenderer.invoke('fetch-papers'),
+  fetchPapers:     (opts)     => ipcRenderer.invoke('fetch-papers', opts),
+  getWeekStatus:   ()         => ipcRenderer.invoke('get-week-status'),
   generateQuiz:    (id)       => ipcRenderer.invoke('generate-quiz', id),
   saveQuizResult:  (payload)  => ipcRenderer.invoke('save-quiz-result', payload),
   getQuizResults:  (paperId)  => ipcRenderer.invoke('get-quiz-results', paperId),
@@ -19,6 +20,7 @@ contextBridge.exposeInMainWorld('api', {
   onSummaryDone:   (cb) => ipcRenderer.on('summary-done',  () => cb()),
   onSummaryError:  (cb) => ipcRenderer.on('summary-error', (_e, msg) => cb(msg)),
   onNewPapers:     (cb) => ipcRenderer.on('new-papers',    (_e, n) => cb(n)),
+  onFetchProgress: (cb) => ipcRenderer.on('fetch-progress', (_e, p) => cb(p)),
 
   generateOcr:        (payload) => ipcRenderer.invoke('generate-ocr', payload),
   reloadOcrFromFile:  (id)      => ipcRenderer.invoke('reload-ocr-from-file', id),

@@ -7,6 +7,36 @@ function makePipeline(vector = [0.1, 0.2, 0.3]) {
   return vi.fn().mockResolvedValue({ data: Float32Array.from(vector) })
 }
 
+describe('createLocalEmbeddingProvider — generateEmbeddings (batch interface)', () => {
+  it('returns one vector per text, in the same order', async () => {
+    const pipeline = vi.fn()
+      .mockResolvedValueOnce({ data: Float32Array.from([1, 0]) })
+      .mockResolvedValueOnce({ data: Float32Array.from([0, 1]) })
+    const provider = createLocalEmbeddingProvider({}, pipeline)
+
+    const out = await provider.generateEmbeddings(['first', 'second'])
+
+    expect(out).toEqual([[1, 0], [0, 1]])
+  })
+
+  it('reports (done, total) after each text', async () => {
+    const provider = createLocalEmbeddingProvider({}, makePipeline())
+    const onProgress = vi.fn()
+
+    await provider.generateEmbeddings(['a', 'b'], onProgress)
+
+    expect(onProgress.mock.calls).toEqual([[1, 2], [2, 2]])
+  })
+
+  it('returns [] without loading the model for an empty list', async () => {
+    const loader = vi.fn()
+    const provider = createLocalEmbeddingProvider({}, null, loader)
+
+    expect(await provider.generateEmbeddings([])).toEqual([])
+    expect(loader).not.toHaveBeenCalled()
+  })
+})
+
 describe('createLocalEmbeddingProvider', () => {
   it('exposes generateEmbedding without needing an API key', () => {
     const provider = createLocalEmbeddingProvider({}, makePipeline())

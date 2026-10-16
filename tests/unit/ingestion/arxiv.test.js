@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { calculateDateWindow, buildQuery, parseFeed, fetchPapers, FETCH_PAGE_SIZE, FETCH_POOL_CAP, MAX_RETRIES } from '../../../src/ingestion/arxiv.js'
+import { calculateDateWindow, buildQuery, parseFeed, fetchPapers, FETCH_PAGE_SIZE, FETCH_POOL_CAP, MAX_RETRIES, PAGE_DELAY_MS, parseTotalResults } from '../../../src/ingestion/arxiv.js'
 
 // no-op sleep so retry tests don't wait on real backoff delays
 const fastSleep = () => Promise.resolve()
@@ -9,6 +9,17 @@ function httpError(status) {
   err.response = { status }
   return err
 }
+
+describe('parseTotalResults', () => {
+  it('reads the opensearch:totalResults announced by the feed', () => {
+    const xml = '<feed><opensearch:totalResults xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"> 4332 </opensearch:totalResults></feed>'
+    expect(parseTotalResults(xml)).toBe(4332)
+  })
+
+  it('returns null when the feed has no total', () => {
+    expect(parseTotalResults('<feed></feed>')).toBeNull()
+  })
+})
 
 // ─── fixture: minimal ArXiv Atom feed ────────────────────────────────────────
 
@@ -248,7 +259,7 @@ describe('fetchPapers', () => {
       .mockResolvedValueOnce({ data: makeFeed(FETCH_PAGE_SIZE, 0) })
       .mockResolvedValueOnce({ data: makeFeed(5, FETCH_PAGE_SIZE) })
     }
-    const papers = await fetchPapers({ categoryList: 'cs.AI', authorList: '' }, mockHttp, new Date('2025-06-16'))
+    const papers = await fetchPapers({ categoryList: 'cs.AI', authorList: '' }, mockHttp, new Date('2025-06-16'), fastSleep)
     expect(mockHttp.get).toHaveBeenCalledTimes(2)
     expect(papers).toHaveLength(FETCH_PAGE_SIZE + 5)
     const secondUrl = mockHttp.get.mock.calls[1][0]
@@ -260,9 +271,66 @@ describe('fetchPapers', () => {
       const start = parseInt(new URL(url).searchParams.get('start'), 10)
       return Promise.resolve({ data: makeFeed(FETCH_PAGE_SIZE, start) })
     }) }
-    const papers = await fetchPapers({ categoryList: 'cs.AI', authorList: '' }, mockHttp, new Date('2025-06-16'))
+    const papers = await fetchPapers({ categoryList: 'cs.AI', authorList: '' }, mockHttp, new Date('2025-06-16'), fastSleep)
     expect(papers).toHaveLength(FETCH_POOL_CAP)
     expect(mockHttp.get).toHaveBeenCalledTimes(FETCH_POOL_CAP / FETCH_PAGE_SIZE)
+  })
+
+  // Regresión: con un tope de 300 y orden por fecha descendente, una semana de
+  // ~4.300 papers (11 categorías) quedaba reducida al último día (fetch log
+  // 2026-09-08: "Candidatos: 300"). El tope debe cubrir una semana completa.
+  it('has a pool cap large enough to hold a full week for a broad category selection', () => {
+    expect(FETCH_POOL_CAP).toBeGreaterThanOrEqual(5000)
+  })
+
+  it('waits PAGE_DELAY_MS between pages (ArXiv asks for ~3s between requests), not before the first', async () => {
+    const sleepFn = vi.fn().mockResolvedValue()
+    const mockHttp = { get: vi.fn()
+      .mockResolvedValueOnce({ data: makeFeed(FETCH_PAGE_SIZE, 0) })
+      .mockResolvedValueOnce({ data: makeFeed(FETCH_PAGE_SIZE, FETCH_PAGE_SIZE) })
+      .mockResolvedValueOnce({ data: makeFeed(5, FETCH_PAGE_SIZE * 2) })
+    }
+    await fetchPapers({ categoryList: 'cs.AI', authorList: '' }, mockHttp, new Date('2025-06-16'), sleepFn)
+
+    expect(mockHttp.get).toHaveBeenCalledTimes(3)
+    expect(sleepFn.mock.calls.map(c => c[0])).toEqual([PAGE_DELAY_MS, PAGE_DELAY_MS])
+  })
+
+  // El feed de ArXiv trae opensearch:totalResults: con él la UI puede mostrar una
+  // barra determinada (páginas bajadas / total) en vez de un spinner sin fin.
+  it('reports progress after each page, with the total announced by the first page', async () => {
+    const withTotal = (xml, n) => xml.replace('</feed>', `<opensearch:totalResults xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">${n}</opensearch:totalResults></feed>`)
+    const mockHttp = { get: vi.fn()
+      .mockResolvedValueOnce({ data: withTotal(makeFeed(FETCH_PAGE_SIZE, 0), 205) })
+      .mockResolvedValueOnce({ data: withTotal(makeFeed(FETCH_PAGE_SIZE, FETCH_PAGE_SIZE), 205) })
+      .mockResolvedValueOnce({ data: withTotal(makeFeed(5, FETCH_PAGE_SIZE * 2), 205) })
+    }
+    const onProgress = vi.fn()
+
+    await fetchPapers({ categoryList: 'cs.AI', authorList: '' }, mockHttp, new Date('2025-06-16'), fastSleep, onProgress)
+
+    expect(onProgress.mock.calls.map(c => c[0])).toEqual([
+      { loaded: 100, total: 205 },
+      { loaded: 200, total: 205 },
+      { loaded: 205, total: 205 },
+    ])
+  })
+
+  it('reports total: null when the feed does not announce a total', async () => {
+    const mockHttp = { get: vi.fn().mockResolvedValue({ data: FEED_TWO }) }
+    const onProgress = vi.fn()
+
+    await fetchPapers({ categoryList: 'cs.AI', authorList: '' }, mockHttp, new Date('2025-06-16'), fastSleep, onProgress)
+
+    expect(onProgress).toHaveBeenCalledWith({ loaded: 2, total: null })
+  })
+
+  it('does not wait at all when everything fits in a single page', async () => {
+    const sleepFn = vi.fn().mockResolvedValue()
+    const mockHttp = { get: vi.fn().mockResolvedValue({ data: FEED_TWO }) }
+    await fetchPapers({ categoryList: 'cs.AI', authorList: '' }, mockHttp, new Date('2025-06-16'), sleepFn)
+
+    expect(sleepFn).not.toHaveBeenCalled()
   })
 
   it('returns { error } when the HTTP call throws', async () => {

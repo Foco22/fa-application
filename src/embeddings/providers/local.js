@@ -27,7 +27,7 @@ function createLocalEmbeddingProvider({ model = DEFAULT_LOCAL_MODEL, cacheDir = 
     return pending
   }
 
-  return {
+  const provider = {
     id: `local:${model}`,
     async generateEmbedding(text) {
       const extract = await getPipeline()
@@ -40,6 +40,19 @@ function createLocalEmbeddingProvider({ model = DEFAULT_LOCAL_MODEL, cacheDir = 
       return Array.from(output.data)
     },
   }
+
+  // Misma interfaz por lotes que OpenAI, pero sin ganancia de velocidad: el costo
+  // local es CPU, no latencia de red, así que se procesa texto por texto.
+  provider.generateEmbeddings = async (texts, onProgress = null) => {
+    const out = []
+    for (const text of texts) {
+      out.push(await provider.generateEmbedding(text))
+      if (onProgress) onProgress(out.length, texts.length)
+    }
+    return out
+  }
+
+  return provider
 }
 
 module.exports = { createLocalEmbeddingProvider, DEFAULT_LOCAL_MODEL }

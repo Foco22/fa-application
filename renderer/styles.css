@@ -1371,7 +1371,7 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
   display: flex;
   gap: 6px;
 }
-.provider-btn, .embedding-provider-btn {
+.provider-btn, .embedding-provider-btn, .ocr-engine-btn {
   flex: 1;
   padding: 7px 10px;
   border-radius: var(--r-sm);
@@ -1382,8 +1382,8 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
   cursor: pointer;
   transition: all .15s;
 }
-.provider-btn:hover, .embedding-provider-btn:hover { border-color: var(--accent); color: var(--text); }
-.provider-btn.active, .embedding-provider-btn.active {
+.provider-btn:hover, .embedding-provider-btn:hover, .ocr-engine-btn:hover { border-color: var(--accent); color: var(--text); }
+.provider-btn.active, .embedding-provider-btn.active, .ocr-engine-btn.active {
   background: var(--accent-dim);
   border-color: var(--accent);
   color: var(--accent);
@@ -1472,6 +1472,17 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
   display: flex; flex-direction: column; align-items: center; gap: 14px;
 }
 #fetch-overlay-text { color: var(--text-2); font-size: 14px; margin: 0; }
+.fetch-week-list { margin: 0 0 10px; padding-left: 18px; font-size: 13px; color: var(--text-2); max-height: 140px; overflow-y: auto; }
+.fetch-week-list li { margin: 3px 0; }
+.fetch-progress {
+  width: 320px; max-width: 80vw; height: 6px; border-radius: 3px;
+  background: rgba(255,255,255,0.15); overflow: hidden;
+}
+.fetch-progress-bar {
+  width: 0%; height: 100%; border-radius: 3px;
+  background: var(--accent); transition: width .25s ease-out;
+}
+.fetch-progress-label { color: var(--text-3); font-size: 12px; margin: 0; min-height: 1em; }
 
 /* ── Toast — Apple-style pill notification ───────────────────────────────── */
 #toast-container {

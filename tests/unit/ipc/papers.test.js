@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
-import { runFetch, selectCandidates } from '../../../src/ipc/papers.js'
+import { runFetch, selectCandidates, RERANK_CAP } from '../../../src/ipc/papers.js'
 import { scoreEmbeddingAgainst, hasEmbeddingConfig } from '../../../src/embeddings/index.js'
 import { extractKeywords, keywordOverlap } from '../../../src/ingestion/keywords.js'
 
@@ -32,7 +32,9 @@ function makeCtx(overrides = {}) {
   const db = {
     getAllSettings:    vi.fn().mockReturnValue({ ...SETTINGS, ...overrides.settings }),
     getReferencePapers: vi.fn().mockReturnValue([]),
+    getPapers:        vi.fn().mockReturnValue([]),
     savePaper:        vi.fn(),
+    deletePaper:      vi.fn(),
     ...overrides.db,
   }
 
@@ -394,7 +396,52 @@ describe('selectCandidates — rerank', () => {
     return Array.from({ length: n }, (_, i) => ({ ...PAPER, id: `p${i}`, abstract: `abstract ${i} about ai` }))
   }
 
-  it('sends every interest-filter survivor to the reranker, with no cap', async () => {
+  // Regresión: con el pool de una semana completa (~4.300 papers) sobrevivían ~2.000
+  // y el rerank (cada uno × ~10 queries, en el proceso principal) dejaba la app
+  // colgada. Solo los mejores por similitud entran al cross-encoder.
+  it('sends only the top RERANK_CAP survivors (by similarity) to the reranker and logs the rest as rerank_cap', async () => {
+    const candidates = Array.from({ length: RERANK_CAP + 30 }, (_, i) => ({ ...PAPER, id: `p${i}`, abstract: `abstract ${i}` }))
+    const db = { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[1,0]', snippet: '', abstract_summary: 'profile' }]) }
+    const rerankSpy = vi.fn().mockImplementation(async (_q, docs) => docs.map((_, index) => ({ index, score: 1 })))
+    const deps = {
+      scoreEmbeddingAgainst,
+      embedKeywordList: vi.fn().mockResolvedValue([]),
+      extractKeywords, keywordOverlap,
+      createReranker: vi.fn().mockReturnValue({ rerank: rerankSpy }),
+    }
+    // candidate i embeds to [1, i/1000]: similarity to the reference [1,0] falls as i grows
+    const embProvider = {
+      generateEmbeddings: vi.fn().mockImplementation(async texts => texts.map((_, i) => [1, i / 1000])),
+    }
+
+    const { survivors, report } = await selectCandidates(candidates, {
+      db, deps, settings: { ...SETTINGS }, embProvider, similarityThreshold: 0.6,
+    })
+
+    expect(rerankSpy.mock.calls[0][1]).toEqual(candidates.slice(0, RERANK_CAP).map(c => c.abstract))
+    expect(survivors).toHaveLength(RERANK_CAP)
+    const capped = report.filter(e => e.stage === 'rerank_cap')
+    expect(capped).toHaveLength(30)
+    expect(capped[0]).toMatchObject({ decision: 'rejected' })
+    expect(capped.map(e => e.id)).toEqual(candidates.slice(RERANK_CAP).map(c => c.id))
+  })
+
+  it('does not cap anything when there are fewer survivors than RERANK_CAP', async () => {
+    const candidates = Array.from({ length: 5 }, (_, i) => ({ ...PAPER, id: `p${i}`, abstract: `abstract ${i}` }))
+    const db = { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[1,0]', snippet: '', abstract_summary: 'profile' }]) }
+    const deps = {
+      scoreEmbeddingAgainst, embedKeywordList: vi.fn().mockResolvedValue([]), extractKeywords, keywordOverlap,
+      createReranker: vi.fn().mockReturnValue({ rerank: async (_q, docs) => docs.map((_, index) => ({ index, score: 1 })) }),
+    }
+    const embProvider = { generateEmbedding: vi.fn().mockResolvedValue([1, 0]) }
+
+    const { survivors, report } = await selectCandidates(candidates, { db, deps, settings: { ...SETTINGS }, embProvider, similarityThreshold: 0.6 })
+
+    expect(survivors).toHaveLength(5)
+    expect(report.some(e => e.stage === 'rerank_cap')).toBe(false)
+  })
+
+  it('sends the interest-filter survivors to the reranker', async () => {
     const candidates = makeCandidates(30)
     const db = { getReferencePapers: vi.fn().mockReturnValue([{ embedding: '[1,0]', snippet: '', abstract_summary: 'profile' }]) }
     const rerankSpy = vi.fn().mockImplementation(async (_q, docs) => docs.map((_, index) => ({ index, score: 1 })))
@@ -411,6 +458,33 @@ describe('selectCandidates — rerank', () => {
 
     expect(rerankSpy).toHaveBeenCalledOnce()
     expect(rerankSpy.mock.calls[0][1]).toHaveLength(30)
+  })
+
+  it('embeds all candidate abstracts through the provider batch method, not one call per paper', async () => {
+    const candidates = makeCandidates(40)
+    const db = { getReferencePapers: vi.fn().mockReturnValue([
+      { embedding: '[1,0]', snippet: '', abstract_summary: 'profile', embedding_model: 'openai:text-embedding-3-small' },
+    ]) }
+    const deps = {
+      scoreEmbeddingAgainst,
+      embedKeywordList: vi.fn().mockResolvedValue([]),
+      extractKeywords, keywordOverlap,
+      createReranker: vi.fn().mockReturnValue({
+        rerank: vi.fn().mockImplementation(async (_q, docs) => docs.map((_, index) => ({ index, score: 1 }))),
+      }),
+    }
+    const embProvider = {
+      id: 'openai:text-embedding-3-small',
+      generateEmbedding: vi.fn(),
+      generateEmbeddings: vi.fn().mockImplementation(async texts => texts.map(() => [1, 0])),
+    }
+
+    const { survivors } = await selectCandidates(candidates, { db, deps, settings: { ...SETTINGS }, embProvider, similarityThreshold: 0.6 })
+
+    expect(embProvider.generateEmbeddings).toHaveBeenCalledOnce()
+    expect(embProvider.generateEmbeddings.mock.calls[0][0]).toEqual(candidates.map(c => c.abstract))
+    expect(embProvider.generateEmbedding).not.toHaveBeenCalled()
+    expect(survivors).toHaveLength(40)
   })
 
   // Regresión: una sola query con todos los resúmenes + keywords desbordaba el
@@ -696,6 +770,114 @@ describe('runFetch — paper status', () => {
   })
 })
 
+// ─── regla: nunca más de maxPapers por SEMANA ─────────────────────────────────
+// maxPapers es un tope semanal, no por ejecución: ejecutar el fetch varias veces
+// en la misma semana iba acumulando papers.
+
+describe('runFetch — weekly quota', () => {
+  const stampNow = () => new Date().toISOString().slice(0, 19).replace('T', ' ')
+  const thisWeek = (id, extra = {}) => ({ id, title: `T ${id}`, created_at: stampNow(), summary: null, quiz: null, notes: null, ...extra })
+  const manyPapers = (n) => Array.from({ length: n }, (_, i) => ({ ...PAPER, id: `new${i}` }))
+
+  it('only fills the slots that are still free this week', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { maxPapers: '3' },
+      db:       { getPapers: vi.fn().mockReturnValue([thisWeek('old1')]) },
+      deps:     { fetchPapers: vi.fn().mockResolvedValue(manyPapers(5)) },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(db.savePaper).toHaveBeenCalledTimes(2)
+    expect(db.deletePaper).not.toHaveBeenCalled()
+  })
+
+  it('does not even query ArXiv when the week is already full, and explains why', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { maxPapers: '3' },
+      db:       { getPapers: vi.fn().mockReturnValue([thisWeek('a'), thisWeek('b'), thisWeek('c')]) },
+    })
+
+    const result = await runFetch({ db, deps, mainWindow })
+
+    expect(deps.fetchPapers).not.toHaveBeenCalled()
+    expect(db.savePaper).not.toHaveBeenCalled()
+    expect(result.saved).toEqual([])
+    expect(result.empty).toMatchObject({ code: 'week_full', count: 3, max: 3 })
+    expect(typeof result.empty.message).toBe('string')
+  })
+
+  it('ignores reference papers and papers from earlier weeks when counting', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { maxPapers: '1' },
+      db: { getPapers: vi.fn().mockReturnValue([
+        thisWeek('ref-attention'),
+        thisWeek('2001.00001', { created_at: '2000-01-01 00:00:00' }),
+      ]) },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(db.savePaper).toHaveBeenCalledTimes(1)
+  })
+
+  describe('replaceWeek', () => {
+    it('uses the full quota again and deletes the previous papers of the week once the new ones are saved', async () => {
+      const olds = [thisWeek('oldA'), thisWeek('oldB'), thisWeek('oldC')]
+      const { db, deps, mainWindow } = makeCtx({
+        settings: { maxPapers: '3' },
+        db:       { getPapers: vi.fn().mockReturnValue(olds) },
+        deps:     { fetchPapers: vi.fn().mockResolvedValue(manyPapers(5)) },
+      })
+
+      const result = await runFetch({ db, deps, mainWindow, replaceWeek: true })
+
+      expect(result).toHaveLength(3)
+      expect(db.deletePaper.mock.calls.map(c => c[0]).sort()).toEqual(['oldA', 'oldB', 'oldC'])
+      expect(deps.vault.deletePaperDir).toHaveBeenCalledTimes(3)
+    })
+
+    it('keeps the previous papers when the new run saves nothing (never leave the week empty)', async () => {
+      const { db, deps, mainWindow } = makeCtx({
+        settings: { maxPapers: '3' },
+        db:       { getPapers: vi.fn().mockReturnValue([thisWeek('oldA')]) },
+        deps:     { downloadPdf: vi.fn().mockResolvedValue({ success: false, error: 'timeout' }) },
+      })
+
+      await runFetch({ db, deps, mainWindow, replaceWeek: true })
+
+      expect(db.deletePaper).not.toHaveBeenCalled()
+      expect(deps.vault.deletePaperDir).not.toHaveBeenCalled()
+    })
+
+    it('does not delete a previous paper that was selected again (it would erase the new copy)', async () => {
+      const { db, deps, mainWindow } = makeCtx({
+        settings: { maxPapers: '3' },
+        db: { getPapers: vi.fn().mockReturnValue([thisWeek(PAPER.id), thisWeek('oldB')]) },
+        deps: { fetchPapers: vi.fn().mockResolvedValue([{ ...PAPER }]) },
+      })
+
+      await runFetch({ db, deps, mainWindow, replaceWeek: true })
+
+      expect(db.deletePaper.mock.calls.map(c => c[0])).toEqual(['oldB'])
+    })
+
+    it('never deletes reference papers or papers from earlier weeks', async () => {
+      const { db, deps, mainWindow } = makeCtx({
+        settings: { maxPapers: '3' },
+        db: { getPapers: vi.fn().mockReturnValue([
+          thisWeek('ref-attention'),
+          thisWeek('2001.00001', { created_at: '2000-01-01 00:00:00' }),
+        ]) },
+      })
+
+      await runFetch({ db, deps, mainWindow, replaceWeek: true })
+
+      expect(db.deletePaper).not.toHaveBeenCalled()
+    })
+  })
+})
+
 // ─── limits & notifications ───────────────────────────────────────────────────
 
 describe('runFetch — limits and notifications', () => {
@@ -832,7 +1014,73 @@ describe('runFetch — limits and notifications', () => {
 
     await runFetch({ db, deps, mainWindow })
 
-    expect(mainWindow.webContents.send).not.toHaveBeenCalled()
+    expect(mainWindow.webContents.send).not.toHaveBeenCalledWith('new-papers', expect.anything())
+  })
+
+  // La barra de progreso del botón Fetch: runFetch emite 'fetch-progress' por etapa.
+  describe('fetch-progress events', () => {
+    const progressEvents = (mainWindow) =>
+      mainWindow.webContents.send.mock.calls.filter(c => c[0] === 'fetch-progress').map(c => c[1])
+
+    function ctxWithAllStages() {
+      return makeCtx({
+        settings: { maxPapers: '1', similarityThreshold: '0.5' },
+        db: { getReferencePapers: vi.fn().mockReturnValue([
+          { embedding: '[1,0]', snippet: '', abstract_summary: 'A summary.', embedding_model: 'openai:text-embedding-3-small' },
+        ]) },
+        deps: {
+          fetchPapers: vi.fn().mockImplementation(async (_s, _h, _d, _sl, onProgress) => {
+            onProgress({ loaded: 1, total: 1 })
+            return [{ ...PAPER }]
+          }),
+          createEmbeddings: vi.fn().mockReturnValue({
+            id: 'openai:text-embedding-3-small',
+            generateEmbedding: vi.fn().mockResolvedValue([1, 0]),
+          }),
+        },
+      })
+    }
+
+    it('reports the stages in pipeline order: arxiv → embedding → rerank → saving', async () => {
+      const { db, deps, mainWindow } = ctxWithAllStages()
+
+      await runFetch({ db, deps, mainWindow })
+
+      const stages = progressEvents(mainWindow).map(e => e.stage)
+      expect([...new Set(stages)]).toEqual(['arxiv', 'embedding', 'rerank', 'saving'])
+    })
+
+    it('bookends every stage with a start and an end event so the bar never stalls', async () => {
+      const { db, deps, mainWindow } = ctxWithAllStages()
+
+      await runFetch({ db, deps, mainWindow })
+
+      const events = progressEvents(mainWindow)
+      for (const stage of ['embedding', 'rerank', 'saving']) {
+        const of = events.filter(e => e.stage === stage)
+        expect(of[0].current).toBe(0)
+        expect(of[of.length - 1].current).toBe(of[of.length - 1].total)
+      }
+    })
+
+    it('counts saved papers against maxPapers in the saving stage', async () => {
+      const papers = Array.from({ length: 3 }, (_, i) => ({ ...PAPER, id: `p${i}` }))
+      const { db, deps, mainWindow } = makeCtx({
+        settings: { maxPapers: '2' },
+        deps: { fetchPapers: vi.fn().mockResolvedValue(papers) },
+      })
+
+      await runFetch({ db, deps, mainWindow })
+
+      const saving = progressEvents(mainWindow).filter(e => e.stage === 'saving')
+      expect(saving[saving.length - 1]).toEqual({ stage: 'saving', current: 2, total: 2 })
+    })
+
+    it('still works when there is no window (scheduler without UI)', async () => {
+      const { db, deps } = makeCtx()
+
+      await expect(runFetch({ db, deps, mainWindow: null })).resolves.toBeDefined()
+    })
   })
 
   it('returns the list of saved papers', async () => {

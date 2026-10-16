@@ -14,6 +14,7 @@ const { fetchPapers, getAffiliations, matchesUniversityList, downloadPdf, extrac
 const { extractPagesText, OCR_MAX_CHARS } = require('./src/ingestion/extractor')
 const { createRasterizer } = require('./src/ingestion/rasterizer')
 const { transcribePdfToMarkdown } = require('./src/ingestion/ocr')
+const { parsePdfWithLlamaParse } = require('./src/ingestion/llamaparse')
 const { createLLM } = require('./src/llm')
 const { chatWithPaper }               = require('./src/chat')
 const { createScheduler }     = require('./src/scheduler')
@@ -161,7 +162,7 @@ app.whenReady().then(() => {
       shell, dialog,
       httpClient: axios, pdfParse, pdfsDir: PDFS_DIR, vault,
       // OCR bajo demanda (IPC generate-ocr / reload-ocr-from-file en learning.js)
-      rasterizePdf, transcribePdfToMarkdown, extractPagesText, OCR_MAX_CHARS,
+      rasterizePdf, transcribePdfToMarkdown, parsePdfWithLlamaParse, extractPagesText, OCR_MAX_CHARS,
       writeFetchLog: (report) => fetchLogMod.writeFetchLog(VAULT_DIR, report)
     }
   })

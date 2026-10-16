@@ -81,9 +81,13 @@ export const STATUS_KEYS = {
 export const TABS = ['pdf', 'abstract', 'resumen', 'notas', 'quiz', 'ocr']
 
 export const LLM_PROVIDERS = {
-  openai:    { label: 'OpenAI API Key',    placeholder: 'sk-...',   models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o3-mini'] },
-  anthropic: { label: 'Anthropic API Key', placeholder: 'sk-ant-...', models: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'] },
-  deepseek:  { label: 'DeepSeek API Key',  placeholder: 'sk-...',   models: ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner'] },
+  // visionModels: los que pueden leer imágenes — son los que ofrece la pestaña OCR.
+  openai:    { label: 'OpenAI API Key',    placeholder: 'sk-...',   models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o3-mini'],
+               visionModels: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'] },
+  anthropic: { label: 'Anthropic API Key', placeholder: 'sk-ant-...', models: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
+               visionModels: ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'] },
+  deepseek:  { label: 'DeepSeek API Key',  placeholder: 'sk-...',   models: ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner'],
+               visionModels: [] },
 }
 
 // `local` corre con Transformers.js dentro de la app: descarga el modelo la

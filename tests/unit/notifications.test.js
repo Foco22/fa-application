@@ -48,6 +48,15 @@ describe('emptyFetchMessage', () => {
     expect(msg).toContain('timeout')
   })
 
+  it('explica que la semana ya tiene el máximo de papers y que no se buscó más', () => {
+    const out = { code: 'week_full', count: 3, max: 3 }
+
+    const es = emptyFetchMessage(out, 'es')
+    expect(es).toContain('3')
+    expect(es).toMatch(/esta semana/)
+    expect(emptyFetchMessage(out, 'en')).toMatch(/this week/)
+  })
+
   it('cae a español si el idioma es desconocido', () => {
     expect(emptyFetchMessage({ code: 'no_candidates', candidates: 0 })).toMatch(/ArXiv no devolvió/)
   })
