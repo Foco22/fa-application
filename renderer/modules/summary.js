@@ -2,6 +2,7 @@ import { state } from './state.js'
 import { toast } from './toast.js'
 import { parseSummary, renderMarkdown } from '../summary-utils.js'
 import { t } from './language.js'
+import { needsOcr } from './ocr-gate.js'
 
 export function renderSummaryCards(text) {
   const sections = parseSummary(text)
@@ -32,6 +33,7 @@ export function renderSummarySection(p) {
 
 export async function startSummary() {
   if (!state.activePaper) return
+  if (needsOcr(state.activePaper)) { toast(t('ocr-requerido'), 'error'); return }
   const btn    = document.getElementById('btn-summary')
   const stream = document.getElementById('pv-summary-stream')
   const cards  = document.getElementById('pv-summary-cards')
@@ -69,5 +71,12 @@ export async function startSummary() {
     toast(t('error-al-generar-resumen') + msg, 'error')
   })
 
-  await window.api.startSummary(state.activePaper.id)
+  const result = await window.api.startSummary(state.activePaper.id)
+  // Red de seguridad: el proceso principal también exige OCR (p. ej. si el paper cambió).
+  if (result?.error === 'ocr-required') {
+    stream.classList.add('hidden')
+    btn.disabled = false
+    btn.textContent = t('generar')
+    toast(t('ocr-requerido'), 'error')
+  }
 }

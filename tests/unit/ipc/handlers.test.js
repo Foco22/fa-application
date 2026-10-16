@@ -20,7 +20,7 @@ const PAPER = {
   id: '2401.00001', title: 'Test Paper', authors: 'Alice',
   abstract: 'Abstract.', pdf_url: 'https://arxiv.org/pdf/2401.00001',
   published_date: '2024-01-09', affiliations: '[]',
-  pdf_text: null, summary: null, quiz: null, pdf_error: null, status: 'new'
+  pdf_text: null, pdf_text_source: 'ocr', summary: null, quiz: null, pdf_error: null, status: 'new'
 }
 
 const SETTINGS = {

@@ -14,7 +14,10 @@ describe('fetchProgressView', () => {
     expect(at('rerank', 0, 100)).toBe(70)
     expect(at('rerank', 100, 100)).toBe(90)
     expect(at('saving', 0, 3)).toBe(90)
-    expect(at('saving', 3, 3)).toBe(100)
+    expect(at('saving', 3, 3)).toBe(95)
+    // El OCR de los papers recién guardados cierra la barra.
+    expect(at('ocr', 0, 3)).toBe(95)
+    expect(at('ocr', 3, 3)).toBe(100)
   })
 
   it('interpolates inside a stage', () => {
@@ -36,8 +39,9 @@ describe('fetchProgressView', () => {
   })
 
   it('clamps out-of-range counts instead of overflowing the bar', () => {
-    expect(fetchProgressView({ stage: 'saving', current: 9, total: 3 }, t).percent).toBe(100)
+    expect(fetchProgressView({ stage: 'saving', current: 9, total: 3 }, t).percent).toBe(95)
     expect(fetchProgressView({ stage: 'saving', current: -1, total: 3 }, t).percent).toBe(90)
+    expect(fetchProgressView({ stage: 'ocr', current: 9, total: 3 }, t).percent).toBe(100)
   })
 
   it('returns null for an unknown stage', () => {

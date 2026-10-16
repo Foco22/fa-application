@@ -74,7 +74,11 @@ function makeCtx(overrides = {}) {
       ensureDirs: vi.fn(),
       pdfPath:    vi.fn().mockReturnValue('/vault/2401.00001/raw/2401.00001.pdf'),
       deletePaperDir: vi.fn(),
+      writeOcr:   vi.fn(),
     },
+    transcribePdfToMarkdown: vi.fn().mockResolvedValue({ success: true, markdown: '# vision OCR', pageCount: 2, fallbackUsed: false }),
+    parsePdfWithLlamaParse:  vi.fn().mockResolvedValue({ success: true, markdown: '# LlamaParse OCR', pageCount: 3 }),
+    rasterizePdf: vi.fn(), extractPagesText: vi.fn(), OCR_MAX_CHARS: 200000,
     writeFetchLog: vi.fn(),
     ...overrides.deps,
   }
@@ -1230,25 +1234,124 @@ describe('runFetch — fetch log', () => {
   })
 })
 
-// ─── OCR-002: el fetch NUNCA dispara OCR ────────────────────────────────────────
+// ─── OCR automático de los papers recién guardados ────────────────────────────
+// Resumen, quiz, clase y chat exigen OCR, así que el fetch lo corre solo sobre los
+// papers que acaba de guardar (antes era una acción manual: regla OCR-002, ya derogada).
 
-describe('runFetch — never triggers OCR (OCR-002)', () => {
-  it('does not call transcribePageToMarkdown on any candidate', async () => {
-    const transcribePageToMarkdown = vi.fn()
-    const { db, deps, mainWindow } = makeCtx({
-      llm: { extractAffiliationsWithAI: vi.fn().mockResolvedValue(['MIT']), transcribePageToMarkdown },
-    })
+describe('runFetch — OCR automático de los papers guardados', () => {
+  const llamaParseSettings = { ocrEngine: 'llamaparse', llamaParseApiKey: 'llx-test' }
+  const manyPapers = (n) => Array.from({ length: n }, (_, i) => ({ ...PAPER, id: `new${i}` }))
 
-    await runFetch({ db, deps, mainWindow })
-
-    expect(transcribePageToMarkdown).not.toHaveBeenCalled()
-  })
-
-  it('saves ingested papers with pdf_text_source = "pdf-parse"', async () => {
+  it('saves ingested papers first with the basic text (pdf-parse)', async () => {
     const { db, deps, mainWindow } = makeCtx()
 
     await runFetch({ db, deps, mainWindow })
 
     expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ pdf_text_source: 'pdf-parse' }))
+  })
+
+  it('runs OCR on every saved paper and stores the OCR text as the paper text', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { ...llamaParseSettings, maxPapers: '3' },
+      deps: { fetchPapers: vi.fn().mockResolvedValue(manyPapers(2)) },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(deps.parsePdfWithLlamaParse).toHaveBeenCalledTimes(2)
+    expect(deps.parsePdfWithLlamaParse.mock.calls[0][0]).toBeInstanceOf(Buffer)
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ id: 'new0', pdf_text: '# LlamaParse OCR', pdf_text_source: 'ocr' }))
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ id: 'new1', pdf_text: '# LlamaParse OCR', pdf_text_source: 'ocr' }))
+    expect(deps.vault.writeOcr).toHaveBeenCalledTimes(2)
+  })
+
+  it('returns the papers with their OCR text, so the UI sees them as ready', async () => {
+    const { db, deps, mainWindow } = makeCtx({ settings: llamaParseSettings })
+
+    const result = await runFetch({ db, deps, mainWindow })
+
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ pdf_text: '# LlamaParse OCR', pdf_text_source: 'ocr' })
+  })
+
+  it('uses the vision model when that is the chosen engine', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { ocrEngine: 'vision' },
+      llm: { extractAffiliationsWithAI: vi.fn().mockResolvedValue(['MIT']), transcribePageToMarkdown: vi.fn() },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(deps.transcribePdfToMarkdown).toHaveBeenCalledOnce()
+    expect(deps.parsePdfWithLlamaParse).not.toHaveBeenCalled()
+  })
+
+  it('a failed OCR does not fail the fetch: the paper stays saved with the basic text and the error recorded', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: llamaParseSettings,
+      deps: { parsePdfWithLlamaParse: vi.fn().mockResolvedValue({ success: false, error: 'LlamaParse: sin créditos' }) },
+    })
+
+    const result = await runFetch({ db, deps, mainWindow })
+
+    expect(Array.isArray(result)).toBe(true)
+    expect(result).toHaveLength(1)
+    expect(result[0].pdf_text_source).toBe('pdf-parse')
+    expect(db.savePaper).toHaveBeenCalledWith(expect.objectContaining({ ocr_error: 'LlamaParse: sin créditos' }))
+  })
+
+  it('when OCR is impossible (provider without vision) the fetch still succeeds untouched', async () => {
+    const { db, deps, mainWindow } = makeCtx() // el LLM por defecto no tiene visión
+
+    const result = await runFetch({ db, deps, mainWindow })
+
+    expect(result).toHaveLength(1)
+    expect(deps.transcribePdfToMarkdown).not.toHaveBeenCalled()
+    expect(deps.parsePdfWithLlamaParse).not.toHaveBeenCalled()
+    expect(result[0].pdf_text_source).toBe('pdf-parse')
+  })
+
+  it('one failing OCR does not stop the next papers', async () => {
+    const parse = vi.fn()
+      .mockResolvedValueOnce({ success: false, error: 'timeout' })
+      .mockResolvedValue({ success: true, markdown: '# ok', pageCount: 1 })
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { ...llamaParseSettings, maxPapers: '3' },
+      deps: { fetchPapers: vi.fn().mockResolvedValue(manyPapers(2)), parsePdfWithLlamaParse: parse },
+    })
+
+    const result = await runFetch({ db, deps, mainWindow })
+
+    expect(result.map(p => p.pdf_text_source)).toEqual(['pdf-parse', 'ocr'])
+  })
+
+  it('does not OCR papers that were not saved', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: llamaParseSettings,
+      deps: { downloadPdf: vi.fn().mockResolvedValue({ success: false, error: 'timeout' }) },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(deps.parsePdfWithLlamaParse).not.toHaveBeenCalled()
+  })
+
+  it('reports an ocr progress stage, started at 0 and ended at the number of papers', async () => {
+    const { db, deps, mainWindow } = makeCtx({ settings: llamaParseSettings })
+
+    await runFetch({ db, deps, mainWindow })
+
+    const ocr = mainWindow.webContents.send.mock.calls.filter(c => c[0] === 'fetch-progress' && c[1].stage === 'ocr').map(c => c[1])
+    expect(ocr[0]).toEqual({ stage: 'ocr', current: 0, total: 1 })
+    expect(ocr[ocr.length - 1]).toEqual({ stage: 'ocr', current: 1, total: 1 })
+  })
+
+  it('notes the OCR outcome in the fetch log', async () => {
+    const { db, deps, mainWindow } = makeCtx({ settings: llamaParseSettings })
+
+    await runFetch({ db, deps, mainWindow })
+
+    const report = deps.writeFetchLog.mock.calls[0][0]
+    expect(report.entries[0].reason).toMatch(/OCR/)
   })
 })

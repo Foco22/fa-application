@@ -5,8 +5,9 @@
 // página es una llamada independiente a la API, así que no hay razón para
 // esperarlas una por una — en un paper de 20 páginas eso es 20x la latencia
 // de una sola llamada). El resultado se concatena en orden de página, no en
-// orden de finalización. NO lo llaman runFetch / index-files /
-// indexReferenceFolder: es una acción explícita del usuario (IPC generate-ocr).
+// orden de finalización. Lo disparan el botón OCR (IPC generate-ocr) y
+// el fetch semanal sobre los papers que acaba de guardar (vía ingestion/ocr-runner);
+// index-files / indexReferenceFolder NO lo llaman.
 //
 // Garantías de diseño (§4 del PRD):
 //  - Fallo por página NO aborta la corrida: cae al texto de pdf-parse de esa

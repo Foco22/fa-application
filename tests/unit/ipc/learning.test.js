@@ -19,13 +19,92 @@ const EVENT = {}
 
 const PAPER = {
   id: '2401.00001', title: 'Test Paper', authors: 'Alice',
-  abstract: 'Abstract.', pdf_text: 'Full text.',
+  abstract: 'Abstract.', pdf_text: 'Full text.', pdf_text_source: 'ocr',
   summary: null, quiz: null,
 }
 
 const SETTINGS = { apiKey: 'sk-test' }
 
 // ─── chat-message ─────────────────────────────────────────────────────────────
+
+// OCR obligatorio: resumen, quiz y chat con el paper solo corren sobre el texto del
+// OCR. El backend lo impone aunque la interfaz falle en avisar.
+describe('OCR obligatorio (learning handlers)', () => {
+  const BASIC = { ...PAPER, pdf_text_source: 'pdf-parse' }
+
+  function setup(paper) {
+    const { ipcMain, invoke } = makeIpcMain()
+    const mainWindow = { webContents: { send: vi.fn() } }
+    const db = {
+      getAllSettings: vi.fn().mockReturnValue(SETTINGS),
+      getPaper:      vi.fn().mockReturnValue(paper),
+      savePaper:     vi.fn(),
+    }
+    const llm  = { generateQuiz: vi.fn(), streamSummary: vi.fn() }
+    const deps = {
+      createLLM:     vi.fn().mockReturnValue(llm),
+      chatWithPaper: vi.fn().mockResolvedValue('respuesta'),
+      vault:         { writeQuiz: vi.fn(), writeSummary: vi.fn() },
+    }
+    registerLearningHandlers({ ipcMain, db, deps, mainWindow })
+    return { invoke, db, deps, llm, mainWindow }
+  }
+
+  it('generate-quiz refuses a paper without OCR and spends no tokens', async () => {
+    const { invoke, db, deps, llm } = setup(BASIC)
+
+    const result = await invoke('generate-quiz', '2401.00001')
+
+    expect(result).toEqual({ error: 'ocr-required' })
+    expect(llm.generateQuiz).not.toHaveBeenCalled()
+    expect(deps.createLLM).not.toHaveBeenCalled()
+    expect(db.savePaper).not.toHaveBeenCalled()
+  })
+
+  it('start-summary refuses a paper without OCR and spends no tokens', async () => {
+    const { invoke, db, llm, mainWindow } = setup(BASIC)
+
+    const result = await invoke('start-summary', '2401.00001')
+
+    expect(result).toEqual({ error: 'ocr-required' })
+    expect(llm.streamSummary).not.toHaveBeenCalled()
+    expect(db.savePaper).not.toHaveBeenCalled()
+    expect(mainWindow.webContents.send).not.toHaveBeenCalled()
+  })
+
+  it('chat-message about a paper without OCR is refused', async () => {
+    const { invoke, deps } = setup(BASIC)
+
+    const result = await invoke('chat-message', { message: 'hola', paperId: '2401.00001', history: [] })
+
+    expect(result).toEqual({ error: 'ocr-required' })
+    expect(deps.chatWithPaper).not.toHaveBeenCalled()
+  })
+
+  it('chat-message without a paper (general research questions) is NOT gated', async () => {
+    const { invoke, deps } = setup(null)
+
+    const result = await invoke('chat-message', { message: 'hola', paperId: null, history: [] })
+
+    expect(result).toBe('respuesta')
+    expect(deps.chatWithPaper).toHaveBeenCalledOnce()
+  })
+
+  it('treats a paper saved before the OCR feature (null source) as not having OCR', async () => {
+    const { invoke } = setup({ ...PAPER, pdf_text_source: null })
+
+    expect(await invoke('generate-quiz', '2401.00001')).toEqual({ error: 'ocr-required' })
+  })
+
+  it('runs normally once the paper has OCR', async () => {
+    const { invoke, llm } = setup(PAPER)
+    llm.generateQuiz.mockResolvedValue({ questions: [] })
+
+    const result = await invoke('generate-quiz', '2401.00001')
+
+    expect(result).toEqual({ questions: [] })
+  })
+})
 
 describe('chat-message', () => {
   it('creates LLM from settings and calls chatWithPaper', async () => {
