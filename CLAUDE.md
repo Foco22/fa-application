@@ -703,6 +703,24 @@ Los handlers están organizados en 4 archivos de dominio bajo `src/ipc/`. Todos 
 | `delete-reference` | Elimina un paper de referencia del índice y la DB |
 | `rename-reference` | Cambia el título de un paper de referencia |
 
+### Graph (`src/ipc/graph.js`)
+| Channel | Descripción |
+|---|---|
+| `get-graph` | `{ k, minSimilarity, center }` → `{ nodes, edges, model, stale, missing, metrics }`. Embebe y guarda (tabla `paper_embeddings`) los papers semanales que aún no tienen vector |
+
+---
+
+## Graph
+
+Pestaña de la barra lateral (`act-graph`). **Nodos = referencias indexadas + papers guardados de las semanas**, nada más (el pool de ArXiv nunca entra al grafo). **Aristas = cercanía de los abstracts** (coseno entre embeddings).
+
+- **`src/graph/build.js`** (puro): `centerVectors` (resta el vector medio — los abstracts de un mismo campo son casi paralelos y el coseno crudo satura), `similarityMatrix`, `topKEdges` (cada nodo elige sus k vecinos → nadie queda aislado; `mutual` marca los que ambos extremos eligieron), `buildGraph`. Sólo compara vectores del mismo `embedding_model`; el resto sale en `stale`. Cada arista lleva `weight` (centrado, para ordenar/dibujar) y `cosine` (crudo, el que se muestra).
+- **`src/graph/metrics.js`** (puro): validez (`precisionAtK`, `separation`/AUC por etiqueta — hoy sin etiquetas porque la categoría ArXiv no se guarda), estructura (`structureMetrics`: aislados, componente gigante, hubs, reciprocidad), comunidades (`detectCommunities` = Louvain determinista, `modularity`), estabilidad (`edgeJaccard`, `adjustedRandIndex`, `neighborOverlap`, `kStability`) y `evaluateGraph`.
+- **`src/graph/labels.js`** (puro): nombra cada comunidad con los términos más distintivos de sus abstracts (tipo TF-IDF, sin IA); `get-graph` los devuelve en `communities` y la leyenda del panel los muestra (click = resaltar esa comunidad).
+- **`renderer/modules/graph-quality.js`** traduce las métricas a ok/warn con umbrales de partida (`THRESHOLDS`); con menos de `MIN_NODES` no juzga. **`graph-layout.js`** es el layout de fuerzas (determinista, sin dependencias); **`graph.js`** dibuja en `<canvas>` (pan/zoom/arrastre, tooltip, click abre el paper, doble click abre el PDF de una referencia).
+- Los embeddings de los papers semanales van en la tabla aparte `paper_embeddings(paper_id, embedding, model)`, **no** en `papers`: así `SELECT * FROM papers` no manda ~30 KB de floats por paper al renderer.
+- El slider "ocultar conexiones débiles" es un **percentil** de las aristas, no un umbral absoluto: el rango de similitudes cambia según el modelo (MiniLM vs OpenAI) y el centrado.
+
 ---
 
 ## Prompts para Claude

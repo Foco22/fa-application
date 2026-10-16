@@ -5,6 +5,7 @@ const { registerReferenceHandlers } = require('./reference')
 const { registerClassHandlers } = require('./class')
 const { registerLearningStatsHandlers } = require('./learning-stats')
 const { registerCostsHandlers } = require('./costs')
+const { registerGraphHandlers } = require('./graph')
 
 function registerHandlers({ ipcMain, db, deps, mainWindow }) {
   registerSettingsHandlers({ ipcMain, db, deps })
@@ -14,6 +15,7 @@ function registerHandlers({ ipcMain, db, deps, mainWindow }) {
   registerClassHandlers({ ipcMain, db, deps, mainWindow })
   registerLearningStatsHandlers({ ipcMain, db })
   registerCostsHandlers({ ipcMain, db, deps })
+  registerGraphHandlers({ ipcMain, db, deps })
 
   return { runFetch: () => runFetch({ db, deps, mainWindow }) }
 }

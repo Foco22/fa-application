@@ -18,6 +18,7 @@ import { updateConfigIndicator } from './modules/config-status.js'
 import { enterClassMode, exitClassMode, initClass } from './modules/class.js'
 import { openLearningDashboard, closeLearningDashboard, initLearningDashboard } from './modules/learning-dashboard.js'
 import { openCostsDashboard, closeCostsDashboard, initCostsDashboard } from './modules/costs-dashboard.js'
+import { openGraphView, closeGraphView, initGraph, isGraphOpen } from './modules/graph.js'
 import { applyLanguage, onLanguageChange, t } from './modules/language.js'
 import { fetchProgressView } from './modules/fetch-progress.js'
 import { fetchWeekPromptView } from './modules/fetch-week.js'
@@ -91,6 +92,7 @@ document.getElementById('class-confirm-ok').addEventListener('click', () => {
 function openPaperFromLearning(id) {
   closeLearningDashboard()
   closeCostsDashboard()
+  closeGraphView()
   return openPaper(id)
 }
 
@@ -226,6 +228,8 @@ async function refreshActiveView() {
     await openLearningDashboard()
   } else if (!document.getElementById('costs-panel').classList.contains('hidden')) {
     await openCostsDashboard()
+  } else if (isGraphOpen()) {
+    await openGraphView()
   } else if (state.activePaper) {
     await openPaper(state.activePaper.id)
   }
@@ -268,6 +272,8 @@ function wireListeners() {
   initClass()
   initLearningDashboard()
   initCostsDashboard()
+  initGraph({ openPaper })
+  document.getElementById('act-graph').addEventListener('click', openGraphView)
   document.getElementById('act-learning').addEventListener('click', openLearningDashboard)
   document.getElementById('act-costs').addEventListener('click', openCostsDashboard)
   document.getElementById('btn-win-min').addEventListener('click', () => window.api.minimizeWindow())
@@ -289,6 +295,10 @@ function wireListeners() {
     }
     if (!document.getElementById('costs-panel').classList.contains('hidden')) {
       closeCostsDashboard()
+      return
+    }
+    if (isGraphOpen()) {
+      closeGraphView()
       return
     }
     document.getElementById('vault-panel').classList.toggle('collapsed')
