@@ -272,6 +272,15 @@ describe('isNonAnswer', () => {
   it.each(['no sé', 'No lo sé', 'ni idea', 'hola', 'Hola profesor', 'Buenas tardes', 'ok', 'mmm...', 'no tengo idea, la verdad', "I don't know", ''])(
     'flags %j as a non-answer', (t) => expect(isNonAnswer(t)).toBe(true))
 
+  it.each(['Sí', 'No', 'si', 'sí, claro'])(
+    'leaves %j to the evaluator (a real answer to a yes/no question, or a name)', (t) => expect(isNonAnswer(t)).toBe(false))
+
+  it('ignores only the names it is told about (the student being addressed)', () => {
+    expect(isNonAnswer('Hola María')).toBe(false)
+    expect(isNonAnswer('Hola María', ['María García'])).toBe(true)
+    expect(isNonAnswer('Hola Carlos', ['María García'])).toBe(false)
+  })
+
   it.each(['Usan BLEU', 'No, el GRU no tiene output gate', 'no sé bien, pero creo que la reset gate controla cuánto del estado previo se usa'])(
     'accepts %j as an attempt', (t) => expect(isNonAnswer(t)).toBe(false))
 })

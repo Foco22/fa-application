@@ -1,6 +1,14 @@
 import { state } from './state.js'
 import { loadSavedHighlights } from './highlights.js'
-import { stepPdfScale, formatPdfZoom, PDF_BASE_SCALE } from './pdf-zoom.js'
+import { formatPdfZoom, createZoomDebouncer } from './pdf-zoom.js'
+
+// Tareas de render en vuelo: se cancelan al iniciar un render nuevo.
+const activeTasks = new Set()
+
+function cancelActiveRenders() {
+  for (const task of activeTasks) task.cancel()
+  activeTasks.clear()
+}
 
 export async function loadPdf() {
   if (!state.activePaper) return
@@ -36,7 +44,7 @@ export async function loadPdf() {
 async function renderAllPages(viewer, loadId) {
   for (let i = 1; i <= state.pdfDoc.numPages; i++) {
     if (loadId !== state.pdfLoadId) return
-    await renderPdfPage(i, viewer)
+    await renderPdfPage(i, viewer, loadId)
   }
   if (loadId !== state.pdfLoadId) return
   loadSavedHighlights()
@@ -45,9 +53,9 @@ async function renderAllPages(viewer, loadId) {
 
 /* ── Zoom ──────────────────────────────────────────────────────────────── */
 
-function updateZoomLabel() {
+function updateZoomLabel(scale = state.pdfScale) {
   const el = document.getElementById('pdf-zoom-level')
-  if (el) el.textContent = formatPdfZoom(state.pdfScale)
+  if (el) el.textContent = formatPdfZoom(scale)
 }
 
 // Re-renderiza el documento ya cargado a la nueva escala, conservando la
@@ -63,6 +71,7 @@ export async function setPdfScale(scale) {
   const ratio  = viewer.scrollHeight > 0 ? viewer.scrollTop / viewer.scrollHeight : 0
 
   const loadId = ++state.pdfLoadId
+  cancelActiveRenders()
   viewer.innerHTML = ''
   try {
     await renderAllPages(viewer, loadId)
@@ -74,13 +83,17 @@ export async function setPdfScale(scale) {
   viewer.scrollTop = ratio * viewer.scrollHeight
 }
 
-export function zoomPdf(direction) {
-  return setPdfScale(stepPdfScale(state.pdfScale, direction))
-}
+// Los pasos de zoom se agrupan (120 ms): una ráfaga de eventos de rueda
+// re-renderiza el documento una sola vez en vez de una por evento.
+const zoomer = createZoomDebouncer({
+  getScale:  () => state.pdfScale,
+  apply:     setPdfScale,
+  onPreview: updateZoomLabel
+})
 
-export function resetPdfZoom() {
-  return setPdfScale(PDF_BASE_SCALE)
-}
+export function zoomPdf(direction) { zoomer.step(direction) }
+
+export function resetPdfZoom() { zoomer.reset() }
 
 export function setupPdfZoom() {
   document.getElementById('pdf-zoom-in') .addEventListener('click', () => zoomPdf(+1))
@@ -97,8 +110,10 @@ export function setupPdfZoom() {
   updateZoomLabel()
 }
 
-export async function renderPdfPage(pageNum, container) {
-  const page     = await state.pdfDoc.getPage(pageNum)
+export async function renderPdfPage(pageNum, container, loadId = state.pdfLoadId) {
+  const page = await state.pdfDoc.getPage(pageNum)
+  if (loadId !== state.pdfLoadId) return   // un zoom o cambio de paper la dejó obsoleta
+
   const viewport = page.getViewport({ scale: state.pdfScale })
 
   const pageDiv = document.createElement('div')
@@ -118,9 +133,22 @@ export async function renderPdfPage(pageNum, container) {
   container.appendChild(pageDiv)
 
   const ctx = canvas.getContext('2d')
-  await page.render({ canvasContext: ctx, viewport }).promise
+  const task = page.render({ canvasContext: ctx, viewport })
+  activeTasks.add(task)
+  try {
+    await task.promise
+    if (loadId !== state.pdfLoadId) return
 
-  const textContent = await page.getTextContent()
-  const renderTask  = pdfjsLib.renderTextLayer({ textContentSource: textContent, container: textDiv, viewport, textDivs: [] })
-  await renderTask.promise
+    const textContent = await page.getTextContent()
+    if (loadId !== state.pdfLoadId) return
+    const textTask = pdfjsLib.renderTextLayer({ textContentSource: textContent, container: textDiv, viewport, textDivs: [] })
+    activeTasks.add(textTask)
+    try { await textTask.promise } finally { activeTasks.delete(textTask) }
+  } catch (err) {
+    // Cancelar un render obsoleto lanza RenderingCancelledException: es esperado.
+    if (loadId !== state.pdfLoadId) return
+    throw err
+  } finally {
+    activeTasks.delete(task)
+  }
 }

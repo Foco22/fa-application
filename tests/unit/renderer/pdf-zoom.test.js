@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   PDF_BASE_SCALE, PDF_ZOOM_MIN, PDF_ZOOM_MAX, PDF_ZOOM_STEP,
-  clampPdfScale, stepPdfScale, formatPdfZoom,
+  clampPdfScale, stepPdfScale, formatPdfZoom, createZoomDebouncer,
   rectToStored, rectToScreen
 } from '../../../renderer/modules/pdf-zoom.js'
 
@@ -62,5 +62,57 @@ describe('pdf-zoom — rectángulos de destacados', () => {
   it('rectToStored redondea a entero (como se guardaba antes)', () => {
     const r = rectToStored({ x: 101, y: 201, w: 51, h: 11 }, 3)
     Object.values(r).forEach(v => expect(Number.isInteger(v)).toBe(true))
+  })
+})
+
+describe('pdf-zoom — createZoomDebouncer', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  function setup(initial = 1.5) {
+    let current = initial
+    const apply = vi.fn(async (s) => { current = s })
+    const onPreview = vi.fn()
+    const z = createZoomDebouncer({ getScale: () => current, apply, onPreview, delay: 120 })
+    return { z, apply, onPreview }
+  }
+
+  it('una ráfaga de pasos dispara un solo render con la escala acumulada', () => {
+    const { z, apply } = setup()
+    z.step(+1); z.step(+1); z.step(+1)
+    expect(apply).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(120)
+    expect(apply).toHaveBeenCalledTimes(1)
+    expect(apply).toHaveBeenCalledWith(clampPdfScale(1.5 + 3 * PDF_ZOOM_STEP))
+  })
+
+  it('cada paso avisa la escala pendiente de inmediato (para la etiqueta)', () => {
+    const { z, onPreview } = setup()
+    z.step(+1); z.step(+1)
+    expect(onPreview).toHaveBeenNthCalledWith(1, 1.75)
+    expect(onPreview).toHaveBeenNthCalledWith(2, 2)
+  })
+
+  it('respeta los límites aunque la ráfaga sea larga', () => {
+    const { z, apply } = setup(PDF_ZOOM_MAX)
+    z.step(+1); z.step(+1)
+    vi.advanceTimersByTime(120)
+    expect(apply).not.toHaveBeenCalled() // ya estaba en el máximo
+  })
+
+  it('reset aplica la escala base tras el debounce', () => {
+    const { z, apply } = setup(2.5)
+    z.reset()
+    vi.advanceTimersByTime(120)
+    expect(apply).toHaveBeenCalledWith(PDF_BASE_SCALE)
+  })
+
+  it('tras aplicar, el siguiente paso parte de la escala vigente', () => {
+    const { z, apply } = setup()
+    z.step(+1)
+    vi.advanceTimersByTime(120)
+    z.step(+1)
+    vi.advanceTimersByTime(120)
+    expect(apply).toHaveBeenLastCalledWith(2)
   })
 })

@@ -3,6 +3,15 @@ const fs   = require('fs')
 const { pathToFileURL } = require('url')
 const { canHaveClass, STUDENTS, generateTurn, evaluateAndReact, evaluateClarity, evaluatePresentation, generateReferenceAnswer, generateHint, assistantChat } = require('../class')
 
+// Tope de un deck/borrador en markdown: evita filas gigantes en SQLite por un
+// payload malformado (el renderer es de confianza, esto es defensa en profundidad).
+const MAX_MARKDOWN_BYTES = 1024 * 1024
+const MAX_REFERENCE_CACHE = 100
+
+function isValidMarkdown(md) {
+  return typeof md === 'string' && Buffer.byteLength(md, 'utf8') <= MAX_MARKDOWN_BYTES
+}
+
 function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
   const { createLLM, createTranscription, createWhisperStream, whisperStreamBin, whisperModelsDir, vault, dialog } = deps
 
@@ -10,6 +19,20 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
   // Respuesta correcta por pregunta (sessionId::pregunta): se genera en el
   // primer intento del profesor y se reutiliza en los siguientes.
   const _referenceAnswers = new Map()
+
+  function cacheReferenceAnswer(key, answer) {
+    if (_referenceAnswers.size >= MAX_REFERENCE_CACHE) {
+      _referenceAnswers.delete(_referenceAnswers.keys().next().value)   // la más antigua
+    }
+    _referenceAnswers.set(key, answer)
+  }
+
+  function clearSessionReferenceAnswers(sessionId) {
+    const prefix = `${sessionId}::`
+    for (const key of _referenceAnswers.keys()) {
+      if (key.startsWith(prefix)) _referenceAnswers.delete(key)
+    }
+  }
 
   // El modo Clase (pistas, evaluaciones, Q&A) usa siempre el LLM principal de
   // la app — sin proveedor/modelo/API key propios de Clase. Ver features/settings-redesign.md.
@@ -22,7 +45,17 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
     return canHaveClass(paper)
   })
 
-  ipcMain.handle('class-upload-slides', (_e, { paperId, duration, slides }) => {
+  ipcMain.handle('class-upload-slides', async (_e, { paperId, duration, slides }) => {
+    // Validar TODO antes de escribir: un slide malformado a mitad de camino
+    // dejaría una sesión creada con slides parciales.
+    if (!Array.isArray(slides) || slides.length === 0) {
+      throw new Error('class-upload-slides: slides debe ser una lista no vacía')
+    }
+    for (const s of slides) {
+      if (!s || (s.markdown != null && !isValidMarkdown(s.markdown))) {
+        throw new Error('class-upload-slides: slide inválida (markdown no es texto o supera el tope)')
+      }
+    }
     const session = db.createClassSession({ paper_id: paperId, duration })
     const sessionId = session.id
     const paper = db.getPaper(paperId)
@@ -71,7 +104,10 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
     return { sessionId, slideIds }
   })
 
-  ipcMain.handle('class-save-slides-draft', (_e, { paperId, markdown }) => {
+  ipcMain.handle('class-save-slides-draft', (_e, { paperId, markdown } = {}) => {
+    if (typeof paperId !== 'string' || !isValidMarkdown(markdown)) {
+      return { ok: false, error: 'Borrador inválido' }
+    }
     db.saveSlidesDraft(paperId, markdown)
     return { ok: true }
   })
@@ -85,6 +121,7 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
     })
     if (result.canceled || !result.filePaths.length) return null
     const filePath = result.filePaths[0]
+    if (path.extname(filePath).toLowerCase() !== '.pdf') return null
     return { url: pathToFileURL(filePath).href, name: path.basename(filePath) }
   })
 
@@ -155,7 +192,10 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
       const question = (history || [])[0]?.question || ''
       const refKey = `${sessionId}::${question}`
       if (question && !_referenceAnswers.has(refKey)) {
-        _referenceAnswers.set(refKey, await generateReferenceAnswer(paper, question, llm))
+        // Un fallo transitorio (red, rate limit) devuelve null: no se cachea,
+        // para que el siguiente intento del profesor lo reintente.
+        const generated = await generateReferenceAnswer(paper, question, llm)
+        if (generated) cacheReferenceAnswer(refKey, generated)
       }
       const referenceAnswer = _referenceAnswers.get(refKey) || null
       return await evaluateAndReact(student, { paper, slides, professorAnswer, history: history || [], exchangeCount: exchangeCount || 0, referenceAnswer }, llm)
@@ -167,6 +207,7 @@ function registerClassHandlers({ ipcMain, db, deps, mainWindow }) {
   })
 
   ipcMain.handle('class-end-session', async (_e, { sessionId, transcript, qaLog }) => {
+    clearSessionReferenceAnswers(sessionId)
     const settings = db.getAllSettings()
     const llm = createClassLLM(settings)
     const session = db.getClassSession(sessionId)
