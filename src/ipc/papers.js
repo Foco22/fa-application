@@ -1,11 +1,16 @@
 const fs   = require('fs')
 const path = require('path')
+const { diagnoseEmptyFetch } = require('../ingestion/fetchLog')
+const { emptyFetchMessage }  = require('../notifications')
 
 // Selection phase: scores every ArXiv candidate against two independent
-// interest signals (reference collection, declared keywordList), each
-// evaluated with hybrid search (embedding similarity + literal keyword
-// match). A candidate survives if ANY of the 4 signals clears its bar — see
-// INGESTA.md "v2 — Rediseño" for the full rationale.
+// interest signals (reference collection, declared keywordList). When
+// embeddings are available they DECIDE: a candidate survives only if its
+// similarity to the references or to a declared keyword clears the threshold.
+// A literal keyword hit never admits a paper on its own — generic keywords
+// ("agent", "memory") hit off-topic abstracts — it only boosts the ranking of
+// papers that already passed. Literal match decides only as a fallback when no
+// embedding could be computed (no provider, or only stale vectors).
 //
 // Every survivor goes to the rerank — no pre-cap. The cross-encoder is
 // local/free (only cost is time, and this runs weekly in background), and a
@@ -28,18 +33,17 @@ function makeReportEntry(paper) {
 }
 
 async function selectCandidates(candidates, { db, deps, settings, embProvider, similarityThreshold }) {
-  const { scoreEmbeddingAgainst, embedKeywordList, extractKeywords, keywordOverlap, createReranker } = deps
+  const { scoreEmbeddingAgainst, embedKeywordList, keywordOverlap, createReranker } = deps
 
   const refRows = db.getReferencePapers()
 
   // Sólo son comparables los vectores del modelo activo: los de otro modelo ni
   // siquiera comparten dimensión, y mezclarlos daría similitudes basura. Se
-  // ignoran hasta que el usuario reindexe. Keywords y resúmenes son texto, así
-  // que siguen sirviendo aunque el índice haya quedado obsoleto.
+  // ignoran hasta que el usuario reindexe. Los resúmenes son texto, así que
+  // siguen sirviendo para el rerank aunque el índice haya quedado obsoleto.
   const refEmbeddings = refRows
     .filter(r => r.embedding_model === embProvider?.id)
     .map(r => JSON.parse(r.embedding))
-  const refKeywords   = refRows.flatMap(r => extractKeywords(r.snippet || ''))
   const refSummaries  = refRows.map(r => r.abstract_summary).filter(Boolean)
 
   const declaredKeywords = (settings.keywordList || '').split('\n').map(s => s.trim()).filter(Boolean)
@@ -53,7 +57,7 @@ async function selectCandidates(candidates, { db, deps, settings, embProvider, s
     for (const entry of report) {
       entry.reason = 'Sin colección de referencia ni keywordList configurados — pasa sin filtrar'
     }
-    return { survivors: candidates, rerankQuery: '', report }
+    return { survivors: candidates, rerankQueries: [], report }
   }
 
   const scored = []
@@ -68,44 +72,47 @@ async function selectCandidates(candidates, { db, deps, settings, embProvider, s
       if (keywordEmbeddings.length > 0)  embSimInterest = scoreEmbeddingAgainst(abstractEmbedding, keywordEmbeddings.map(k => k.embedding))
     }
 
-    const kwRef      = refKeywords.length > 0      ? keywordOverlap(paper.abstract, refKeywords)      : false
-    const kwInterest = declaredKeywords.length > 0  ? keywordOverlap(paper.abstract, declaredKeywords)  : false
+    const kwInterest = declaredKeywords.length > 0 ? keywordOverlap(paper.abstract, declaredKeywords) : false
 
-    const passes = embSimRef >= similarityThreshold || kwRef ||
-                   embSimInterest >= similarityThreshold || kwInterest
+    const passes = needsEmbedding
+      ? embSimRef >= similarityThreshold || embSimInterest >= similarityThreshold
+      : kwInterest
 
-    entry.selection = { embSimRef, embSimInterest, kwRef, kwInterest, threshold: similarityThreshold, passed: passes }
+    entry.selection = { embSimRef, embSimInterest, kwInterest, threshold: similarityThreshold, passed: passes }
 
     if (!passes) {
       entry.decision = 'rejected'
-      entry.reason = `No superó ningún filtro de interés (embSimRef=${embSimRef.toFixed(3)}, embSimInterest=${embSimInterest.toFixed(3)}, umbral=${similarityThreshold}, kwRef=${kwRef}, kwInterest=${kwInterest})`
+      entry.reason = `No superó ningún filtro de interés (embSimRef=${embSimRef.toFixed(3)}, embSimInterest=${embSimInterest.toFixed(3)}, umbral=${similarityThreshold}, kwInterest=${kwInterest}${needsEmbedding ? ' — las keywords no alcanzan por sí solas' : ''})`
       continue
     }
 
-    const rankScore = Math.max(embSimRef, embSimInterest) + (kwRef || kwInterest ? 0.1 : 0)
+    const rankScore = Math.max(embSimRef, embSimInterest) + (kwInterest ? 0.1 : 0)
     scored.push({ paper, rankScore, entry })
   }
 
   scored.sort((a, b) => b.rankScore - a.rankScore)
 
-  const rerankQuery = [...refSummaries, ...declaredKeywords].join('. ')
+  // Una query por interés, no una sola concatenada: el cross-encoder trunca a su
+  // límite de tokens y cortaba justo las keywords del final. El reranker se queda
+  // con el mejor score de cada documento entre todas las queries.
+  const rerankQueries = [...refSummaries, declaredKeywords.join(', ')].filter(Boolean)
 
-  if (scored.length === 0 || !rerankQuery) {
+  if (scored.length === 0 || rerankQueries.length === 0) {
     for (const { entry } of scored) {
-      entry.reason = 'Pasó el filtro de interés; sin rerank (no hay rerankQuery)'
+      entry.reason = 'Pasó el filtro de interés; sin rerank (no hay rerankQueries)'
     }
-    return { survivors: scored.map(s => s.paper), rerankQuery, report }
+    return { survivors: scored.map(s => s.paper), rerankQueries, report }
   }
 
   const reranker = createReranker()
-  const ranked = await reranker.rerank(rerankQuery, scored.map(s => s.paper.abstract))
+  const ranked = await reranker.rerank(rerankQueries, scored.map(s => s.paper.abstract))
   ranked.forEach((r, i) => {
     const { entry } = scored[r.index]
     entry.rerank = { rank: i + 1, score: r.score }
     entry.reason = `Pasó el filtro de interés y el rerank (posición ${i + 1}, score=${r.score.toFixed(3)})`
   })
 
-  return { survivors: ranked.map(r => scored[r.index].paper), rerankQuery, report }
+  return { survivors: ranked.map(r => scored[r.index].paper), rerankQueries, report }
 }
 
 async function runFetch({ db, deps, mainWindow }) {
@@ -132,11 +139,11 @@ async function runFetch({ db, deps, mainWindow }) {
 
   console.log(`[fetch] ${result.length} candidates from ArXiv.`)
 
-  let selected, report
+  let survivors, report
   try {
     const selection = await selectCandidates(result, { db, deps, settings, embProvider, similarityThreshold })
-    selected = selection.survivors.slice(0, maxPapers)
-    report   = selection.report
+    survivors = selection.survivors
+    report    = selection.report
   } catch (embErr) {
     console.error(`[fetch]   Selection phase error: ${embErr.message}`)
     return { error: `Error al filtrar candidatos: ${embErr.message}. Si el problema persiste, revisá tu API key de OpenAI en Configuración.` }
@@ -144,16 +151,7 @@ async function runFetch({ db, deps, mainWindow }) {
 
   const entryById = new Map(report.map(e => [e.id, e]))
 
-  const overflow = report.filter(e =>
-    e.decision === 'pending' && !selected.some(p => p.id === e.id)
-  )
-  for (const entry of overflow) {
-    entry.stage = 'maxpapers_cutoff'
-    entry.decision = 'rejected'
-    entry.reason = `Sobrevivió selección/rerank pero no entró en el cupo de maxPapers=${maxPapers}`
-  }
-
-  console.log(`[fetch] ${selected.length} candidates selected after filter + rerank. Processing up to ${maxPapers}.`)
+  console.log(`[fetch] ${survivors.length} candidates survived filter + rerank. Saving up to ${maxPapers}.`)
 
   const saved = []
 
@@ -194,7 +192,10 @@ async function runFetch({ db, deps, mainWindow }) {
   // solo se guarda como matched_affiliation para que la UI la muestre como
   // estrella. Todo candidato que llega hasta acá (pasó interés + rerank + tiene
   // PDF descargado) se guarda, con o sin match (v3, ver plan.md).
-  for (const paper of selected) {
+  // El cupo de maxPapers se aplica sobre los papers GUARDADOS, no sobre los
+  // sobrevivientes: si un PDF falla, se sigue con el siguiente en el ranking.
+  for (const paper of survivors) {
+    if (saved.length >= maxPapers) break
     const entry = entryById.get(paper.id)
     console.log(`\n[fetch] ── Paper: "${paper.title}" (${paper.id})`)
 
@@ -245,10 +246,19 @@ async function runFetch({ db, deps, mainWindow }) {
     await finalizeSave(paper, entry, buf, aiAffiliations, matchedAffiliation)
   }
 
+  // Sobrevivientes que ni se intentaron porque el cupo ya se llenó.
+  for (const entry of report.filter(e => e.decision === 'pending')) {
+    entry.stage = 'maxpapers_cutoff'
+    entry.decision = 'rejected'
+    entry.reason = `Sobrevivió selección/rerank pero no entró en el cupo de maxPapers=${maxPapers}`
+  }
+
+  const stats = { totalCandidates: result.length, selected: survivors.length, saved: saved.length }
+
   if (writeFetchLog) {
     const fetchReport = {
       generatedAt: new Date().toISOString(),
-      stats: { totalCandidates: result.length, selected: selected.length, saved: saved.length },
+      stats,
       entries: report,
     }
     try {
@@ -258,9 +268,13 @@ async function runFetch({ db, deps, mainWindow }) {
     }
   }
 
-  if (mainWindow && saved.length > 0) {
-    mainWindow.webContents.send('new-papers', saved.length)
+  if (saved.length === 0) {
+    // Un fetch que no guarda nada no debe fallar en silencio: se devuelve el motivo.
+    const outcome = diagnoseEmptyFetch({ stats, entries: report, threshold: similarityThreshold })
+    return { saved: [], empty: { ...outcome, message: emptyFetchMessage(outcome, settings.language) } }
   }
+
+  if (mainWindow) mainWindow.webContents.send('new-papers', saved.length)
   return saved
 }
 

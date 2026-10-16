@@ -24,8 +24,8 @@ function groupKey(entry) {
 // instead of having to parse it out of the free-text `reason`.
 function formatInterest(selection) {
   if (!selection) return 'sin filtro configurado'
-  const { embSimRef, embSimInterest, kwRef, kwInterest, threshold } = selection
-  return `embSimRef=${embSimRef.toFixed(3)}, embSimInterest=${embSimInterest.toFixed(3)} (umbral ${threshold}), kwRef=${kwRef}, kwInterest=${kwInterest}`
+  const { embSimRef, embSimInterest, kwInterest, threshold } = selection
+  return `embSimRef=${embSimRef.toFixed(3)}, embSimInterest=${embSimInterest.toFixed(3)} (umbral ${threshold}), kwInterest=${kwInterest}`
 }
 
 function formatRerank(rerank) {
@@ -102,4 +102,31 @@ function writeFetchLog(vaultDir, report) {
   return { mdPath, jsonPath }
 }
 
-module.exports = { renderMarkdown, writeFetchLog }
+// Why did a fetch save nothing? Derived from the same report the log is built
+// from, so the user gets the reason without opening the fetch log. Only called
+// when saved === 0.
+function diagnoseEmptyFetch({ stats, entries, threshold }) {
+  if (stats.totalCandidates === 0) return { code: 'no_candidates', candidates: 0 }
+
+  if (stats.selected === 0) {
+    const sims = entries
+      .filter(e => e.selection)
+      .map(e => Math.max(e.selection.embSimRef, e.selection.embSimInterest))
+    return {
+      code: 'none_passed',
+      candidates: stats.totalCandidates,
+      bestSimilarity: sims.length > 0 ? Math.max(...sims) : null,
+      threshold,
+    }
+  }
+
+  const failed = entries.find(e => e.download && !e.download.success)
+  return {
+    code: 'downloads_failed',
+    candidates: stats.totalCandidates,
+    survivors: stats.selected,
+    firstError: failed ? failed.download.error : null,
+  }
+}
+
+module.exports = { renderMarkdown, writeFetchLog, diagnoseEmptyFetch }

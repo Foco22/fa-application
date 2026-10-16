@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { renderMarkdown, writeFetchLog } from '../../../src/ingestion/fetchLog.js'
+import { renderMarkdown, writeFetchLog, diagnoseEmptyFetch } from '../../../src/ingestion/fetchLog.js'
 
 const baseEntry = (overrides = {}) => ({
   id: '2401.00001',
@@ -82,7 +82,7 @@ describe('renderMarkdown — per-stage diagnostic columns', () => {
       stats: { totalCandidates: 1, selected: 1, saved: 1 },
       entries: [baseEntry({
         decision: 'saved', stage: 'saved',
-        selection: { embSimRef: 0.52, embSimInterest: 0.1, kwRef: false, kwInterest: true, threshold: 0.45, passed: true },
+        selection: { embSimRef: 0.52, embSimInterest: 0.1, kwInterest: true, threshold: 0.45, passed: true },
         rerank: { rank: 2, score: 0.81 },
       })],
     }
@@ -91,6 +91,7 @@ describe('renderMarkdown — per-stage diagnostic columns', () => {
 
     expect(md).toContain('embSimRef=0.520')
     expect(md).toContain('kwInterest=true')
+    expect(md).not.toContain('kwRef')
     expect(md).toContain('#2')
     expect(md).toContain('0.810')
   })
@@ -214,5 +215,51 @@ describe('writeFetchLog', () => {
     const r2 = writeFetchLog(tmpDir, report2)
 
     expect(r1.mdPath).not.toBe(r2.mdPath)
+  })
+})
+
+// ─── diagnoseEmptyFetch ────────────────────────────────────────────────────────
+// Cuando un fetch no guarda nada, el usuario tiene que saber POR QUÉ sin abrir
+// el fetch log: ArXiv vacío, filtro de interés demasiado estricto o PDFs caídos.
+
+describe('diagnoseEmptyFetch', () => {
+  const sel = (embSimRef, embSimInterest = 0) => ({ embSimRef, embSimInterest, kwInterest: false, threshold: 0.5, passed: false })
+
+  it('reports no_candidates when ArXiv returned nothing for the window', () => {
+    const out = diagnoseEmptyFetch({ stats: { totalCandidates: 0, selected: 0, saved: 0 }, entries: [], threshold: 0.5 })
+
+    expect(out).toEqual({ code: 'no_candidates', candidates: 0 })
+  })
+
+  it('reports none_passed with the best similarity seen when every candidate failed the interest filter', () => {
+    const entries = [
+      baseEntry({ id: 'a', decision: 'rejected', selection: sel(0.31, 0.2) }),
+      baseEntry({ id: 'b', decision: 'rejected', selection: sel(0.455, 0.318) }),
+      baseEntry({ id: 'c', decision: 'rejected', selection: sel(0.1, 0.4) }),
+    ]
+
+    const out = diagnoseEmptyFetch({ stats: { totalCandidates: 3, selected: 0, saved: 0 }, entries, threshold: 0.5 })
+
+    expect(out).toMatchObject({ code: 'none_passed', candidates: 3, threshold: 0.5 })
+    expect(out.bestSimilarity).toBeCloseTo(0.455)
+  })
+
+  it('reports none_passed with bestSimilarity null when no embeddings were computed', () => {
+    const entries = [baseEntry({ decision: 'rejected', selection: null })]
+
+    const out = diagnoseEmptyFetch({ stats: { totalCandidates: 1, selected: 0, saved: 0 }, entries, threshold: 0.5 })
+
+    expect(out).toMatchObject({ code: 'none_passed', bestSimilarity: null })
+  })
+
+  it('reports downloads_failed when candidates survived the filter but none could be saved', () => {
+    const entries = [
+      baseEntry({ id: 'a', decision: 'rejected', stage: 'download', download: { success: false, error: 'timeout' } }),
+      baseEntry({ id: 'b', decision: 'rejected', stage: 'download', download: { success: false, error: '404' } }),
+    ]
+
+    const out = diagnoseEmptyFetch({ stats: { totalCandidates: 5, selected: 2, saved: 0 }, entries, threshold: 0.5 })
+
+    expect(out).toEqual({ code: 'downloads_failed', candidates: 5, survivors: 2, firstError: 'timeout' })
   })
 })

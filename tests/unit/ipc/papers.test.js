@@ -225,19 +225,20 @@ describe('runFetch — selection phase: reference collection', () => {
     expect(db.savePaper).toHaveBeenCalledOnce()
   })
 
-  it('accepts via literal keyword overlap even when embedding similarity is low', async () => {
+  it('does NOT accept via keywords extracted from the references when embedding similarity is low', async () => {
     const { db, deps, mainWindow } = makeCtx({
       db: { getReferencePapers: vi.fn().mockReturnValue([
         { embedding: '[1,0]', snippet: 'we look at ai and other systems.', abstract_summary: 'A summary.' }
       ]) },
       deps: { createEmbeddings: vi.fn().mockReturnValue({ generateEmbedding: vi.fn().mockResolvedValue([0, 1]) }) },
     })
-    // "ai" is extracted as its own keyword from the reference snippet and
-    // literally appears in PAPER.abstract ("A paper about AI.")
+    // "ai" is extracted from the reference snippet and literally appears in
+    // PAPER.abstract ("A paper about AI."), but the embedding says unrelated.
+    // Snippet keywords are generic RAKE noise: they must not override the embedding.
 
     await runFetch({ db, deps, mainWindow })
 
-    expect(db.savePaper).toHaveBeenCalledOnce()
+    expect(db.savePaper).not.toHaveBeenCalled()
   })
 
   it('aborts the whole fetch when the embeddings API throws, surfacing the real error message', async () => {
@@ -255,18 +256,29 @@ describe('runFetch — selection phase: reference collection', () => {
     expect(db.savePaper).not.toHaveBeenCalled()
   })
 
-  it('skips embedding signals (but not keyword signals) when there is no apiKey', async () => {
+  it('falls back to the declared keywordList when there is no embedding provider', async () => {
     const { db, deps, mainWindow } = makeCtx({
-      settings: { apiKey: '' },
+      settings: { apiKey: '', openaiApiKey: '', embeddingApiKey: '', embeddingProvider: 'openai', keywordList: 'ai' },
       db: { getReferencePapers: vi.fn().mockReturnValue([
-        { embedding: '[1,0]', snippet: 'we look at ai and other systems.', abstract_summary: 'x' }
+        { embedding: '[1,0]', snippet: 'x', abstract_summary: 'x' }
       ]) },
     })
 
     await runFetch({ db, deps, mainWindow })
 
-    // no apiKey → no embedding provider → literal keyword overlap ("ai") still lets it through
+    // no embedding provider → embeddings can't decide → literal keyword ("ai") is the only signal left
+    expect(deps.createEmbeddings).not.toHaveBeenCalled()
     expect(db.savePaper).toHaveBeenCalledOnce()
+  })
+
+  it('rejects when there is no embedding provider and the declared keywords do not match', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { apiKey: '', openaiApiKey: '', embeddingApiKey: '', embeddingProvider: 'openai', keywordList: 'marine biology' },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(db.savePaper).not.toHaveBeenCalled()
   })
 })
 
@@ -296,6 +308,68 @@ describe('runFetch — selection phase: keywordList', () => {
     await runFetch({ db, deps, mainWindow })
 
     expect(db.savePaper).toHaveBeenCalledOnce()
+  })
+
+  // Regresión (fetch log 2026-09-08): "LLM-Assisted … Agent-Based Energy Adoption
+  // Models" se guardó con embSimRef=0.455 / embSimInterest=0.318 (umbral 0.50)
+  // sólo porque el keyword genérico "agent" aparece en su abstract.
+  it('rejects a paper whose abstract contains a declared keyword but whose embedding similarity is below threshold', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { keywordList: 'agent', similarityThreshold: '0.5' },
+      deps: {
+        fetchPapers: vi.fn().mockResolvedValue([{ ...PAPER, abstract: 'Agent-based models of household energy adoption.' }]),
+        embedKeywordList: vi.fn().mockResolvedValue([{ keyword: 'agent', embedding: [1, 0] }]),
+        // cos([0.3, 0.95], [1, 0]) ≈ 0.30 → well under 0.5
+        createEmbeddings: vi.fn().mockReturnValue({ generateEmbedding: vi.fn().mockResolvedValue([0.3, 0.95]) }),
+      },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(db.savePaper).not.toHaveBeenCalled()
+    const report = deps.writeFetchLog.mock.calls[0][0]
+    expect(report.entries[0]).toMatchObject({ decision: 'rejected', stage: 'selection' })
+    expect(report.entries[0].selection).toMatchObject({ kwInterest: true, passed: false })
+  })
+
+  it('still accepts when the embedding clears the threshold and the keyword also matches', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { keywordList: 'agent', similarityThreshold: '0.5' },
+      deps: {
+        fetchPapers: vi.fn().mockResolvedValue([{ ...PAPER, abstract: 'Multi-agent planning with language models.' }]),
+        embedKeywordList: vi.fn().mockResolvedValue([{ keyword: 'agent', embedding: [1, 0] }]),
+        createEmbeddings: vi.fn().mockReturnValue({ generateEmbedding: vi.fn().mockResolvedValue([1, 0]) }),
+      },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(db.savePaper).toHaveBeenCalledOnce()
+  })
+
+  it('uses a keyword hit only as a ranking boost among papers that already passed on embeddings', async () => {
+    const candidates = [
+      { ...PAPER, id: 'plain',   abstract: 'A study of planning.' },
+      { ...PAPER, id: 'boosted', abstract: 'A study of agent planning.' },
+    ]
+    const db = { getReferencePapers: vi.fn().mockReturnValue([]) }
+    const deps = {
+      scoreEmbeddingAgainst,
+      embedKeywordList: vi.fn().mockResolvedValue([{ keyword: 'agent', embedding: [1, 0] }]),
+      extractKeywords, keywordOverlap,
+      // identity reranker: keeps the order selectCandidates handed it, so this test sees the boost
+      createReranker: vi.fn().mockReturnValue({
+        rerank: vi.fn().mockImplementation(async (_q, docs) => docs.map((_, index) => ({ index, score: 1 }))),
+      }),
+    }
+    // both embed identically (sim 1.0 ≥ threshold); only "boosted" also hits the keyword
+    const embProvider = { generateEmbedding: vi.fn().mockResolvedValue([1, 0]) }
+
+    const { survivors } = await selectCandidates(candidates, {
+      db, deps, settings: { ...SETTINGS, keywordList: 'agent' }, embProvider, similarityThreshold: 0.5,
+    })
+
+    expect(survivors.map(p => p.id)).toEqual(['boosted', 'plain'])
   })
 
   it('rejects when neither embedding nor keyword overlap match the declared interest', async () => {
@@ -337,6 +411,34 @@ describe('selectCandidates — rerank', () => {
 
     expect(rerankSpy).toHaveBeenCalledOnce()
     expect(rerankSpy.mock.calls[0][1]).toHaveLength(30)
+  })
+
+  // Regresión: una sola query con todos los resúmenes + keywords desbordaba el
+  // límite del cross-encoder y se truncaban justo las keywords del final.
+  it('reranks with one separate query per reference summary plus one for the declared keywords', async () => {
+    const candidates = makeCandidates(2)
+    const db = { getReferencePapers: vi.fn().mockReturnValue([
+      { embedding: '[1,0]', snippet: '', abstract_summary: 'summary of reference one' },
+      { embedding: '[1,0]', snippet: '', abstract_summary: 'summary of reference two' },
+    ]) }
+    const rerankSpy = vi.fn().mockImplementation(async (_q, docs) => docs.map((_, index) => ({ index, score: 1 })))
+    const deps = {
+      scoreEmbeddingAgainst,
+      embedKeywordList: vi.fn().mockResolvedValue([]),
+      extractKeywords, keywordOverlap,
+      createReranker: vi.fn().mockReturnValue({ rerank: rerankSpy }),
+    }
+    const embProvider = { generateEmbedding: vi.fn().mockResolvedValue([1, 0]) }
+
+    await selectCandidates(candidates, {
+      db, deps, settings: { ...SETTINGS, keywordList: 'context engineering\nmemory agent' }, embProvider, similarityThreshold: 0.6,
+    })
+
+    expect(rerankSpy.mock.calls[0][0]).toEqual([
+      'summary of reference one',
+      'summary of reference two',
+      'context engineering, memory agent',
+    ])
   })
 
   it('orders survivors according to the reranker score, not the original order', async () => {
@@ -607,6 +709,112 @@ describe('runFetch — limits and notifications', () => {
     await runFetch({ db, deps, mainWindow })
 
     expect(db.savePaper).toHaveBeenCalledTimes(2)
+  })
+
+  // Regresión: el corte a maxPapers ocurría ANTES de descargar, así que un PDF
+  // caído no se reponía con el siguiente sobreviviente y llegaban 2 en vez de 3.
+  it('replaces a paper whose PDF download failed with the next survivor, up to maxPapers', async () => {
+    const papers = Array.from({ length: 5 }, (_, i) => ({ ...PAPER, id: `p${i}` }))
+    const downloadPdf = vi.fn()
+      .mockResolvedValueOnce({ success: false, error: 'timeout' })
+      .mockResolvedValue({ success: true, path: '/tmp/x.pdf' })
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { maxPapers: '2' },
+      deps:     { fetchPapers: vi.fn().mockResolvedValue(papers), downloadPdf },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(db.savePaper.mock.calls.map(c => c[0].id)).toEqual(['p1', 'p2'])
+    expect(downloadPdf).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not download more PDFs than needed once maxPapers is reached', async () => {
+    const papers = Array.from({ length: 5 }, (_, i) => ({ ...PAPER, id: `p${i}` }))
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { maxPapers: '2' },
+      deps:     { fetchPapers: vi.fn().mockResolvedValue(papers) },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(deps.downloadPdf).toHaveBeenCalledTimes(2)
+  })
+
+  it('saves fewer than maxPapers when the survivors run out, and keeps each failure reason in the log', async () => {
+    const papers = [{ ...PAPER, id: 'p0' }, { ...PAPER, id: 'p1' }, { ...PAPER, id: 'p2' }]
+    const downloadPdf = vi.fn()
+      .mockResolvedValueOnce({ success: false, error: 'timeout' })
+      .mockResolvedValueOnce({ success: false, error: '404' })
+      .mockResolvedValue({ success: true, path: '/tmp/x.pdf' })
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { maxPapers: '3' },
+      deps:     { fetchPapers: vi.fn().mockResolvedValue(papers), downloadPdf },
+    })
+
+    await runFetch({ db, deps, mainWindow })
+
+    expect(db.savePaper).toHaveBeenCalledTimes(1)
+    const report = deps.writeFetchLog.mock.calls[0][0]
+    expect(report.entries.find(e => e.id === 'p0')).toMatchObject({ decision: 'rejected', stage: 'download' })
+    expect(report.entries.find(e => e.id === 'p1')).toMatchObject({ decision: 'rejected', stage: 'download' })
+    expect(report.stats).toEqual({ totalCandidates: 3, selected: 3, saved: 1 })
+  })
+
+  // El fetch ya no falla en silencio: si no guarda nada, devuelve el motivo.
+  it('explains why nothing was saved when ArXiv returned no candidates', async () => {
+    const { db, deps, mainWindow } = makeCtx({ deps: { fetchPapers: vi.fn().mockResolvedValue([]) } })
+
+    const result = await runFetch({ db, deps, mainWindow })
+
+    expect(result.saved).toEqual([])
+    expect(result.empty).toMatchObject({ code: 'no_candidates' })
+    expect(typeof result.empty.message).toBe('string')
+    expect(mainWindow.webContents.send).not.toHaveBeenCalledWith('new-papers', expect.anything())
+  })
+
+  it('explains why nothing was saved when no candidate passed the interest filter', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { keywordList: 'marine biology', similarityThreshold: '0.5' },
+      deps: {
+        embedKeywordList: vi.fn().mockResolvedValue([{ keyword: 'marine biology', embedding: [0, 1] }]),
+        createEmbeddings: vi.fn().mockReturnValue({ generateEmbedding: vi.fn().mockResolvedValue([1, 0]) }),
+      },
+    })
+
+    const result = await runFetch({ db, deps, mainWindow })
+
+    expect(result.empty).toMatchObject({ code: 'none_passed', candidates: 1, threshold: 0.5 })
+    expect(result.empty.message).toMatch(/0\.50/)
+  })
+
+  it('explains why nothing was saved when every PDF download failed', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      deps: { downloadPdf: vi.fn().mockResolvedValue({ success: false, error: 'timeout' }) },
+    })
+
+    const result = await runFetch({ db, deps, mainWindow })
+
+    expect(result.empty).toMatchObject({ code: 'downloads_failed', survivors: 1, firstError: 'timeout' })
+  })
+
+  it('writes the explanation message in the persisted language', async () => {
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { language: 'en' },
+      deps: { fetchPapers: vi.fn().mockResolvedValue([]) },
+    })
+
+    const result = await runFetch({ db, deps, mainWindow })
+
+    expect(result.empty.message).toMatch(/ArXiv returned no papers/)
+  })
+
+  it('still returns the plain array of saved papers when something was saved', async () => {
+    const { db, deps, mainWindow } = makeCtx()
+
+    const result = await runFetch({ db, deps, mainWindow })
+
+    expect(Array.isArray(result)).toBe(true)
   })
 
   it('sends "new-papers" IPC event with the count when papers are saved', async () => {

@@ -52,6 +52,55 @@ describe('createReranker — rerank', () => {
   })
 })
 
+// ─── multiple queries ─────────────────────────────────────────────────────────
+// One query concatenating every reference summary + keyword overflowed the
+// cross-encoder's token limit, so truncation cut the tail (the user's declared
+// keywords) and every candidate was judged against the same head of the text.
+// Instead each interest is its own short query and a document keeps its best score.
+
+describe('createReranker — multiple queries', () => {
+  it('scores every (query, document) pair', async () => {
+    const scorer = vi.fn().mockResolvedValue(0.5)
+    const reranker = createReranker(scorer)
+
+    await reranker.rerank(['q1', 'q2'], ['A', 'B'])
+
+    expect(scorer).toHaveBeenCalledTimes(4)
+    expect(scorer).toHaveBeenCalledWith('q1', 'A')
+    expect(scorer).toHaveBeenCalledWith('q2', 'B')
+  })
+
+  it('keeps the BEST score across queries for each document', async () => {
+    // doc0 matches q2 well, doc1 matches q1 well
+    const table = { 'q1|doc0': 0.1, 'q2|doc0': 0.8, 'q1|doc1': 0.6, 'q2|doc1': 0.2 }
+    const scorer = vi.fn().mockImplementation(async (q, d) => table[`${q}|${d}`])
+    const reranker = createReranker(scorer)
+
+    const result = await reranker.rerank(['q1', 'q2'], ['doc0', 'doc1'])
+
+    expect(result).toEqual([
+      { index: 0, score: 0.8 },
+      { index: 1, score: 0.6 },
+    ])
+  })
+
+  it('still accepts a single string query', async () => {
+    const scorer = vi.fn().mockResolvedValue(0.3)
+    const result = await createReranker(scorer).rerank('only', ['d'])
+
+    expect(result).toEqual([{ index: 0, score: 0.3 }])
+    expect(scorer).toHaveBeenCalledWith('only', 'd')
+  })
+
+  it('ignores blank queries; with none left it keeps the original order at score 0', async () => {
+    const scorer = vi.fn()
+    const result = await createReranker(scorer).rerank(['', '  '], ['a', 'b'])
+
+    expect(scorer).not.toHaveBeenCalled()
+    expect(result).toEqual([{ index: 0, score: 0 }, { index: 1, score: 0 }])
+  })
+})
+
 // ─── real model wiring (mocked @xenova/transformers) ──────────────────────────
 //
 // createReranker(_scorer) with no injected scorer exercises loadScorer(),

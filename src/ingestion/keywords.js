@@ -67,14 +67,21 @@ function extractKeywords(text, maxKeywords = 8) {
     .map(([phrase]) => phrase)
 }
 
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 // Literal (lexical) match — the other half of hybrid search alongside embeddings.
+// Matches whole words only (optionally pluralised): a bare substring test made
+// "agent" hit "reagent" and "memory" hit unrelated text, which let off-topic papers in.
+// A hyphen is a boundary, so "agent" still matches "agent-based".
 function keywordOverlap(text, keywords) {
   if (!text || !keywords || keywords.length === 0) return false
   const lower = text.toLowerCase()
   return keywords
     .map(k => (k || '').trim().toLowerCase())
     .filter(Boolean)
-    .some(k => lower.includes(k))
+    .some(k => new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(k)}(?:e?s)?(?![\\p{L}\\p{N}])`, 'u').test(lower))
 }
 
 module.exports = { extractKeywords, keywordOverlap }
