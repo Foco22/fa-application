@@ -359,12 +359,21 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 
 /* ── Vault (left panel) ──────────────────────────────────────────────────── */
 .vault-panel {
-  width: var(--vault-w); flex-shrink: 0;
+  width: var(--vault-panel-w, var(--vault-w)); flex-shrink: 0;
   background: #1a1a1a; border-right: 1px solid var(--border);
   display: flex; flex-direction: column; overflow: hidden;
   transition: width .22s cubic-bezier(.4,0,.2,1);
+  position: relative;
 }
 .vault-panel.collapsed { width: 0; }
+
+.vault-resize-handle {
+  position: absolute; right: 0; top: 0; bottom: 0;
+  width: 4px; cursor: col-resize; z-index: 10;
+  background: transparent; transition: background .15s;
+}
+.vault-resize-handle:hover { background: var(--accent); opacity: 0.45; }
+.vault-resize-handle.dragging { background: var(--accent); opacity: 0.7; }
 
 .vault-header {
   display: flex; align-items: center; justify-content: space-between;
