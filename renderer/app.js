@@ -429,6 +429,37 @@ function wireListeners() {
     document.addEventListener('mouseup', onUp)
   })
 
+  // Vault resize handle (borde derecho; espejo del chat)
+  const vaultPanel        = document.getElementById('vault-panel')
+  const vaultResizeHandle = document.getElementById('vault-resize-handle')
+  const VAULT_MIN_W = 160
+  const vaultMaxW   = () => Math.floor(window.innerWidth * 0.5)
+
+  const savedVaultW = localStorage.getItem('vaultPanelWidth')
+  if (savedVaultW) vaultPanel.style.setProperty('--vault-panel-w', savedVaultW + 'px')
+
+  vaultResizeHandle.addEventListener('mousedown', (e) => {
+    e.preventDefault()
+    vaultResizeHandle.classList.add('dragging')
+    vaultPanel.style.transition = 'none'
+    const startX = e.clientX
+    const startW = vaultPanel.offsetWidth
+
+    const onMove = (ev) => {
+      const newW = Math.max(VAULT_MIN_W, Math.min(vaultMaxW(), startW + (ev.clientX - startX)))
+      vaultPanel.style.setProperty('--vault-panel-w', newW + 'px')
+    }
+    const onUp = () => {
+      vaultResizeHandle.classList.remove('dragging')
+      vaultPanel.style.transition = ''
+      localStorage.setItem('vaultPanelWidth', vaultPanel.offsetWidth)
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  })
+
   window.api.onFetchProgress(ev => {
     const view = fetchProgressView(ev, t)
     if (view) setFetchProgress(view.percent, view.label)
