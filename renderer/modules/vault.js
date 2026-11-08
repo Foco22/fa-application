@@ -5,8 +5,10 @@ import { t } from './language.js'
 
 let _openPaper      = () => {}
 let _showContextMenu = () => {}
+let _showWeekContextMenu = () => {}
 
-export function initVault({ openPaper, showContextMenu }) {
+export function initVault({ openPaper, showContextMenu, showWeekContextMenu }) {
+  _showWeekContextMenu = showWeekContextMenu
   _openPaper       = openPaper
   _showContextMenu = showContextMenu
 }
@@ -114,6 +116,11 @@ export function renderVault() {
         weekEl.dataset.tooltip = weekRange
         weekEl.innerHTML = `<span class="tree-arrow">${isWeekOpen ? '▾' : '▸'}</span><span class="tree-label">${weekLabel}</span>`
         weekEl.addEventListener('click', () => toggleNode(wKey))
+        weekEl.addEventListener('contextmenu', (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          _showWeekContextMenu(e.clientX, e.clientY, { label: weekLabel, ids: groups[year][weekKey].map(p => p.id) })
+        })
         list.appendChild(weekEl)
 
         if (!isWeekOpen) continue

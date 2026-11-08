@@ -1165,6 +1165,78 @@
     </div>
   </div>
 
+  <!-- Weekly focus modal: pick which topics/authors/keywords to search this time -->
+  <div id="fetch-focus-overlay" class="confirm-overlay hidden">
+    <div class="confirm-modal fetch-focus-modal">
+      <header class="fetch-focus-header">
+        <p class="confirm-title" id="fetch-focus-title"></p>
+        <p class="fetch-focus-hint" id="fetch-focus-body"></p>
+      </header>
+      <div class="fetch-focus-scroll">
+        <section id="fetch-focus-cats-group" class="fetch-focus-section">
+          <div class="fetch-focus-head">
+            <span class="fetch-focus-label" id="fetch-focus-cats-label"></span>
+            <span class="fetch-focus-count" id="fetch-focus-cats-count"></span>
+            <span class="fetch-focus-bulk"><button type="button" class="btn-link" data-focus-bulk="cats:all" id="fetch-focus-cats-all"></button><span class="fetch-focus-dot">·</span><button type="button" class="btn-link" data-focus-bulk="cats:none" id="fetch-focus-cats-none"></button></span>
+          </div>
+          <div id="fetch-focus-cats" class="fetch-focus-chips"></div>
+        </section>
+        <section id="fetch-focus-authors-group" class="fetch-focus-section">
+          <div class="fetch-focus-head">
+            <span class="fetch-focus-label" id="fetch-focus-authors-label"></span>
+            <span class="fetch-focus-count" id="fetch-focus-authors-count"></span>
+            <span class="fetch-focus-bulk"><button type="button" class="btn-link" data-focus-bulk="authors:all" id="fetch-focus-authors-all"></button><span class="fetch-focus-dot">·</span><button type="button" class="btn-link" data-focus-bulk="authors:none" id="fetch-focus-authors-none"></button></span>
+          </div>
+          <div id="fetch-focus-authors" class="fetch-focus-chips"></div>
+        </section>
+        <section id="fetch-focus-refs-group" class="fetch-focus-section">
+          <div class="fetch-focus-head">
+            <span class="fetch-focus-label" id="fetch-focus-refs-label"></span>
+            <span class="fetch-focus-count" id="fetch-focus-refs-count"></span>
+            <span class="fetch-focus-bulk"><button type="button" class="btn-link" data-focus-bulk="refs:all" id="fetch-focus-refs-all"></button><span class="fetch-focus-dot">·</span><button type="button" class="btn-link" data-focus-bulk="refs:none" id="fetch-focus-refs-none"></button></span>
+          </div>
+          <div id="fetch-focus-refs" class="fetch-focus-chips"></div>
+        </section>
+        <section id="fetch-focus-kw-group" class="fetch-focus-section">
+          <div class="fetch-focus-head">
+            <span class="fetch-focus-label" id="fetch-focus-kw-label"></span>
+            <span class="fetch-focus-count" id="fetch-focus-kw-count"></span>
+            <span class="fetch-focus-bulk"><button type="button" class="btn-link" data-focus-bulk="kw:all" id="fetch-focus-kw-all"></button><span class="fetch-focus-dot">·</span><button type="button" class="btn-link" data-focus-bulk="kw:none" id="fetch-focus-kw-none"></button></span>
+          </div>
+          <div id="fetch-focus-kw" class="fetch-focus-chips"></div>
+        </section>
+        <section class="fetch-focus-section">
+          <div class="fetch-focus-head">
+            <label class="fetch-focus-label" for="fetch-focus-keywords" id="fetch-focus-keywords-label"></label>
+          </div>
+          <textarea id="fetch-focus-keywords" class="fetch-focus-keywords" rows="2"></textarea>
+        </section>
+      </div>
+      <footer class="fetch-focus-footer">
+        <p class="fetch-focus-error hidden" id="fetch-focus-error"></p>
+        <div class="confirm-btns">
+          <button id="fetch-focus-cancel" class="btn-ghost" data-i18n="cancelar">Cancelar</button>
+          <button id="fetch-focus-go" class="btn-primary"></button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Paper picker: after the search, choose which candidates to download -->
+  <div id="fetch-pick-overlay" class="confirm-overlay hidden">
+    <div class="confirm-modal fetch-focus-modal fetch-pick-modal">
+      <p class="confirm-title" id="fetch-pick-title"></p>
+      <p class="fetch-focus-hint" id="fetch-pick-body"></p>
+      <div id="fetch-pick-list" class="fetch-pick-list"></div>
+      <p class="fetch-focus-hint" id="fetch-pick-count"></p>
+      <p class="fetch-focus-error hidden" id="fetch-pick-error"></p>
+      <div class="confirm-btns">
+        <button id="fetch-pick-cancel" class="btn-ghost" data-i18n="cancelar">Cancelar</button>
+        <button id="fetch-pick-go" class="btn-primary"></button>
+      </div>
+    </div>
+  </div>
+
   <!-- Weekly-quota modal: asked before a Fetch when this week already has papers -->
   <div id="fetch-week-overlay" class="confirm-overlay hidden">
     <div class="confirm-modal">
@@ -1207,6 +1279,7 @@
     <button class="ctx-item ctx-ref-only ctx-hidden" data-action="rename" data-i18n="renombrar">Renombrar</button>
     <div class="ctx-separator"></div>
     <button class="ctx-item ctx-item-danger" data-action="delete" data-i18n="eliminar">Eliminar</button>
+    <button class="ctx-item ctx-item-danger ctx-hidden" data-action="delete-week" data-i18n="eliminar-semana">Eliminar semana</button>
   </div>
 
   <script src="../node_modules/pdfjs-dist/build/pdf.min.js"></script>

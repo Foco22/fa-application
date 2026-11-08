@@ -3,7 +3,7 @@ import { TABS } from './modules/constants.js'
 import { toast } from './modules/toast.js'
 import { renderVault, autoExpandRecent, initVault } from './modules/vault.js'
 import { openPaper, initPaperView } from './modules/paper-view.js'
-import { showContextMenu, hideContextMenu, initContextMenu } from './modules/context-menu.js'
+import { showContextMenu, showWeekContextMenu, hideContextMenu, initContextMenu } from './modules/context-menu.js'
 import { showOnboarding, initOnboarding } from './modules/onboarding.js'
 import { loadPdf, setupPdfZoom } from './modules/pdf.js'
 import { flushNotesRender, onNotesClick, onNotesKeydown, onNotesInput, onNotesBlur } from './modules/notes.js'
@@ -96,7 +96,7 @@ function openPaperFromLearning(id) {
   return openPaper(id)
 }
 
-initVault({ openPaper: openPaperFromLearning, showContextMenu })
+initVault({ openPaper: openPaperFromLearning, showContextMenu, showWeekContextMenu })
 initPaperView({ renderVault, switchTab, setPdfExpanded })
 initOcr({ switchTab })
 initContextMenu({ openPaper: openPaperFromLearning, renderVault })
@@ -160,9 +160,192 @@ async function askFetchWeekChoice() {
   })
 }
 
+// Foco de la semana: antes de buscar, el usuario elige qué temas/autores/palabras
+// le interesan ESTA vez. Devuelve { categories, authors, keywords } o null si cancela.
+// Sin temas ni autores guardados solo se piden palabras clave.
+async function askFetchFocus() {
+  let settings = {}
+  try { settings = await window.api.getSettings() } catch { /* sin settings: solo palabras clave */ }
+  const cats    = (settings.categoryList || '').split(',').map(s => s.trim()).filter(Boolean)
+  const authors = (settings.authorList   || '').split('\n').map(s => s.trim()).filter(Boolean)
+  const savedKw = (settings.keywordList  || '').split('\n').map(s => s.trim()).filter(Boolean)
+  let refs = []
+  try { refs = await window.api.getReferenceList() } catch { /* sin referencias */ }
+
+  const $ = (id) => document.getElementById(id)
+  const overlay = $('fetch-focus-overlay')
+  $('fetch-focus-title').textContent          = t('fetch-foco-titulo')
+  $('fetch-focus-body').textContent           = t('fetch-foco-cuerpo')
+  $('fetch-focus-cats-label').textContent     = t('fetch-foco-temas')
+  $('fetch-focus-authors-label').textContent  = t('fetch-foco-autores')
+  $('fetch-focus-kw-label').textContent       = t('fetch-foco-palabras')
+  $('fetch-focus-refs-label').textContent     = t('fetch-foco-refs')
+  $('fetch-focus-keywords-label').textContent = t('fetch-foco-extra')
+  $('fetch-focus-keywords').placeholder       = t('fetch-foco-palabras-ph')
+  $('fetch-focus-keywords').value             = ''
+  for (const id of ['cats', 'authors', 'refs', 'kw']) {
+    $(`fetch-focus-${id}-all`).textContent  = t('fetch-foco-todo')
+    $(`fetch-focus-${id}-none`).textContent = t('fetch-foco-nada')
+  }
+  $('fetch-focus-go').textContent = t('fetch-foco-buscar')
+  $('fetch-focus-error').classList.add('hidden')
+
+  const fill = (containerId, groupId, values) => {
+    $(groupId).classList.toggle('hidden', values.length === 0)
+    $(containerId).replaceChildren(...values.map(v => {
+      const { value, text } = typeof v === 'string' ? { value: v, text: v } : v
+      const label = document.createElement('label')
+      label.className = 'fetch-focus-chip'
+      label.title = text
+      const input = document.createElement('input')
+      input.type = 'checkbox'
+      input.value = value
+      input.checked = true
+      label.append(input, document.createTextNode(text))
+      return label
+    }))
+  }
+  fill('fetch-focus-cats', 'fetch-focus-cats-group', cats)
+  fill('fetch-focus-authors', 'fetch-focus-authors-group', authors)
+  fill('fetch-focus-refs', 'fetch-focus-refs-group', refs.map(r => ({ value: r.path, text: r.name })))
+  fill('fetch-focus-kw', 'fetch-focus-kw-group', savedKw)
+
+  const checked = (id) => [...$(id).querySelectorAll('input:checked')].map(i => i.value)
+  // Contador "elegidos/total" de cada grupo.
+  const updateCounts = () => {
+    for (const g of ['cats', 'authors', 'refs', 'kw']) {
+      const boxes = $(`fetch-focus-${g}`).querySelectorAll('input')
+      $(`fetch-focus-${g}-count`).textContent = boxes.length ? `${[...boxes].filter(i => i.checked).length}/${boxes.length}` : ''
+    }
+  }
+  updateCounts()
+  overlay.classList.remove('hidden')
+
+  return new Promise(resolve => {
+    const done = (value) => {
+      overlay.classList.add('hidden')
+      $('fetch-focus-cancel').removeEventListener('click', onCancel)
+      $('fetch-focus-go').removeEventListener('click', onGo)
+      overlay.removeEventListener('click', onOverlay)
+      overlay.removeEventListener('change', updateCounts)
+      resolve(value)
+    }
+    const onCancel = () => done(null)
+    const onGo = () => {
+      const focus = {
+        categories: checked('fetch-focus-cats'),
+        authors:    checked('fetch-focus-authors'),
+        references: refs.length ? checked('fetch-focus-refs') : undefined,
+        keywords:   [...new Set([
+          ...checked('fetch-focus-kw'),
+          ...$('fetch-focus-keywords').value.split('\n').map(s => s.trim()).filter(Boolean),
+        ])],
+      }
+      if (!focus.categories.length && !focus.authors.length && !focus.keywords.length) {
+        $('fetch-focus-error').textContent = t('fetch-foco-vacio')
+        $('fetch-focus-error').classList.remove('hidden')
+        return
+      }
+      done(focus)
+    }
+    const onOverlay = (e) => {
+      if (e.target === overlay) return done(null)
+      const bulk = e.target.dataset && e.target.dataset.focusBulk
+      if (!bulk) return
+      const [group, mode] = bulk.split(':')
+      $(`fetch-focus-${group}`).querySelectorAll('input').forEach(i => { i.checked = mode === 'all' })
+      updateCounts()
+    }
+    $('fetch-focus-cancel').addEventListener('click', onCancel)
+    $('fetch-focus-go').addEventListener('click', onGo)
+    overlay.addEventListener('click', onOverlay)
+    overlay.addEventListener('change', updateCounts)
+  })
+}
+
+// Selector de papers: tras buscar y filtrar, el usuario elige cuáles descargar.
+// Devuelve la lista de ids elegidos o null si cancela. Se preseleccionan los mejores
+// del ranking hasta llenar el cupo semanal, y no se puede pasar de ese cupo.
+async function askFetchPicks({ candidates, quota }) {
+  const $ = (id) => document.getElementById(id)
+  const overlay = $('fetch-pick-overlay')
+  const limit = Math.max(1, quota)
+  $('fetch-pick-title').textContent = t('pick-titulo')
+  $('fetch-pick-body').textContent  = t('pick-cuerpo').replace('{n}', candidates.length).replace('{q}', limit)
+  $('fetch-pick-go').textContent    = t('pick-guardar')
+  $('fetch-pick-error').classList.add('hidden')
+
+  const items = candidates.map((c, i) => {
+    const label = document.createElement('label')
+    label.className = 'fetch-pick-item'
+    const input = document.createElement('input')
+    input.type = 'checkbox'
+    input.value = c.id
+    input.checked = i < limit
+    const box = document.createElement('div')
+    box.className = 'fetch-pick-text'
+    const title = document.createElement('span')
+    title.className = 'fetch-pick-title'
+    title.textContent = c.title || c.id
+    const authors = document.createElement('span')
+    authors.className = 'fetch-pick-authors'
+    authors.textContent = c.authors || ''
+    const details = document.createElement('details')
+    const summary = document.createElement('summary')
+    summary.textContent = t('pick-abstract')
+    const abs = document.createElement('p')
+    abs.textContent = c.abstract || ''
+    details.append(summary, abs)
+    // Abrir el abstract no debe marcar/desmarcar el paper.
+    details.addEventListener('click', (e) => e.stopPropagation())
+    box.append(title, authors, details)
+    label.append(input, box)
+    return { label, input }
+  })
+  $('fetch-pick-list').replaceChildren(...items.map(i => i.label))
+
+  const selectedCount = () => items.filter(i => i.input.checked).length
+  const refresh = () => {
+    const n = selectedCount()
+    for (const { label, input } of items) {
+      const blocked = !input.checked && n >= limit
+      input.disabled = blocked
+      label.classList.toggle('disabled', blocked)
+    }
+    $('fetch-pick-count').textContent = t('pick-contador').replace('{s}', n).replace('{q}', limit)
+  }
+  refresh()
+  overlay.classList.remove('hidden')
+
+  return new Promise(resolve => {
+    const done = (value) => {
+      overlay.classList.add('hidden')
+      $('fetch-pick-cancel').removeEventListener('click', onCancel)
+      $('fetch-pick-go').removeEventListener('click', onGo)
+      $('fetch-pick-list').removeEventListener('change', refresh)
+      resolve(value)
+    }
+    const onCancel = () => done(null)
+    const onGo = () => {
+      const ids = items.filter(i => i.input.checked).map(i => i.input.value)
+      if (ids.length === 0) {
+        $('fetch-pick-error').textContent = t('pick-vacio')
+        $('fetch-pick-error').classList.remove('hidden')
+        return
+      }
+      done(ids)
+    }
+    $('fetch-pick-cancel').addEventListener('click', onCancel)
+    $('fetch-pick-go').addEventListener('click', onGo)
+    $('fetch-pick-list').addEventListener('change', refresh)
+  })
+}
+
 async function triggerFetch() {
   closeLearningDashboard()
   closeCostsDashboard()
+  const focus = await askFetchFocus()
+  if (!focus) return
   const choice = await askFetchWeekChoice()
   if (choice === 'cancel') return
   const actBtn   = document.getElementById('act-fetch')
@@ -177,7 +360,21 @@ async function triggerFetch() {
   overlay.classList.remove('hidden')
 
   try {
-    const result = await window.api.fetchPapers({ replaceWeek: choice === 'replace' })
+    const replaceWeek = choice === 'replace'
+    // Fase 1: busca y filtra sin descargar. Fase 2: baja solo los papers que el usuario elige.
+    let result = await window.api.fetchPapers({ replaceWeek, focus, preview: true })
+    if (result && result.preview) {
+      overlay.classList.add('hidden')
+      const selectedIds = await askFetchPicks(result.preview)
+      if (selectedIds) {
+        overlay.classList.remove('hidden')
+        setFetchProgress(0, '')
+        result = await window.api.fetchPapers({ replaceWeek, focus, selectedIds })
+      } else {
+        result = null
+        status.textContent = ''
+      }
+    }
     if (result && result.error) {
       // El detalle completo va al toast (abajo); la barra superior solo lleva
       // un rótulo corto para no romper el layout del topbar con texto largo.

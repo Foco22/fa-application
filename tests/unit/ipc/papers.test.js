@@ -115,6 +115,160 @@ describe('runFetch — fetchPapers error', () => {
   })
 })
 
+// ─── foco de la semana (subset elegido al apretar Fetch) ─────────────────────
+
+describe('runFetch — focus', () => {
+  const baseSettings = { categoryList: 'cs.AI,cs.LG,q-fin.PM', authorList: 'LeCun\nBengio' }
+
+  it('searches only the selected categories/authors/keywords, without touching saved settings', async () => {
+    const { db, deps, mainWindow } = makeCtx({ settings: baseSettings, db: { saveSetting: vi.fn() } })
+
+    await runFetch({ db, deps, mainWindow, focus: { categories: ['cs.LG'], authors: ['Bengio'], keywords: ['mamba'] } })
+
+    const used = deps.fetchPapers.mock.calls[0][0]
+    expect(used.categoryList).toBe('cs.LG')
+    expect(used.authorList).toBe('Bengio')
+    expect(used.keywords).toBe('mamba')
+    expect(db.saveSetting).not.toHaveBeenCalled()
+  })
+
+  it('an empty selection of categories means "no category filter", not "all of them"', async () => {
+    const { db, deps, mainWindow } = makeCtx({ settings: baseSettings })
+
+    await runFetch({ db, deps, mainWindow, focus: { categories: [], authors: [], keywords: ['mamba'] } })
+
+    const used = deps.fetchPapers.mock.calls[0][0]
+    expect(used.categoryList).toBe('')
+    expect(used.authorList).toBe('')
+  })
+
+  it('scopes the saved keywordList to the selected keywords, for the search and for the interest filter', async () => {
+    const { db, deps, mainWindow } = makeCtx({ settings: { ...baseSettings, keywordList: 'mamba\nGANs\nrl' } })
+
+    await runFetch({ db, deps, mainWindow, focus: { categories: ['cs.AI'], authors: [], keywords: ['mamba', 'extra'] } })
+
+    const used = deps.fetchPapers.mock.calls[0][0]
+    expect(used.keywords).toBe('mamba\nextra')
+    expect(used.keywordList).toBe('mamba\nextra')
+  })
+
+  it('without focus it uses the saved settings as before', async () => {
+    const { db, deps, mainWindow } = makeCtx({ settings: baseSettings })
+
+    await runFetch({ db, deps, mainWindow })
+
+    const used = deps.fetchPapers.mock.calls[0][0]
+    expect(used.categoryList).toBe('cs.AI,cs.LG,q-fin.PM')
+    expect(used.authorList).toBe('LeCun\nBengio')
+  })
+})
+
+// ─── elegir qué papers guardar (vista previa → selección) ────────────────────
+
+describe('runFetch — pick papers', () => {
+  const many = (n) => Array.from({ length: n }, (_, i) => ({ ...PAPER, id: `p${i}`, title: `Title ${i}` }))
+
+  it('preview returns the candidates that survived the filters, without downloading or saving', async () => {
+    const { db, deps, mainWindow } = makeCtx({ settings: { maxPapers: '3' }, deps: { fetchPapers: vi.fn().mockResolvedValue(many(5)) } })
+
+    const out = await runFetch({ db, deps, mainWindow, preview: true })
+
+    expect(out.preview.candidates.map(c => c.id)).toEqual(['p0', 'p1', 'p2', 'p3', 'p4'])
+    expect(out.preview.candidates[0]).toMatchObject({ id: 'p0', title: 'Title 0' })
+    expect(out.preview.quota).toBe(3)
+    expect(deps.downloadPdf).not.toHaveBeenCalled()
+    expect(db.savePaper).not.toHaveBeenCalled()
+  })
+
+  it('saves only the selected papers, reusing the preview (ArXiv is not queried again)', async () => {
+    const { db, deps, mainWindow } = makeCtx({ settings: { maxPapers: '3' }, deps: { fetchPapers: vi.fn().mockResolvedValue(many(5)) } })
+    await runFetch({ db, deps, mainWindow, preview: true })
+
+    const saved = await runFetch({ db, deps, mainWindow, selectedIds: ['p3', 'p1'] })
+
+    expect(deps.fetchPapers).toHaveBeenCalledTimes(1)
+    expect(saved.map(p => p.id).sort()).toEqual(['p1', 'p3'])
+    expect(deps.downloadPdf).toHaveBeenCalledTimes(2)
+  })
+
+  it('never saves more than the weekly quota even if more were selected', async () => {
+    const { db, deps, mainWindow } = makeCtx({ settings: { maxPapers: '2' }, deps: { fetchPapers: vi.fn().mockResolvedValue(many(5)) } })
+    await runFetch({ db, deps, mainWindow, preview: true })
+
+    const saved = await runFetch({ db, deps, mainWindow, selectedIds: ['p0', 'p1', 'p2', 'p3'] })
+
+    expect(saved).toHaveLength(2)
+  })
+
+  it('falls back to a fresh search when there is no preview to reuse', async () => {
+    const { db, deps, mainWindow } = makeCtx({ settings: { maxPapers: '3' }, deps: { fetchPapers: vi.fn().mockResolvedValue(many(2)) } })
+
+    const saved = await runFetch({ db, deps, mainWindow, selectedIds: ['p1'] })
+
+    expect(deps.fetchPapers).toHaveBeenCalledTimes(1)
+    expect(saved.map(p => p.id)).toEqual(['p1'])
+  })
+
+  it('preview with no survivors reports the usual empty outcome instead of an empty list', async () => {
+    const { db, deps, mainWindow } = makeCtx({ deps: { fetchPapers: vi.fn().mockResolvedValue([]) } })
+
+    const out = await runFetch({ db, deps, mainWindow, preview: true })
+
+    expect(out.preview).toBeUndefined()
+    expect(out.empty).toBeDefined()
+  })
+})
+
+// ─── foco: elegir qué reference papers usar ──────────────────────────────────
+
+describe('runFetch — focus.references', () => {
+  const MODEL = 'openai:text-embedding-3-small'
+  const refRows = () => [
+    { path: '/refs/a.pdf', snippet: 'a', embedding: '[1,0]', abstract_summary: 'A', embedding_model: MODEL },
+    { path: '/refs/b.pdf', snippet: 'b', embedding: '[0,1]', abstract_summary: 'B', embedding_model: MODEL },
+  ]
+
+  it('compares candidates only against the selected references', async () => {
+    const score = vi.fn().mockReturnValue(0.9)
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { keywordList: '' },
+      db: { getReferencePapers: vi.fn().mockReturnValue(refRows()) },
+      deps: { scoreEmbeddingAgainst: score },
+    })
+
+    await runFetch({ db, deps, mainWindow, focus: { categories: ['cs.AI'], authors: [], keywords: [], references: ['/refs/a.pdf'] } })
+
+    expect(score).toHaveBeenCalled()
+    expect(score.mock.calls[0][1]).toEqual([[1, 0]])
+  })
+
+  it('uses every reference when focus does not mention references', async () => {
+    const score = vi.fn().mockReturnValue(0.9)
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { keywordList: '' },
+      db: { getReferencePapers: vi.fn().mockReturnValue(refRows()) },
+      deps: { scoreEmbeddingAgainst: score },
+    })
+
+    await runFetch({ db, deps, mainWindow, focus: { categories: ['cs.AI'], authors: [], keywords: [] } })
+
+    expect(score.mock.calls[0][1]).toEqual([[1, 0], [0, 1]])
+  })
+
+  it('an empty selection means "no reference signal", not "all references"', async () => {
+    const score = vi.fn().mockReturnValue(0.9)
+    const { db, deps, mainWindow } = makeCtx({
+      settings: { keywordList: '' },
+      db: { getReferencePapers: vi.fn().mockReturnValue(refRows()) },
+      deps: { scoreEmbeddingAgainst: score },
+    })
+
+    await runFetch({ db, deps, mainWindow, focus: { categories: ['cs.AI'], authors: [], keywords: [], references: [] } })
+
+    expect(score).not.toHaveBeenCalled()
+  })
+})
+
 // ─── selection phase: embedding provider gating ───────────────────────────────
 
 describe('runFetch — embedding provider availability', () => {

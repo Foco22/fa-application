@@ -152,6 +152,38 @@ describe('buildQuery', () => {
     expect(q).toContain('au:Bengio')
     expect((q.match(/au:/g) || []).length).toBe(2) // exactly two, no blank entry
   })
+
+  describe('keywords (foco de la semana)', () => {
+    it('requires every word of a keyword (any order), and ORs the keywords', () => {
+      const q = buildQuery({ categoryList: 'cs.AI', authorList: '', keywords: 'graph knowledge\nmamba' }, window)
+      expect(q).toContain('((all:graph AND all:knowledge) OR (all:mamba))')
+    })
+
+    it('does not force an exact phrase (so "graph knowledge" also finds "knowledge graph")', () => {
+      const q = buildQuery({ categoryList: '', authorList: '', keywords: 'graph knowledge' }, window)
+      expect(q).not.toContain('"')
+    })
+
+    it('ANDs keywords with the category filter', () => {
+      const q = buildQuery({ categoryList: 'cs.AI', authorList: '', keywords: 'mamba' }, window)
+      expect(q).toContain('cat:cs.AI')
+      expect(q).toContain('all:mamba')
+    })
+
+    it('is a valid query with only keywords (no category, no author)', () => {
+      expect(() => buildQuery({ categoryList: '', authorList: '', keywords: 'mamba' }, window)).not.toThrow()
+    })
+
+    it('strips quotes, parentheses and colons so a keyword cannot break the query', () => {
+      const q = buildQuery({ categoryList: 'cs.AI', authorList: '', keywords: 'say "hi" (x): y' }, window)
+      expect(q).toContain('(all:say AND all:hi AND all:x AND all:y)')
+    })
+
+    it('ignores blank keyword lines', () => {
+      const q = buildQuery({ categoryList: 'cs.AI', authorList: '', keywords: '\n  \n' }, window)
+      expect(q).not.toContain('all:')
+    })
+  })
 })
 
 // ─── parseFeed ────────────────────────────────────────────────────────────────

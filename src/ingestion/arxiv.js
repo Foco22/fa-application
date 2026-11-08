@@ -32,11 +32,19 @@ function formatDate(date) {
   return `${y}${m}${d}`
 }
 
-function buildQuery({ categoryList, authorList }, { from, to }) {
+function buildQuery({ categoryList, authorList, keywords }, { from, to }) {
   const cats    = categoryList ? categoryList.split(',').map(s => s.trim()).filter(Boolean) : []
   const authors = authorList   ? authorList.split('\n').map(s => s.trim()).filter(Boolean) : []
+  // Foco de la semana: cada línea es una palabra clave. Se exige que aparezcan TODAS sus
+  // palabras (en cualquier orden y campo), no la frase exacta: "graph knowledge" no existe
+  // como frase, pero sí "knowledge graph". Se quitan los caracteres con sintaxis de ArXiv.
+  const words   = keywords
+    ? keywords.split('\n')
+        .map(line => line.replace(/["():]/g, ' ').split(/\s+/).filter(Boolean))
+        .filter(ws => ws.length > 0)
+    : []
 
-  if (cats.length === 0 && authors.length === 0) {
+  if (cats.length === 0 && authors.length === 0 && words.length === 0) {
     throw new Error('Query is empty: configure at least one category or author')
   }
 
@@ -47,6 +55,9 @@ function buildQuery({ categoryList, authorList }, { from, to }) {
   }
   if (authors.length > 0) {
     parts.push(`(${authors.map(a => `au:${a}`).join(' OR ')})`)
+  }
+  if (words.length > 0) {
+    parts.push(`(${words.map(ws => `(${ws.map(w => `all:${w}`).join(' AND ')})`).join(' OR ')})`)
   }
 
   return parts.join(' AND ')
@@ -139,12 +150,12 @@ function describeFetchError(err, attempts) {
 // max_results would systematically drop early-week papers once a broad
 // category selection exceeds one page.
 async function fetchPapers(settings, httpClient, today = new Date(), sleepFn = defaultSleep, onProgress = null) {
-  const { categoryList, authorList } = settings
+  const { categoryList, authorList, keywords } = settings
 
   let query
   try {
     const window = calculateDateWindow(today)
-    query = buildQuery({ categoryList, authorList }, window)
+    query = buildQuery({ categoryList, authorList, keywords }, window)
   } catch (err) {
     return { error: err.message }
   }

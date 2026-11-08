@@ -2604,3 +2604,44 @@ input[type="password"] { font-family: var(--font-mono); letter-spacing: 3px; }
 .graph-types .graph-dot { flex-shrink: 0; margin-top: 2px; }
 .graph-types b { display: block; font-weight: 500; color: var(--text); }
 .graph-types small { color: var(--text-3); font-size: 11px; }
+
+/* Weekly focus modal */
+.fetch-focus-modal { width: min(600px, 92vw); max-width: none; max-height: 84vh; padding: 0; gap: 0; overflow: hidden; }
+.fetch-focus-header { padding: 20px 24px 14px; border-bottom: 1px solid var(--border-2); display: flex; flex-direction: column; gap: 4px; }
+.fetch-focus-hint { font-size: 12.5px; color: var(--text-3); margin: 0; line-height: 1.5; }
+.fetch-focus-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 24px; display: flex; flex-direction: column; gap: 12px; }
+.fetch-focus-section { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; background: var(--surface-0); border: 1px solid var(--border-2); border-radius: var(--r-md); }
+.fetch-focus-section.hidden { display: none; }
+.fetch-focus-head { display: flex; align-items: baseline; gap: 8px; }
+.fetch-focus-label { font-size: 12px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--text-2); }
+.fetch-focus-count { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.fetch-focus-bulk { margin-left: auto; display: inline-flex; gap: 6px; font-size: 12px; color: var(--text-3); }
+.fetch-focus-bulk .btn-link { background: none; border: 0; padding: 0; color: var(--text-3); cursor: pointer; font-size: 12px; }
+.fetch-focus-bulk .btn-link:hover { color: var(--accent); }
+.fetch-focus-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.fetch-focus-chip { position: relative; display: inline-flex; align-items: center; max-width: 100%; font-size: 12.5px; color: var(--text-3); padding: 4px 11px; border: 1px solid var(--border-2); border-radius: var(--r-pill); cursor: pointer; user-select: none; transition: background .12s, border-color .12s, color .12s; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fetch-focus-chip:hover { border-color: var(--text-3); }
+.fetch-focus-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.fetch-focus-chip:has(input:checked) { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+.fetch-focus-chip:has(input:checked)::before { content: '✓'; margin-right: 5px; font-size: 11px; }
+.fetch-focus-chip:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+.fetch-focus-keywords { width: 100%; box-sizing: border-box; resize: vertical; background: var(--surface-1); color: var(--text); border: 1px solid var(--border-2); border-radius: var(--r-sm); padding: 8px 10px; font: inherit; font-size: 12.5px; line-height: 1.5; }
+.fetch-focus-keywords:focus { outline: none; border-color: var(--accent); }
+.fetch-focus-footer { padding: 12px 24px 16px; border-top: 1px solid var(--border-2); display: flex; align-items: center; gap: 12px; }
+.fetch-focus-footer .confirm-btns { margin: 0 0 0 auto; }
+.fetch-focus-error { font-size: 12px; color: #e5484d; margin: 0; }
+.fetch-focus-error.hidden { display: none; }
+
+/* Paper picker */
+.fetch-pick-modal { width: min(640px, 92vw); max-width: none; padding: 22px 24px 18px; gap: 10px; overflow-y: auto; }
+.fetch-pick-list { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow-y: auto; }
+.fetch-pick-item { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border-2); border-radius: var(--r-sm); cursor: pointer; }
+.fetch-pick-item:has(input:checked) { background: var(--surface-2); border-color: var(--text-3); }
+.fetch-pick-item.disabled { opacity: 0.5; cursor: not-allowed; }
+.fetch-pick-item input { margin-top: 3px; }
+.fetch-pick-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fetch-pick-title { font-size: 13px; color: var(--text); font-weight: 600; }
+.fetch-pick-authors { font-size: 11.5px; color: var(--text-3); }
+.fetch-pick-text details { font-size: 12px; color: var(--text-2); }
+.fetch-pick-text summary { cursor: pointer; color: var(--text-3); font-size: 11.5px; }
+.fetch-pick-text details p { margin: 4px 0 0; line-height: 1.5; }

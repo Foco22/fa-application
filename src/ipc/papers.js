@@ -38,10 +38,13 @@ function makeReportEntry(paper) {
   }
 }
 
-async function selectCandidates(candidates, { db, deps, settings, embProvider, similarityThreshold, onProgress = () => {} }) {
+async function selectCandidates(candidates, { db, deps, settings, embProvider, similarityThreshold, referencePaths = null, onProgress = () => {} }) {
   const { scoreEmbeddingAgainst, embedKeywordList, keywordOverlap, createReranker } = deps
 
-  const refRows = db.getReferencePapers()
+  // Foco de la semana: referencePaths acota con qué referencias se compara (null = todas,
+  // [] = ninguna). Se filtra por path, que es lo que identifica a una referencia.
+  const allRefRows = db.getReferencePapers()
+  const refRows = referencePaths ? allRefRows.filter(r => referencePaths.includes(r.path)) : allRefRows
 
   // Sólo son comparables los vectores del modelo activo: los de otro modelo ni
   // siquiera comparten dimensión, y mezclarlos daría similitudes basura. Se
@@ -151,7 +154,14 @@ async function selectCandidates(candidates, { db, deps, settings, embProvider, s
 // maxPapers es un tope SEMANAL: lo que ya se trajo esta semana descuenta del cupo.
 // Con replaceWeek el usuario aceptó reemplazar esos papers, así que el cupo vuelve
 // a ser completo; los anteriores se borran SOLO si la nueva corrida guardó algo.
-async function runFetch({ db, deps, mainWindow, replaceWeek = false }) {
+// Resultado de la última vista previa: la segunda fase (guardar los elegidos) lo reutiliza
+// para no volver a consultar ArXiv (minutos con una selección amplia). Se consume una vez.
+let previewCache = null
+const PREVIEW_TTL_MS = 30 * 60 * 1000
+
+// `preview: true` → busca y filtra, pero NO descarga nada: devuelve los candidatos para que
+// el usuario elija. `selectedIds` → guarda solo esos (dentro del cupo semanal).
+async function runFetch({ db, deps, mainWindow, replaceWeek = false, focus = null, preview = false, selectedIds = null }) {
   const {
     createLLM, createEmbeddings, hasEmbeddingConfig,
     fetchPapers, getAffiliations,
@@ -180,20 +190,54 @@ async function runFetch({ db, deps, mainWindow, replaceWeek = false }) {
   const progress = createProgressEmitter(mainWindow)
 
   // `undefined` en today/sleepFn → fetchPapers usa sus valores por defecto.
-  const result = await fetchPapers(settings, httpClient, undefined, undefined,
-    ({ loaded, total }) => progress('arxiv', loaded, total ?? loaded))
-  if (result.error) return { error: result.error }
+  // Foco de la semana: reemplaza SOLO para esta corrida lo que se busca en ArXiv;
+  // los settings guardados no se tocan.
+  const searchSettings = focus ? {
+    ...settings,
+    categoryList: (focus.categories || []).join(','),
+    authorList:   (focus.authors    || []).join('\n'),
+    keywords:     (focus.keywords   || []).join('\n'),
+    // El filtro de interés también se acota a lo elegido esta semana.
+    keywordList:  (focus.keywords   || []).join('\n'),
+  } : settings
+  let result, survivors, report
+  const cached = selectedIds && previewCache && Date.now() - previewCache.at < PREVIEW_TTL_MS ? previewCache : null
+  previewCache = null
+  if (cached) {
+    ({ result, survivors, report } = cached)
+  } else {
+    result = await fetchPapers(searchSettings, httpClient, undefined, undefined,
+      ({ loaded, total }) => progress('arxiv', loaded, total ?? loaded))
+    if (result.error) return { error: result.error }
 
-  console.log(`[fetch] ${result.length} candidates from ArXiv.`)
+    console.log(`[fetch] ${result.length} candidates from ArXiv.`)
 
-  let survivors, report
-  try {
-    const selection = await selectCandidates(result, { db, deps, settings, embProvider, similarityThreshold, onProgress: progress })
-    survivors = selection.survivors
-    report    = selection.report
-  } catch (embErr) {
-    console.error(`[fetch]   Selection phase error: ${embErr.message}`)
-    return { error: `Error al filtrar candidatos: ${embErr.message}. Si el problema persiste, revisá tu API key de OpenAI en Configuración.` }
+    try {
+      const selection = await selectCandidates(result, { db, deps, settings: searchSettings, embProvider, similarityThreshold, referencePaths: Array.isArray(focus?.references) ? focus.references : null, onProgress: progress })
+      survivors = selection.survivors
+      report    = selection.report
+    } catch (embErr) {
+      console.error(`[fetch]   Selection phase error: ${embErr.message}`)
+      return { error: `Error al filtrar candidatos: ${embErr.message}. Si el problema persiste, revisá tu API key de OpenAI en Configuración.` }
+    }
+
+    if (preview && survivors.length > 0) {
+      previewCache = { at: Date.now(), result, survivors, report }
+      return {
+        preview: {
+          quota, maxPapers,
+          candidates: survivors.slice(0, RERANK_CAP).map(p => ({
+            id: p.id, title: p.title, authors: p.authors, abstract: p.abstract, published_date: p.published_date,
+          })),
+        },
+      }
+    }
+  }
+
+  // Solo los que el usuario eligió, conservando el orden del ranking.
+  if (selectedIds) {
+    const chosen = new Set(selectedIds)
+    survivors = survivors.filter(p => chosen.has(p.id))
   }
 
   const entryById = new Map(report.map(e => [e.id, e]))
@@ -387,7 +431,7 @@ function registerPapersHandlers({ ipcMain, db, deps, mainWindow }) {
   ipcMain.handle('get-paper', (_e, id) => db.getPaper(id))
 
   // `replaceWeek` solo llega true si el usuario confirmó el modal de reemplazo.
-  ipcMain.handle('fetch-papers', (_e, opts) => runFetch({ db, deps, mainWindow, replaceWeek: Boolean(opts?.replaceWeek) }))
+  ipcMain.handle('fetch-papers', (_e, opts) => runFetch({ db, deps, mainWindow, replaceWeek: Boolean(opts?.replaceWeek), focus: opts?.focus || null, preview: Boolean(opts?.preview), selectedIds: Array.isArray(opts?.selectedIds) ? opts.selectedIds : null }))
 
   // Lo que la UI necesita para preguntar ANTES de lanzar el fetch.
   ipcMain.handle('get-week-status', () => {
